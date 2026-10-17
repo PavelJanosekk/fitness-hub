@@ -5,17 +5,26 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
 
 # Never cached, so a new deploy reaches phones on the next load
 NO_CACHE = {"Cache-Control": "no-cache"}
 UNCACHED_FILES = {"index.html", "sw.js", "registerSW.js", "manifest.webmanifest"}
 
 
+class HashedAssets(StaticFiles):
+    """Vite puts a content hash in every file name under assets/, so browsers may keep them forever."""
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 def mount_spa(app: FastAPI, directory: Path) -> None:
     root = directory.resolve()
     if (root / "assets").is_dir():
-        # Hashed file names: safe to cache forever
-        app.mount("/assets", StaticFiles(directory=root / "assets"), name="assets")
+        app.mount("/assets", HashedAssets(directory=root / "assets"), name="assets")
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str) -> FileResponse:

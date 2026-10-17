@@ -33,7 +33,10 @@ def test_client_routes_get_index_html_uncached(tmp_path: Path) -> None:
 def test_files_and_assets_are_served(tmp_path: Path) -> None:
     client = make_app(tmp_path)
 
-    assert client.get("/assets/index-abc.js").text == "console.log(1)"
+    asset = client.get("/assets/index-abc.js")
+    assert asset.text == "console.log(1)"
+    assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert client.get("/assets/missing.js").status_code == 404
     assert client.get("/sw.js").headers["cache-control"] == "no-cache"
 
 
