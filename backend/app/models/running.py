@@ -1,5 +1,8 @@
 import datetime as dt
+from typing import Any
 
+from sqlalchemy import Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from app.models.common import AwareDateTime
@@ -20,7 +23,41 @@ class Activity(SQLModel, table=True):
     avg_hr: int | None = None
     max_hr: int | None = None
     calories: int | None = None
-    notes: str | None = None
+    notes: str | None = None  # Strava activity name ("heat" in it marks a hot-weather run)
+    description: str | None = Field(default=None, sa_type=Text)  # Strava description: fueling log, pain 0-10
+    rpe: int | None = None  # Strava "perceived exertion" 1-10
+
+
+class ActivityStream(SQLModel, table=True):
+    """Raw per-second Strava streams of a run, kept so metrics can be recomputed (e.g. after an LTHR retest)."""
+
+    __tablename__ = "activity_streams"
+
+    activity_id: int = Field(primary_key=True, foreign_key="activities.id", ondelete="CASCADE")
+    data: dict[str, Any] = Field(sa_type=JSONB(none_as_null=True))
+    fetched_at: dt.datetime = Field(sa_type=AwareDateTime)
+
+
+class ActivityMetrics(SQLModel, table=True):
+    """Stream-derived metrics of a run (port of RunningCoach scripts/metrics.py)."""
+
+    __tablename__ = "activity_metrics"
+
+    activity_id: int = Field(primary_key=True, foreign_key="activities.id", ondelete="CASCADE")
+    computed_at: dt.datetime = Field(sa_type=AwareDateTime)
+    lthr: int | None  # the LTHR the zones were computed with (None: zone fields empty)
+    moving_seconds: int
+    has_heartrate: bool
+    pace_s_per_km: float | None = None
+    gap_s_per_km: float | None = None  # grade-adjusted (Minetti)
+    pace_first10_s_per_km: float | None = None
+    hr_avg_steady: float | None = None  # after the first 10 minutes
+    ef_gap: float | None = None  # GAP metres per minute per heartbeat
+    decoupling_pct: float | None = None  # GAP/HR first vs second half of the steady part
+    gap_at_easy_band_s_per_km: float | None = None  # GAP while HR was in the easy comparison band (143-150)
+    zone_seconds: dict[str, float] | None = Field(default=None, sa_type=JSONB(none_as_null=True))
+    pct_above_easy: float | None = None  # share of moving time above Z2
+    pct_above_steady: float | None = None  # share of moving time in Z4-Z5
 
 
 class TrainingPlanItem(SQLModel, table=True):

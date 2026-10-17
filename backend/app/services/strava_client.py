@@ -11,6 +11,8 @@ from sqlmodel import Session, select
 from app.config import settings
 from app.models.integrations import IntegrationToken
 from app.models.running import Activity
+from app.services.run_analysis import current_lthr, runs_missing_streams, store_streams
+from app.services.run_metrics import STREAM_KEYS
 from app.timeutils import now_utc
 
 PROVIDER = "strava"
@@ -23,7 +25,11 @@ PER_PAGE = 100
 SYNC_OVERLAP = dt.timedelta(days=7)
 # Calories only come from the per-activity detail endpoint; fetch it for recent activities, within a budget
 DETAIL_WINDOW = dt.timedelta(days=14)
+# RPE and the description (fueling log, pain notes) are often added after the run: re-read recent ones
+DETAIL_REFRESH = dt.timedelta(hours=36)
 MAX_DETAILS_PER_SYNC = 20
+# Per-second streams for stream metrics (E12); the history backfills a few runs per sync
+STREAMS_PER_SYNC = 10
 REFRESH_MARGIN = dt.timedelta(minutes=5)
 
 
@@ -48,7 +54,9 @@ class SyncResult:
     created: int = 0
     updated: int = 0
     details_fetched: int = 0
-    complete: bool = True  # False when rate-limited part-way; the cursor is then left unchanged
+    streams_fetched: int = 0
+    streams_pending: int = 0  # runs still without streams after this sync (backfill in progress)
+    complete: bool = True  # False when the activity listing was rate-limited; the cursor is then left unchanged
 
 
 def require_config() -> tuple[str, str]:
@@ -148,6 +156,19 @@ def _get(http: httpx.Client, path: str, access_token: str, params: dict[str, Any
     return response.json()
 
 
+def _strava_id(activity: Activity) -> str:
+    return (activity.external_id or "").removeprefix("strava:")
+
+
+def _apply_detail(activity: Activity, detail: dict[str, Any]) -> None:
+    if detail.get("calories") is not None:
+        activity.calories = round(detail["calories"])
+    if detail.get("perceived_exertion") is not None:
+        activity.rpe = round(detail["perceived_exertion"])
+    activity.description = detail.get("description") or activity.description
+    activity.notes = detail.get("name") or activity.notes
+
+
 def sync_activities(session: Session, http: httpx.Client, now: dt.datetime | None = None) -> SyncResult:
     now = now or now_utc()
     access_token = _access_token(session, http, now)
@@ -158,6 +179,7 @@ def sync_activities(session: Session, http: httpx.Client, now: dt.datetime | Non
     result = SyncResult()
     newest = token.last_activity_start
     needs_details: list[Activity] = []
+    listing_done = False
     try:
         page = 1
         while True:
@@ -181,18 +203,36 @@ def sync_activities(session: Session, http: httpx.Client, now: dt.datetime | Non
                     result.updated += 1
                 session.add(activity)
                 newest = max(newest, activity.start_time) if newest else activity.start_time
-                if activity.calories is None and now - activity.start_time <= DETAIL_WINDOW:
+                age = now - activity.start_time
+                if age <= DETAIL_REFRESH or (activity.calories is None and age <= DETAIL_WINDOW):
                     needs_details.append(activity)
             page += 1
+        listing_done = True
+        session.flush()
 
-        for activity in needs_details[:MAX_DETAILS_PER_SYNC]:
-            strava_id = activity.external_id.removeprefix("strava:") if activity.external_id else None
-            detail = _get(http, f"/activities/{strava_id}", access_token)
-            activity.calories = round(detail["calories"]) if detail.get("calories") is not None else None
-            session.add(activity)
+        detailed: set[int] = set()
+        for activity in sorted(needs_details, key=lambda a: a.start_time, reverse=True)[:MAX_DETAILS_PER_SYNC]:
+            _apply_detail(activity, _get(http, f"/activities/{_strava_id(activity)}", access_token))
+            detailed.add(activity.id or 0)
             result.details_fetched += 1
+
+        lthr = current_lthr(session)
+        for activity in runs_missing_streams(session, STREAMS_PER_SYNC):
+            if activity.id not in detailed:
+                _apply_detail(activity, _get(http, f"/activities/{_strava_id(activity)}", access_token))
+                result.details_fetched += 1
+            streams = _get(
+                http,
+                f"/activities/{_strava_id(activity)}/streams",
+                access_token,
+                {"keys": STREAM_KEYS, "key_by_type": "true"},
+            )
+            store_streams(session, activity, streams, lthr)
+            result.streams_fetched += 1
     except StravaRateLimitedError:
-        result.complete = False
+        result.complete = listing_done
+    session.flush()
+    result.streams_pending = len(runs_missing_streams(session, 10_000))
 
     token.last_synced_at = now
     if result.complete:

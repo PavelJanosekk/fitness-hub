@@ -55,6 +55,18 @@ class FakeStrava:
             if page == self.rate_limit_page:
                 return httpx.Response(429, json={"message": "Rate Limit Exceeded"})
             return httpx.Response(200, json=self.pages[page - 1] if page <= len(self.pages) else [])
+        if path.endswith("/streams"):
+            seconds = list(range(0, 1800))
+            return httpx.Response(
+                200,
+                json={
+                    "time": {"data": seconds},
+                    "velocity_smooth": {"data": [3.0] * len(seconds)},
+                    "heartrate": {"data": [145] * len(seconds)},
+                    "moving": {"data": [True] * len(seconds)},
+                    "grade_smooth": {"data": [0.0] * len(seconds)},
+                },
+            )
         if path.startswith("/api/v3/activities/"):
             return httpx.Response(200, json=self.details.get(int(path.rsplit("/", 1)[1]), {}))
         return httpx.Response(404)
@@ -116,7 +128,9 @@ def test_first_sync_backfills_pages_and_fetches_details_for_recent_runs(
 
     result = sync_activities(session, fake_http(fake), now=NOW)
 
-    assert (result.created, result.updated, result.details_fetched, result.complete) == (2, 0, 1, True)
+    # recent run: detail refresh + streams; old run: detail and streams for the backfill
+    assert (result.created, result.updated, result.details_fetched, result.complete) == (2, 0, 2, True)
+    assert (result.streams_fetched, result.streams_pending) == (2, 0)
     calories = {a.external_id: a.calories for a in session.exec(select(Activity)).all()}
     assert calories == {"strava:2": 700, "strava:1": None}
     assert "after" not in fake.activity_list_params()[0]

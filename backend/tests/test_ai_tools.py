@@ -152,6 +152,15 @@ def test_running_context_has_runs_weekly_km_and_leg_days(tools, session: Session
 
     result = t["get_running_and_marathon_context"](21)
 
-    assert result["runs"] == [{"date": "2026-10-15", "km": 10.0, "pace": "6:00/km", "avg_hr": 148, "name": "Easy"}]
+    assert result["runs"] == [
+        {
+            "date": "2026-10-15",
+            "km": 10.0,
+            "pace": "6:00/km",
+            "avg_hr": 148,
+            "name": "Easy",
+            "metrics": "pending (streams not fetched yet)",
+        }
+    ]
     assert result["weekly_km"] == {"2026-W42": 10.0}
     assert result["leg_workouts"][0]["leg_sets"] == 1

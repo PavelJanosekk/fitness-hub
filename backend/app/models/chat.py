@@ -38,5 +38,5 @@ class ChatMessage(SQLModel, table=True):
     conversation_id: uuid.UUID = Field(foreign_key="chat_conversations.id", ondelete="CASCADE", index=True)
     role: str
     content: str
-    tool_calls: list[dict[str, Any]] | None = Field(default=None, sa_type=JSONB)
+    tool_calls: list[dict[str, Any]] | None = Field(default=None, sa_type=JSONB(none_as_null=True))
     created_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)

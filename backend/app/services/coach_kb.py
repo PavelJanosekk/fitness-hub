@@ -13,6 +13,7 @@ from sqlmodel import Session, delete, select
 from app.config import settings
 from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingWeek
 from app.services.kb_parser import parse_index, parse_plan
+from app.services.run_analysis import recompute_metrics
 from app.timeutils import now_utc, today
 
 GITHUB_API = "https://api.github.com"
@@ -37,6 +38,7 @@ class KBSyncResult:
     weeks: int = 0
     races: int = 0
     lthr: int | None = None
+    metrics_recomputed: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -64,6 +66,8 @@ def sync_knowledge_base(session: Session, http: httpx.Client) -> KBSyncResult:
     athlete.sync_warnings = result.warnings or None
     session.add(athlete)
     session.commit()
+    # Zones follow the LTHR: runs computed with an older value are recomputed from their stored streams
+    result.metrics_recomputed = recompute_metrics(session, athlete.lthr)
     return result
 
 

@@ -19,17 +19,21 @@ from sqlmodel import Session, col, select
 
 from app.models.coach import Race
 from app.models.gym import Exercise, MuscleGroup, Workout, WorkoutSet, WorkoutSource
-from app.models.running import Activity, TrainingPlanItem
+from app.models.running import Activity, ActivityMetrics, TrainingPlanItem
 from app.schemas.body import MetricUpsert
 from app.schemas.nutrition import QuickAdd
 from app.services.coach_kb import plan_weeks, read_document
 from app.services.exercises import resolve_exercise
 from app.services.metrics import daily_series, upsert_daily_metric
 from app.services.nutrition import quick_add
+from app.services.run_analysis import RUN_TYPES, current_lthr, is_heat
+from app.services.run_metrics import Zones, format_pace
 from app.timeutils import day_bounds, local_date, now_utc, today
 
-RUN_TYPES = ("Run", "TrailRun", "VirtualRun")
 CZECH_WEEKDAYS = ("pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota", "neděle")
+# Runs with more Z4-Z5 time are quality sessions, not comparable easy/long runs
+QUALITY_Z45_SECONDS = 8 * 60
+DESCRIPTION_CHARS = 240
 # A dictated weight this far from the last session is more likely a misheard number than a PR
 PLAUSIBLE_RATIO = (0.5, 1.3)
 MAX_PLAUSIBLE_REPS = 50
@@ -195,8 +199,9 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
         return result
 
     def get_running_and_marathon_context(days: int = 21) -> dict[str, Any]:
-        """Recent runs (distance, pace, heart rate) and weekly mileage over the last `days` days, the
-        training plan for the next 14 days, and recent leg workouts, to judge fatigue before key runs.
+        """Recent runs with per-second stream metrics (GAP, EF, decoupling, % time above easy, Z4 minutes),
+        RPE and the Strava description (fueling log, pain notes), weekly mileage, HR zones from the current
+        LTHR, upcoming races, the weekly plan, and recent leg workouts, to judge training and fatigue.
 
         Args:
             days: Look-back window in days (1-120).
@@ -204,27 +209,42 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
         days = max(1, min(days, 120))
         since = ctx.now - dt.timedelta(days=days)
         runs = session.exec(
-            select(Activity)
+            select(Activity, ActivityMetrics)
+            .outerjoin(ActivityMetrics, col(ActivityMetrics.activity_id) == Activity.id)
             .where(col(Activity.activity_type).in_(RUN_TYPES), col(Activity.start_time) >= since)
             .order_by(col(Activity.start_time))
         ).all()
         weekly: dict[str, float] = defaultdict(float)
         run_rows = []
-        for run in runs:
+        for run, metrics in runs:
             local = local_date(run.start_time)
             weekly[f"{local.isocalendar().year}-W{local.isocalendar().week:02d}"] += run.distance_meters / 1000
             pace = run.duration_seconds / (run.distance_meters / 1000) if run.distance_meters else None
-            run_rows.append(
-                _compact(
-                    {
-                        "date": local.isoformat(),
-                        "km": round(run.distance_meters / 1000, 2),
-                        "pace": f"{int(pace // 60)}:{int(pace % 60):02d}/km" if pace else None,
-                        "avg_hr": run.avg_hr,
-                        "name": run.notes,
-                    }
-                )
-            )
+            row = {
+                "date": local.isoformat(),
+                "km": round(run.distance_meters / 1000, 2),
+                "pace": f"{int(pace // 60)}:{int(pace % 60):02d}/km" if pace else None,
+                "avg_hr": run.avg_hr,
+                "name": run.notes,
+                "heat": True if is_heat(run) else None,
+                "rpe": run.rpe,
+                "description": (run.description or "")[:DESCRIPTION_CHARS] or None,
+            }
+            if metrics is not None:
+                zones = metrics.zone_seconds or {}
+                row |= {
+                    "gap": format_pace(metrics.gap_s_per_km),
+                    "pace_first10min": format_pace(metrics.pace_first10_s_per_km),
+                    "hr_steady": metrics.hr_avg_steady,
+                    "ef_gap": metrics.ef_gap,
+                    "decoupling_pct": metrics.decoupling_pct,
+                    "pct_above_easy": metrics.pct_above_easy,
+                    "z4_min": round(zones["z4"] / 60, 1) if "z4" in zones else None,
+                    "gap_at_easy_band": format_pace(metrics.gap_at_easy_band_s_per_km),
+                }
+            else:
+                row["metrics"] = "pending (streams not fetched yet)"
+            run_rows.append(_compact(row))
         start = today(ctx.now)
         plan = session.exec(
             select(TrainingPlanItem)
@@ -240,7 +260,9 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
             .order_by(col(Workout.started_at))
         ).all()
         upcoming_races = session.exec(select(Race).where(Race.date >= start).order_by(col(Race.date))).all()
+        lthr = current_lthr(session)
         return {
+            "hr_zones": {"lthr": lthr, **Zones(lthr).bounds()} if lthr else None,
             "races": [
                 _compact(
                     {"name": r.name, "date": r.date.isoformat(), "days_to_go": (r.date - start).days, "goal": r.goal}
@@ -274,6 +296,68 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
                 for p in plan
             ],
             "leg_workouts": [{"date": local_date(s).isoformat(), "name": n, "leg_sets": c} for s, n, c in legs],
+        }
+
+    def get_efficiency_trend(weeks: int = 16) -> dict[str, Any]:
+        """Aerobic efficiency over time compared at EQUAL heart rate and grade: grade-adjusted pace while HR
+        was in the easy band (143-150 at LTHR 172) and EF, per month and per run. Only easy and long runs:
+        heat runs and quality sessions (over 8 min in Z4-Z5) are excluded.
+
+        Args:
+            weeks: Look-back window in weeks (1-104).
+        """
+        since = ctx.now - dt.timedelta(weeks=max(1, min(weeks, 104)))
+        rows = session.exec(
+            select(Activity, ActivityMetrics)
+            .join(ActivityMetrics, col(ActivityMetrics.activity_id) == Activity.id)
+            .where(col(Activity.activity_type).in_(RUN_TYPES), col(Activity.start_time) >= since)
+            .order_by(col(Activity.start_time))
+        ).all()
+        comparable, excluded = [], {"heat": 0, "quality": 0, "no_easy_band": 0}
+        for run, metrics in rows:
+            zones = metrics.zone_seconds or {}
+            if is_heat(run):
+                excluded["heat"] += 1
+            elif zones.get("z4", 0) + zones.get("z5", 0) > QUALITY_Z45_SECONDS:
+                excluded["quality"] += 1
+            elif metrics.gap_at_easy_band_s_per_km is None:
+                excluded["no_easy_band"] += 1
+            else:
+                comparable.append((run, metrics))
+        by_month: dict[str, list[ActivityMetrics]] = defaultdict(list)
+        for run, metrics in comparable:
+            by_month[local_date(run.start_time).strftime("%Y-%m")].append(metrics)
+
+        def median(values: list[float]) -> float | None:
+            ordered = sorted(values)
+            return ordered[len(ordered) // 2] if ordered else None
+
+        lthr = current_lthr(session)
+        return {
+            "easy_band_hr": "{}-{}".format(*Zones(lthr).easy_band) if lthr else None,
+            "months": {
+                month: _compact(
+                    {
+                        "runs": len(ms),
+                        "gap_at_easy_band": format_pace(median([m.gap_at_easy_band_s_per_km or 0 for m in ms])),
+                        "ef_gap": median([m.ef_gap for m in ms if m.ef_gap]),
+                    }
+                )
+                for month, ms in by_month.items()
+            },
+            "runs": [
+                _compact(
+                    {
+                        "date": local_date(run.start_time).isoformat(),
+                        "km": round(run.distance_meters / 1000, 2),
+                        "gap_at_easy_band": format_pace(m.gap_at_easy_band_s_per_km),
+                        "ef_gap": m.ef_gap,
+                        "decoupling_pct": m.decoupling_pct,
+                    }
+                )
+                for run, m in comparable
+            ],
+            "excluded": excluded,
         }
 
     def read_knowledge_base(document: str) -> dict[str, Any]:
@@ -423,6 +507,7 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
         get_muscle_group_volume,
         get_exercise_progression,
         get_running_and_marathon_context,
+        get_efficiency_trend,
         read_knowledge_base,
         log_workout_sets_from_ai,
         log_daily_metric_from_ai,

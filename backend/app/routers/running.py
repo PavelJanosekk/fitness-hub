@@ -8,7 +8,7 @@ from app.database import SessionDep
 from app.models.coach import TrainingWeek
 from app.models.running import Activity, TrainingPlanItem
 from app.schemas.running import ActivityCreate, ActivityRead, PlanItemIn, PlanItemRead, PlanWeekRead
-from app.services.ai_tools import RUN_TYPES
+from app.services.run_analysis import RUN_TYPES
 from app.timeutils import day_bounds, today
 
 router = APIRouter(prefix="/api/running", tags=["running"])

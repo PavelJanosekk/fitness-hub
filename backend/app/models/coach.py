@@ -59,5 +59,5 @@ class AthleteProfile(SQLModel, table=True):
     kb_updated: dt.date | None = None  # "Aktualizováno" date in 00_INDEX.md
     last_synced_at: dt.datetime | None = Field(default=None, sa_type=AwareDateTime)
     last_sync_error: str | None = None
-    sync_warnings: list[str] | None = Field(default=None, sa_type=JSONB)
-    extra: dict[str, Any] | None = Field(default=None, sa_type=JSONB)
+    sync_warnings: list[str] | None = Field(default=None, sa_type=JSONB(none_as_null=True))
+    extra: dict[str, Any] | None = Field(default=None, sa_type=JSONB(none_as_null=True))

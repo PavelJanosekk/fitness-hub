@@ -26,10 +26,12 @@ from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingWeek  
 from app.models.gym import Exercise, Workout, WorkoutSet  # noqa: E402
 from app.models.integrations import IntegrationToken  # noqa: E402
 from app.models.nutrition import MealLog, MealLogItem  # noqa: E402
-from app.models.running import Activity, TrainingPlanItem  # noqa: E402
+from app.models.running import Activity, ActivityMetrics, ActivityStream, TrainingPlanItem  # noqa: E402
 
 __all__ = [
     "Activity",
+    "ActivityMetrics",
+    "ActivityStream",
     "AthleteProfile",
     "ChatConversation",
     "ChatMessage",
