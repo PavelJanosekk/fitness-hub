@@ -4,11 +4,33 @@ from statistics import fmean
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
-from app.models.body import DailyMetric
+from app.models.body import DailyMetric, DailyMetricKind, DailySourceMetric, HealthSource
 from app.models.nutrition import MealLog, MealLogItem
-from app.schemas.body import MetricDay
+from app.schemas.body import MetricDay, MetricUpsert
+from app.services.health_ingest import recompute_day
+from app.timeutils import today
 
 ROLLING_DAYS = 7
+
+
+def upsert_daily_metric(session: Session, body: MetricUpsert) -> DailyMetric:
+    """Partial upsert; only non-null fields overwrite. Manual steps/sleep win over device data."""
+    day = body.date or today()
+    metric = session.get(DailyMetric, day) or DailyMetric(date=day)
+    for field, value in body.model_dump(exclude={"date", "steps", "sleep_hours"}).items():
+        if value is not None:
+            setattr(metric, field, value)
+    session.add(metric)
+    manual = {DailyMetricKind.steps_total: body.steps, DailyMetricKind.sleep_minutes: body.sleep_hours}
+    for kind, value in manual.items():
+        if value is not None:
+            stored = value * 60 if kind == DailyMetricKind.sleep_minutes else value
+            session.merge(DailySourceMetric(date=day, source=HealthSource.manual, metric=kind, value=stored))
+    session.flush()
+    recompute_day(session, day)
+    session.commit()
+    session.refresh(metric)
+    return metric
 
 
 def intake_by_day(session: Session, start: dt.date, end: dt.date) -> dict[dt.date, tuple[float, ...]]:

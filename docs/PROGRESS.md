@@ -14,11 +14,13 @@
 | E3 | — | *Pending, decide before Phase 5:* bulk-seed USDA locally (recommended) vs. lazy API lookup. |
 | E4 | 2026-10-17 | Hybrid save flow for AI-parsed data: auto-save only on high-confidence or confirmed matches, otherwise a draft card for 1-tap confirmation. Aliases are learned only on confirmation. |
 | E5 | 2026-10-17 | The Strong sticky notes mark different exercises. Remap `Lat Pulldown (Machine)` → Bent-over Pulldown and `Lat Pulldown - Underhand (Cable)` → Kelso Shrug for all workouts. **Confirmed by the user** (O1): all 40 underhand workouts are Kelso Shrugs, and the March 2026 low-rep sets stay the same movement. |
-| E6 | 2026-10-17 | iPhone steps come via an iOS Shortcut → health webhook. |
+| E6 | 2026-10-17 | iPhone steps come via an iOS Shortcut → health webhook. Re-checked 2026-10-17: Life Dashboard Companion's iOS app speaks the same format and `/api/webhooks/health-connect` already accepts it, but it has no App Store or TestFlight build. It needs a Mac with Xcode 26 and a free account (re-sign every 7 days) or a paid one ($99/yr), so the Shortcut stays. Switching later needs no backend change. |
 | E7 | 2026-10-17 | Steps merge: 15-min buckets, max per bucket, summed over the day. Fallback: max of the sources' daily totals. |
 | E8 | 2026-10-17 | Samsung Health (watch steps, sleep) via live Health Connect sync. Forwarder app on the Android phone, chosen in Phase 1. |
 | E9 | 2026-10-17 | Gym: auto-finish idle workouts (2 h) + "Start from last …" templates. The KT weight import stays in Phase 5. |
 | E10 | 2026-10-17 | Strava via OAuth + polling (no public webhook). Strava is the only automatic activity source. |
+| E11 | 2026-10-17 | The coach builds on the user's **RunningCoach** repo (github.com/PavelJanosekk/RunningCoach), which **stays the source of truth**. The app syncs it from GitHub daily and on demand. Rules, quick facts, zones and errata go into every coach request; other docs are read via a tool. The weekly plan tables, races and LTHR are parsed into the DB for the Run page. The user keeps their Claude Code "aktualizuj log" workflow there. |
+| E12 | 2026-10-17 | Port RunningCoach `scripts/metrics.py`: per-run GAP (Minetti), EF, decoupling and time per LTHR zone from per-second Strava streams, plus RPE and description from the activity detail. Backfilled within Strava rate limits. Progress is judged at equal HR and GAP; heat runs are excluded from trends. |
 
 ## User facts (answers F1–F5, 2026-10-17)
 - **F1:** Strong export is in `data/imports/strong_workouts.csv`: 123 workouts, 2,361 sets, 42 exercises, 2025-08-07 → 2026-10-17. Analysed in review §G1.
@@ -32,7 +34,7 @@
 |---|---|---|
 | O3 | KT `unit` grams: per entry or per unit? Are nutrient values per entry? Verify on one real diary day | Phase 5 |
 | O4 | E3: USDA bulk seed vs. lazy API | Before Phase 5 |
-| O5 | Check the current Gemini model ids against the live model list | Phase 2 |
+| O5 | ✅ Live list checked: fast = `gemini-3.7-flash` (works with tool calls + typed args; served as 3.8-flash). **The key is on the free tier: Pro = 0 quota.** Smart tier = same Flash with high thinking until billing is enabled. Free-tier data may be used by Google; paid tier not. User: no paid calls for now | Phase 2 |
 | O6 | HTTPS: Caddy is already running on the server. Serve the app through it (with a Tailscale cert) or through `tailscale serve`? | Phase 4 |
 
 ## Phase checklist
@@ -78,6 +80,7 @@
 - Adaptive TDEE from weight trend + intake (AI coach tool)
 - NutriDatabáze.cz as a Czech food source (licensing unverified)
 - KT weight history import earlier than Phase 5 (declined for now in E9)
+- Switch iPhone steps from the iOS Shortcut to the Life Dashboard Companion iOS app once it reaches TestFlight or the App Store (receiver already supports `healthkit_ios`)
 
 ## Session log
 - **2026-10-17 (1):** Reviewed the original spec and the user's nutrition spec; live-checked the USDA FDC and Open Food Facts APIs. Saved the nutrition spec and the review, got decisions E0/E1/E2/E4, and restructured the docs. Commit `959fa75` on `dev`.
@@ -100,3 +103,8 @@
   - Spec deviations recorded in SPEC: `exercise_order` column, float step buckets, the remap rule format, asyncio jobs instead of APScheduler, and the `health_source_status` / `health_records` tables.
   - O2 resolved: Life Dashboard Companion, with its own receiver endpoint.
   - Its iOS app could replace the iOS Shortcut (E6). Mentioned to the user as an option; no decision yet.
+- **2026-10-17 (6):** Phase 2 started.
+  - Checked the live Gemini models (free tier only; the user forbids paid calls) and added google-genai 2.28.0 (websockets capped at 16.1.1, google-auth at 2.59.1, pycparser at 3.0).
+  - iOS companion app researched: no App Store or TestFlight build, so the Shortcut stays.
+  - Read the user's RunningCoach KB.
+  - Decisions E11/E12. Facts from the KB: LTHR 172, races 3.4. (half marathon) and 2.5.2027 (marathon), the watch is not worn at night, a Strava API app already exists.

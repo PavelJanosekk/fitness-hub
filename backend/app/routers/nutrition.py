@@ -9,6 +9,7 @@ from sqlmodel import col, select
 from app.database import SessionDep
 from app.models.nutrition import MealLog, MealLogItem, MealType
 from app.schemas.nutrition import DayIntake, MealItemRead, MealRead, QuickAdd, Totals
+from app.services.nutrition import quick_add as quick_add_meal
 from app.timeutils import today
 
 router = APIRouter(prefix="/api/nutrition", tags=["nutrition"])
@@ -19,19 +20,7 @@ MEAL_ORDER = {meal_type.value: index for index, meal_type in enumerate(MealType)
 @router.post("/quick-add", response_model=MealRead)
 def quick_add(body: QuickAdd, session: SessionDep) -> MealRead:
     """Idempotent: the client UUID identifies both the meal log and its single item."""
-    day = body.date or today()
-    meal = session.get(MealLog, body.id) or MealLog(id=body.id, logged_date=day)
-    meal.logged_date = day
-    meal.meal_type = body.meal_type
-    item = session.get(MealLogItem, body.id) or MealLogItem(id=body.id, meal_log_id=body.id, label=body.label, kcal=0)
-    item.label = body.label
-    item.kcal = body.kcal
-    item.protein_g = body.protein_g
-    item.carbs_g = body.carbs_g
-    item.fat_g = body.fat_g
-    session.add(meal)
-    session.add(item)
-    session.commit()
+    meal, item = quick_add_meal(session, body)
     return _read_meal(meal, [item])
 
 

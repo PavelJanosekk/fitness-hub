@@ -7,6 +7,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app
+# ffmpeg transcodes browser recordings (webm/mp4) for Gemini (app/services/audio.py)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements.txt backend/constraints.txt ./
 RUN pip install -r requirements.txt -c constraints.txt
 

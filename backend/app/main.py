@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
 from app.database import SessionDep
-from app.routers import integrations, metrics, nutrition, running, webhooks, workouts
+from app.routers import ai_coach, integrations, metrics, nutrition, running, webhooks, workouts
 from app.services import scheduler
 
 
@@ -20,7 +20,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Fitness Hub", lifespan=lifespan)
-for module in (integrations, metrics, nutrition, running, webhooks, workouts):
+for module in (ai_coach, integrations, metrics, nutrition, running, webhooks, workouts):
     app.include_router(module.router)
 
 

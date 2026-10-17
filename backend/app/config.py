@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     # and the apps whose records count (comma-separated package names; "*" accepts every app)
     health_connect_secret: str | None = None
     health_connect_origins: str = "com.sec.android.app.shealth"
+    # Gemini (docs/SPEC.md §3): model ids only from env; "smart" falls back to the fast model when unset.
+    # Thinking level per tier: minimal | low | medium | high (empty = model default)
+    gemini_api_key: str | None = None
+    gemini_model_fast: str | None = None
+    gemini_model_smart: str | None = None
+    gemini_thinking_fast: str | None = "low"
+    gemini_thinking_smart: str | None = "high"
 
     @field_validator("database_url")
     @classmethod
