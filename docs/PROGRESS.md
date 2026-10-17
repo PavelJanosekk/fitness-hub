@@ -3,7 +3,7 @@
 **Current phase:** Phases 0–3 code-complete. Phase 4 in progress: the prod stack is **live** on the real data (project `fitness-hub`, daily backups), and the dev stack is separate (`./dev`, E14).
 **Next step:**
 1. ✅ `tailscale serve` switched (2026-10-17): https://biggyserver.tailfff1d3.ts.net → prod 8010, `:8443` → dev Vite 5173. The iPhone's Tailscale was offline (last seen 2 days ago) at that point.
-2. Check on the iPhone: PWA install, mic/voice, GymLogger (no visual check has been done yet).
+2. ✅ iPhone: PWA installed, voice works. Keep an eye on the GymLogger in real use.
 3. Integrations, following `docs/integrations/`: Strava keys into `.env` + connect, the iOS Shortcut, Life Dashboard Companion on the Android phone. `WEBHOOK_TOKEN` and `PUBLIC_BASE_URL` are already set.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
@@ -82,7 +82,7 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [x] Backups: daily `pg_dump`, 7/4/6 rotation, restore verified; `docs/operations.md`
 - [x] E14 split: prod live on the existing volume, dev project with its own DB + `scripts/seed-dev-db.sh`, `./dev` wrapper; CLAUDE.md/SPEC commands updated
 - [x] `tailscale serve` → :443 prod (8010), :8443 dev (5173); both answer over the tailnet
-- [ ] Verify mic + PWA install on the iPhone (Tailscale on the phone must be connected first)
+- [x] iPhone over Tailscale: PWA installed from Safari, voice dictation works (first real-device check of the mic). Tailscale also on the Windows PC.
 - [x] Integration guides `docs/integrations/` (strava, ios-shortcut, health-connect); `.env` has `PUBLIC_BASE_URL` + a generated `WEBHOOK_TOKEN`; webhooks verified end to end on dev; `/api/webhooks/health` reads JSON whatever the Content-Type (Shortcuts)
 - [ ] User: Strava keys into `.env` + connect; build the Shortcut + automations; install and configure Life Dashboard Companion + 365-day backfill; check that each source shows up in Nastavení
 
@@ -164,3 +164,4 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
     - `/api/webhooks/health` now parses the raw body (Shortcuts may label JSON as octet-stream). Both webhooks drop pydantic's `ctx` from 422 details: a validator's ValueError there made the old 422 path crash with a 500 (132 tests).
   - **Gym sync data-loss bug fixed** (found while checking the outage's effect): with the server unreachable but the phone online, a set PUT gave up after ~30 s, TanStack persisted only paused mutations, and `finish()` cleared the local workout, so the set was gone. Now gym writes retry while the server is unreachable (network/408/429/502–504, backoff capped at 30 s), in-flight writes are persisted and resumed on reopen, and finish re-sends all completed sets. Checked with a throwaway harness on the real `gym.ts` (scratchpad, not committed: no frontend test runner yet). Deployed to prod.
   - At the end of the session: the "Chest tri" workout is open on the server with 0 synced sets. If sets were completed during the outage, they come back when the user taps **Dokončit** in the reloaded app; otherwise auto-finish closes it after 2 h.
+- **2026-10-17 (16):** The tailnet URL failed at first because neither the iPhone nor the PC was connected to Tailscale: outside the tailnet the ts.net name resolves to Tailscale's public servers, which close the connection. With Tailscale on both, the PWA is installed and voice works on the iPhone. The user deleted the empty "Chest tri" workout, which came from the server's localhost, not the phone. Strava connect gave `redirect_uri invalid`: the app sends the right callback, and Strava accepts the client id with localhost, so the Strava app's *Authorization Callback Domain* has to be set to `biggyserver.tailfff1d3.ts.net`; the user is fixing that.
