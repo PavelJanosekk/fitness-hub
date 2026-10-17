@@ -17,10 +17,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
+from app.models.coach import Race
 from app.models.gym import Exercise, MuscleGroup, Workout, WorkoutSet, WorkoutSource
 from app.models.running import Activity, TrainingPlanItem
 from app.schemas.body import MetricUpsert
 from app.schemas.nutrition import QuickAdd
+from app.services.coach_kb import plan_weeks, read_document
 from app.services.exercises import resolve_exercise
 from app.services.metrics import daily_series, upsert_daily_metric
 from app.services.nutrition import quick_add
@@ -237,7 +239,27 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
             .group_by(col(Workout.id))
             .order_by(col(Workout.started_at))
         ).all()
+        upcoming_races = session.exec(select(Race).where(Race.date >= start).order_by(col(Race.date))).all()
         return {
+            "races": [
+                _compact(
+                    {"name": r.name, "date": r.date.isoformat(), "days_to_go": (r.date - start).days, "goal": r.goal}
+                )
+                for r in upcoming_races
+            ],
+            "plan_weeks": [
+                _compact(
+                    {
+                        "week": f"{w.week_start.isoformat()}..{w.week_end.isoformat()}",
+                        "block": w.block,
+                        "km": w.km_text,
+                        "long_run": w.long_run_text,
+                        "quality": w.quality,
+                        "notes": w.notes,
+                    }
+                )
+                for w in plan_weeks(session, start - dt.timedelta(days=7), start + dt.timedelta(days=21))
+            ],
             "runs": run_rows,
             "weekly_km": {week: round(km, 1) for week, km in weekly.items()},
             "plan_next_14_days": [
@@ -253,6 +275,19 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
             ],
             "leg_workouts": [{"date": local_date(s).isoformat(), "name": n, "leg_sets": c} for s, n, c in legs],
         }
+
+    def read_knowledge_base(document: str) -> dict[str, Any]:
+        """Full text of one document of the athlete's running knowledge base (synced from GitHub), e.g.
+        "04" for the timeline plan, "05" methodology, "06" workouts library, "07" nutrition, "08" recovery,
+        "09" strength/gym, "10" gear, "12" open questions, "03" training log.
+
+        Args:
+            document: File name or its numeric prefix, e.g. "07" or "07_nutrition.md".
+        """
+        doc = read_document(session, document)
+        if doc is None:
+            return {"error": f"No single document matches {document!r}"}
+        return {"document": doc.path, "content": doc.content}
 
     def log_workout_sets_from_ai(
         exercise_name: str, sets: list[SetInput], workout_id: str | None = None
@@ -388,6 +423,7 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
         get_muscle_group_volume,
         get_exercise_progression,
         get_running_and_marathon_context,
+        read_knowledge_base,
         log_workout_sets_from_ai,
         log_daily_metric_from_ai,
         log_quick_intake_from_ai,

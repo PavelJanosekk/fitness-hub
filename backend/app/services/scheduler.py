@@ -12,7 +12,9 @@ from collections.abc import Callable
 import httpx
 from sqlmodel import Session
 
+from app.config import settings
 from app.database import engine
+from app.services.coach_kb import KnowledgeBaseError, sync_knowledge_base
 from app.services.strava_client import StravaNotConfiguredError, StravaNotConnectedError, sync_activities
 from app.services.workouts import auto_finish_stale
 
@@ -20,6 +22,7 @@ log = logging.getLogger(__name__)
 
 AUTO_FINISH_EVERY = dt.timedelta(minutes=10)
 STRAVA_SYNC_EVERY = dt.timedelta(minutes=30)
+KB_SYNC_EVERY = dt.timedelta(hours=6)
 
 
 def auto_finish_job() -> None:
@@ -37,6 +40,19 @@ def strava_sync_job() -> None:
         log.info("strava sync: %s", result)
 
 
+def kb_sync_job() -> None:
+    if not settings.coach_kb_repo:
+        return
+    with Session(engine) as session, httpx.Client(timeout=20) as http:
+        try:
+            result = sync_knowledge_base(session, http)
+        except KnowledgeBaseError as exc:
+            log.warning("%s", exc)
+            return
+        if result.downloaded or result.removed:
+            log.info("knowledge base: %s", result)
+
+
 async def _every(interval: dt.timedelta, job: Callable[[], None], first_delay: dt.timedelta) -> None:
     await asyncio.sleep(first_delay.total_seconds())
     while True:
@@ -51,6 +67,7 @@ def start() -> list[asyncio.Task[None]]:
     return [
         asyncio.create_task(_every(AUTO_FINISH_EVERY, auto_finish_job, first_delay=dt.timedelta(seconds=5))),
         asyncio.create_task(_every(STRAVA_SYNC_EVERY, strava_sync_job, first_delay=dt.timedelta(minutes=1))),
+        asyncio.create_task(_every(KB_SYNC_EVERY, kb_sync_job, first_delay=dt.timedelta(seconds=20))),
     ]
 
 

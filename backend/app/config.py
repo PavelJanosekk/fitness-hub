@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     gemini_model_smart: str | None = None
     gemini_thinking_fast: str | None = "low"
     gemini_thinking_smart: str | None = "high"
+    # The user's running knowledge base on GitHub ("owner/repo"); read-only source for the coach (E11)
+    coach_kb_repo: str | None = None
+    coach_kb_branch: str = "master"
 
     @field_validator("database_url")
     @classmethod

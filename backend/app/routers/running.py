@@ -5,9 +5,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
 
 from app.database import SessionDep
+from app.models.coach import TrainingWeek
 from app.models.running import Activity, TrainingPlanItem
-from app.schemas.running import ActivityCreate, ActivityRead, PlanItemIn, PlanItemRead
-from app.timeutils import today
+from app.schemas.running import ActivityCreate, ActivityRead, PlanItemIn, PlanItemRead, PlanWeekRead
+from app.services.ai_tools import RUN_TYPES
+from app.timeutils import day_bounds, today
 
 router = APIRouter(prefix="/api/running", tags=["running"])
 
@@ -42,6 +44,41 @@ def create_activity(body: ActivityCreate, session: SessionDep) -> ActivityRead:
         raise HTTPException(status.HTTP_409_CONFLICT, "Activity with this external_id already exists") from None
     session.refresh(activity)
     return read_activity(activity)
+
+
+@router.get("/weeks", response_model=list[PlanWeekRead])
+def plan_vs_actual(
+    session: SessionDep, start_date: dt.date | None = None, end_date: dt.date | None = None
+) -> list[PlanWeekRead]:
+    """Weekly plan from the synced knowledge base with the actual running volume of each week."""
+    start = start_date or today() - dt.timedelta(days=28)
+    end = end_date or start + dt.timedelta(days=12 * 7)
+    weeks = session.exec(
+        select(TrainingWeek)
+        .where(TrainingWeek.week_end >= start, TrainingWeek.week_start <= end)
+        .order_by(col(TrainingWeek.week_start))
+    ).all()
+    result = []
+    for week in weeks:
+        lo, _ = day_bounds(week.week_start)
+        _, hi = day_bounds(week.week_end)
+        runs = session.exec(
+            select(Activity).where(
+                col(Activity.activity_type).in_(RUN_TYPES),
+                col(Activity.start_time) >= lo,
+                col(Activity.start_time) < hi,
+            )
+        ).all()
+        km = [r.distance_meters / 1000 for r in runs]
+        result.append(
+            PlanWeekRead(
+                **week.model_dump(),
+                actual_km=round(sum(km), 1),
+                actual_runs=len(runs),
+                longest_run_km=round(max(km), 2) if km else None,
+            )
+        )
+    return result
 
 
 @router.get("/plan", response_model=list[PlanItemRead])

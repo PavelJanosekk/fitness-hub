@@ -34,6 +34,25 @@ class ActivityRead(BaseModel):
     pace: str | None = None  # "5:12" min/km
 
 
+class PlanWeekRead(BaseModel):
+    """A week of the synced plan next to what was actually run (Run page)."""
+
+    week_start: dt.date
+    week_end: dt.date
+    block: str | None
+    km_text: str | None
+    km_min: float | None
+    km_max: float | None
+    long_run_text: str | None
+    long_run_km_min: float | None
+    long_run_km_max: float | None
+    quality: str | None
+    notes: str | None
+    actual_km: float
+    actual_runs: int
+    longest_run_km: float | None
+
+
 class PlanItemIn(BaseModel):
     id: int | None = None  # set to update an existing item
     planned_date: dt.date

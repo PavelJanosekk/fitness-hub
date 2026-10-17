@@ -11,6 +11,7 @@ from sqlmodel import Session, col, select
 
 from app.models.chat import Assistant, ChatConversation, ChatMessage, ChatRole
 from app.services.ai_tools import CZECH_WEEKDAYS, ToolContext, build_coach_tools, exercise_catalog
+from app.services.coach_kb import core_context
 from app.services.gemini_service import Tier, history_content, run_assistant
 from app.timeutils import local_date, now_utc
 
@@ -47,6 +48,8 @@ def coach_system_instruction(session: Session, now: dt.datetime) -> str:
         _today_line(now),
         "Seznam cviků v databázi (název [partie]):\n" + exercise_catalog(session),
     ]
+    if knowledge := core_context(session):
+        sections.append(knowledge)
     return "\n\n".join(sections)
 
 
