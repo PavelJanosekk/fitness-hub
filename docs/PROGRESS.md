@@ -4,7 +4,7 @@
 **Next step:**
 1. ✅ `tailscale serve` switched (2026-10-17): https://biggyserver.tailfff1d3.ts.net → prod 8010, `:8443` → dev Vite 5173. The iPhone's Tailscale was offline (last seen 2 days ago) at that point.
 2. ✅ iPhone: PWA installed, voice works. Keep an eye on the GymLogger in real use.
-3. Integrations, following `docs/integrations/`: ✅ Strava. Still to do: Life Dashboard Companion on the Android phone, then the iOS Shortcut.
+3. Integrations: ✅ Strava, ✅ Health Connect. **TODO later:** the iOS Shortcut (the user will do it with guidance).
 4. Phase 5: decide E3 (USDA bulk seed vs lazy API), then verify O3 on a real KT diary day.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
@@ -86,7 +86,8 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [x] iPhone over Tailscale: PWA installed from Safari, voice dictation works (first real-device check of the mic). Tailscale also on the Windows PC.
 - [x] Integration guides `docs/integrations/` (strava, ios-shortcut, health-connect); `.env` has `PUBLIC_BASE_URL` + a generated `WEBHOOK_TOKEN`; webhooks verified end to end on dev; `/api/webhooks/health` reads JSON whatever the Content-Type (Shortcuts)
 - [x] Strava connected (2026-10-17): 301 activities 2021-05 → 2026-10 (165 runs); stream metrics backfill 10 runs per sync
-- [ ] User: build the Shortcut + automations; install and configure Life Dashboard Companion + 365-day backfill; check that each source shows up in Nastavení
+- [x] Life Dashboard Companion on the Android phone (2026-10-17): Samsung Health steps arriving (16 days at first, 365-day backfill running); no sleep yet (watch not worn at night)
+- [ ] **TODO (user, later):** iOS Shortcut for iPhone steps + automations (`docs/integrations/ios-shortcut.md`)
 
 ### Phase 5: Nutrition module
 - [ ] Decide E3, verify O3, then steps 1–6 of `docs/nutrition-module-spec.md` with its Amendments (KT via SDK)
@@ -168,3 +169,4 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
   - At the end of the session: the "Chest tri" workout is open on the server with 0 synced sets. If sets were completed during the outage, they come back when the user taps **Dokončit** in the reloaded app; otherwise auto-finish closes it after 2 h.
 - **2026-10-17 (16):** The tailnet URL failed at first because neither the iPhone nor the PC was connected to Tailscale: outside the tailnet the ts.net name resolves to Tailscale's public servers, which close the connection. With Tailscale on both, the PWA is installed and voice works on the iPhone. The user deleted the empty "Chest tri" workout, which came from the server's localhost, not the phone. Strava connect gave `redirect_uri invalid`: the app sends the right callback, and Strava accepts the client id with localhost, so the Strava app's *Authorization Callback Domain* has to be set to `biggyserver.tailfff1d3.ts.net`; the user is fixing that.
 - **2026-10-17 (17):** Strava connected once the callback domain was fixed. The first sync brought 301 activities (165 runs, 106 rides, 22 swims, 2021-05 → 2026-10) and stream metrics for the 10 newest runs; 105 runs with HR remain, 10 per 30-min sync (~5–6 h). **E12 checked on real data:** decoupling matches the RunningCoach log exactly (LR 13.9. +6.2 %, LR 20.9. −2.4 %, 6.10. 7.9 %). Extreme values on short easy runs (23.9. −33 %, 15.10. −18 %) come from fast or downhill starts while HR lags, as the log itself describes.
+- **2026-10-17 (18):** Life Dashboard Companion installed (1.26.0) with the token header. 125 payloads accepted; daily steps for 18.9.→today; the 365-day backfill is running. The user deferred the iOS Shortcut; next up is Phase 5.
