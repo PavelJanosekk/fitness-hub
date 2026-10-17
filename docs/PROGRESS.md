@@ -1,7 +1,7 @@
 # Progress
 
-**Current phase:** Phase 1 done and verified (backend core, 88 tests). Phase 2 (Gemini coach) not started.
-**Next step:** Phase 2. First O5: check the live Gemini model ids with the user's key.
+**Current phase:** Phases 0–2 done and verified (backend + AI coach, 122 tests, live free-tier check passed). Phase 3 (React frontend & PWA) not started.
+**Next step:** Phase 3 scaffold (Vite + React + TS in a `node:22` dev container).
 **Dev stack:** `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build` serves http://127.0.0.1:8010 (containers `fitness-hub-app-1`, `fitness-hub-db-1`).
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -57,8 +57,11 @@
 - [x] Tests: 88 passing (upserts, last-performance, templates, auto-finish, metrics/intake, Strong import, step merge, sleep, Health Connect receiver, Strava with a fake API, auth)
 
 ### Phase 2: Gemini service & coach tools
-- [ ] O5: verify the current Gemini model ids; configure tiers
-- [ ] `ai_tools.py` (7 tools, Pydantic args, hybrid drafts), `gemini_service.py`, `routers/ai_coach.py`, `services/audio.py`
+- [x] O5: live model list; fast = smart = `gemini-3.7-flash` (free tier, no Pro quota), thinking LOW/HIGH; written to `.env`
+- [x] `gemini_service.py` (chat API + AFC, tool calls from chat history), `coach.py`, `ai_tools.py` (10 tools, hybrid drafts), `routers/ai_coach.py` (chat, voice with ffmpeg→FLAC, conversations), `services/audio.py`
+- [x] E11: RunningCoach KB sync every 6 h + on demand, parsing into training_weeks, races and athlete_profile; core docs in every prompt; `read_knowledge_base`; `/api/coach/kb*`; `/api/running/weeks`
+- [x] E12: stream metrics (port of metrics.py), streams stored, budgeted backfill, recompute on LTHR change, `get_efficiency_trend`
+- [x] Live check (free tier, 3 turns): progression from the real Strong data, races and plan from the KB, dictation "kelso šrag" → exact Kelso Shrug saved. Found and fixed: tool calls weren't captured in chat mode. The test workout was deleted afterwards.
 
 ### Phase 3: Frontend & PWA
 - [ ] Scaffold; Layout, RestTimer, VoiceRecorder, DraftCard
@@ -108,3 +111,9 @@
   - iOS companion app researched: no App Store or TestFlight build, so the Shortcut stays.
   - Read the user's RunningCoach KB.
   - Decisions E11/E12. Facts from the KB: LTHR 172, races 3.4. (half marathon) and 2.5.2027 (marathon), the watch is not worn at night, a Strava API app already exists.
+- **2026-10-17 (7):** Phase 2 completed.
+  - Commits: b83fe1b (coach core), c36dce9 (KB sync), b300e4c (stream metrics), plus the AFC history fix.
+  - The KB synced live: 14 docs, 25 plan weeks, LTHR 172, both races.
+  - `.env` now has GEMINI_MODEL_FAST/SMART and COACH_KB_REPO.
+  - Stream metrics aren't tried on real data yet, because Strava isn't connected (Phase 4; the user's RunningCoach Strava API app can be reused).
+  - Dev image is 1.04 GB due to ffmpeg; slim it in Phase 4.

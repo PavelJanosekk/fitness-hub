@@ -371,81 +371,43 @@ The coach is one of **two separate assistants** (the nutrition assistant arrives
   - Uses Gemini multimodal input to parse spoken Czech/English workout dictation (e.g. "Bench press první série 80 kilo 10 opakování, druhá 85 kilo 8 opakování, RPE 8").
   - Applies the hybrid save flow **[E4]**: returns `saved_sets` and/or `drafts` for 1-tap confirmation.
 
----
+### 6.7 Coach knowledge base: RunningCoach (`/api/coach`) [E11]
+- The user's GitHub repo `COACH_KB_REPO` (PavelJanosekk/RunningCoach) **stays the source of truth**; the user keeps their Claude Code workflow there. The app keeps a read-only copy of its root `*.md` files (`coach_documents`). It syncs every 6 h and via `POST /api/coach/kb/sync`; git blob SHAs skip unchanged files. A failure is recorded and keeps the previous copy.
+- Parsed into tables on each sync, forgivingly (unparsed rows become warnings, never errors):
+  - the weekly plan tables of `04_timeline_plan.md` → `training_weeks` (km/LR ranges, quality, block, notes; years inferred from the "Aktualizováno" date);
+  - races and goals from `00_INDEX.md` → `races`;
+  - LTHR and max HR → `athlete_profile`.
 
-## 7. Gemini API Implementation Reference (`backend/app/services/gemini_service.py`)
+  A changed LTHR triggers a local recompute of all run metrics.
+- Coach context: `CLAUDE.md`, `00_INDEX.md`, `02_physiology_zones.md` and `11_errata_corrections.md` go into every system instruction; the rest is read via `read_knowledge_base`. The coach is told the KB is read-only and that its script/commit instructions don't apply to it.
+- `GET /api/coach/kb` (status, docs, races, LTHR, warnings), `GET /api/coach/kb/documents/{name}`, `GET /api/running/weeks` (plan vs actual: km, runs, longest run per week).
 
-**IMPORTANT FOR AGENT:** follow this pattern using `google-genai`. Changes vs. the original sample: model tier from config **[A7]**, history from DB **[A10]**, typed tools + draft collection **[A9][E4]**, tool-call names from the AFC history.
-
-```python
-from google import genai
-from google.genai import types
-from sqlmodel import Session
-
-from app.config import settings
-from app.services.ai_tools import ToolContext, build_coach_tools
-
-COACH_SYSTEM_INSTRUCTION = (
-    "Jsi osobní silový a běžecký (maratonský) trenér a analytik. "
-    "Máš přímý přístup do databáze uživatele pomocí nástrojů (tools). "
-    "Před odpovědí na dotazy ohledně progresu, váhy, maker, stagnace ve fitku "
-    "nebo běžeckého tréninku si VŽDY nejprve zavolej příslušné databázové nástroje. "
-    "Pokud uživatel diktuje odjetou sérii nebo trénink, použij nástroj pro zápis do DB "
-    "a stručně potvrď, co jsi uložil nebo co čeká na potvrzení. Odpovídej česky, věcně a prakticky."
-)
-
-
-def run_ai_coach(
-    session: Session,
-    user_message: str | None = None,
-    audio_bytes: bytes | None = None,
-    audio_mime_type: str | None = None,
-    model_tier: str = "fast",
-    history: list[types.Content] | None = None,
-) -> dict:
-    client = genai.Client(api_key=settings.gemini_api_key)
-
-    # Tools are closures bound to the DB session; ctx collects drafts for the UI
-    ctx = ToolContext(session=session)
-    tools = build_coach_tools(ctx)
-
-    parts: list[types.Part] = []
-    if audio_bytes and audio_mime_type:
-        parts.append(types.Part.from_bytes(data=audio_bytes, mime_type=audio_mime_type))
-    parts.append(types.Part.from_text(text=user_message or "Zpracuj tuto hlasovou nahrávku z tréninku."))
-    contents = [*(history or []), types.Content(role="user", parts=parts)]
-
-    response = client.models.generate_content(
-        model=settings.model_for(model_tier),
-        contents=contents,
-        config=types.GenerateContentConfig(
-            system_instruction=COACH_SYSTEM_INSTRUCTION,
-            tools=tools,
-            temperature=0.2,
-        ),
-    )
-
-    tool_calls_made = [
-        part.function_call.name
-        for content in (response.automatic_function_calling_history or [])
-        for part in (content.parts or [])
-        if part.function_call
-    ]
-    return {"reply": response.text, "tool_calls_made": tool_calls_made, "drafts": ctx.drafts}
-```
-
-### Required Coach Tools (`backend/app/services/ai_tools.py`)
-Factory `build_coach_tools(ctx: ToolContext) -> list[Callable]` returning type-annotated, docstring-documented functions for Gemini automatic function calling. Structured arguments use **Pydantic models** (e.g. `SetInput`), not bare `dict` **[A9]** — verify that AFC handles `list[BaseModel]`; if not, declare those tools with explicit `FunctionDeclaration` schemas.
-
-- `get_body_metrics_summary(days: int = 30) -> dict`: daily records, 7-day weight averages, average daily calories and macros (from `meal_logs` **[E1]**) for the last `days`.
-- `get_muscle_group_volume(days: int = 30) -> dict`: total completed working sets and tonnage (weight × reps) grouped by `Exercise.muscle_group` over the last `days` (spots neglected muscle groups).
-- `get_exercise_progression(exercise_name: str, weeks: int = 8) -> list[dict]`: finds the exercise via `pg_trgm` similarity + `unaccent` **[A4]**, returns workout dates, top set weight/reps, and estimated 1RM (`weight * (1 + reps/30)`) (detects plateaus).
-- `get_running_and_marathon_context(days: int = 21) -> dict`: recent runs (distance, pace, avg HR) + upcoming 14 days of `TrainingPlanItem` + recent lower-body gym workouts (marathon fatigue vs. leg days).
-- `log_workout_sets_from_ai(exercise_name: str, sets: list[SetInput], workout_id: str | None = None) -> dict`: matches the exercise, creates or attaches to today's active workout and saves the sets — or, per the hybrid flow **[E4]**, records a draft in `ctx.drafts` when the exercise match is fuzzy/new or numbers are implausible vs. last performance, and tells the model it awaits confirmation.
-- `log_daily_metric_from_ai(weight_kg: float | None = None, steps: int | None = None, sleep_hours: float | None = None) -> dict`: upserts today's `DailyMetric` (today in `APP_TZ` **[A3]**).
-- `log_quick_intake_from_ai(kcal: float, protein_g: float | None = None, carbs_g: float | None = None, fat_g: float | None = None) -> dict`: creates a quick-add meal item for today **[E1]** (detailed food logging belongs to the nutrition assistant in Phase 5 **[E2]**).
+### 6.8 Run stream metrics [E12]
+- Port of RunningCoach `scripts/metrics.py` (`services/run_metrics.py`): Minetti GAP, pace of the first 10 min, steady HR (after 10 min), EF (GAP m/min per beat), decoupling (GAP/HR, first vs second steady half), seconds per zone (% of LTHR as in `02`), share above easy/steady, GAP within the easy comparison band (83–87 % LTHR = 143–150).
+- The Strava sync fetches detail (RPE, description, calories) and per-second streams for runs, **newest first, 10 per sync**, so the history backfills within rate limits. Activities from the last 36 h get their detail re-read, because the fueling log and pain notes are added later. Raw streams are stored (`activity_streams`) so metrics can be recomputed without API calls.
 
 ---
+
+## 7. Gemini Coach Implementation (`backend/app/services/`)
+
+**IMPORTANT FOR AGENT:** the code is the reference. Read it rather than re-deriving it from an old sample.
+- **`gemini_service.py`:** the shared runner for both assistants. It uses `client.chats.create(model, config, history)` + `send_message(parts)` with automatic function calling, which is the SDK's recommended path. In chat mode the SDK records every function-call round in the **chat history**, so `tool_calls_made` is read from `chat.get_history()` after the prior turns, **not** from `response.automatic_function_calling_history` (always empty in chat mode). Tier → model + thinking level from env **[A7]**. Errors: missing config → 503, Gemini 429 → 429, other API errors → 502.
+- **`coach.py`:** one coach turn. Loads the last 30 messages of the conversation as text history, builds the system instruction, runs the runner, stores both messages (with the tool calls) **[A10]**. System instruction = Czech coach role and rules + today with weekday and Mon–Sun week + exact exercise catalog (so dictated names map to exact matches) + the **knowledge-base core** (§6.7) **[E11]**.
+- **`ai_tools.py`:** coach tools as closures over a `ToolContext` (session, now, drafts, saved sets). Structured arguments are Pydantic models (`SetInput`). Typed `list[BaseModel]` arguments were verified live **[A9]**.
+
+### Coach tools
+| Tool | Purpose |
+|---|---|
+| `get_calendar(start_date?, days)` | Dates with Czech weekday and Mon–Sun week. The KB errata forbid computing weekdays "from your head". |
+| `get_body_metrics_summary(days)` | Weight + 7-day average, intake from meal logs **[E1]**, steps, sleep, averages |
+| `get_muscle_group_volume(days)` | Working sets and tonnage per muscle group, plus untrained groups |
+| `get_exercise_progression(name, weeks)` | Top set and e1RM per session (pg_trgm/unaccent name match) |
+| `get_running_and_marathon_context(days)` | Runs with stream metrics, RPE, description and heat flag; weekly km; HR zones from LTHR; races with days to go; plan weeks; leg workouts |
+| `get_efficiency_trend(weeks)` | GAP in the easy HR band and EF per month and per run, at equal HR and grade; heat runs and quality sessions excluded **[E12]** |
+| `read_knowledge_base(document)` | Full text of a KB document ("04", "07_nutrition.md", …) |
+| `log_workout_sets_from_ai(exercise_name, sets, workout_id?)` | Hybrid flow **[E4]**: exact name and plausible numbers are saved; fuzzy/unknown names or weights outside 0.5–1.3× the last session become drafts |
+| `log_daily_metric_from_ai(weight, steps, sleep)` | Manual values, which win over devices |
+| `log_quick_intake_from_ai(kcal, macros)` | Quick-add meal item **[E1]** |
 
 ## 8. Frontend Requirements (Mobile-First PWA)
 Clean, dark-mode default UI (Tailwind slate-900 / zinc-900 background) optimized for one-handed operation in the gym. Requires the HTTPS origin from `tailscale serve` for microphone and PWA install **[A2]**.
@@ -506,7 +468,8 @@ Execute in order, verifying each before moving on. Track status in `docs/PROGRES
 
 **Phase 2 — Gemini AI service & coach tools**
 - Verify the current Gemini model ids; configure tiers.
-- `ai_tools.py` (7 coach tools, Pydantic args, hybrid drafts), `gemini_service.py` (shared runner), `routers/ai_coach.py` (text + audio, conversation persistence), `services/audio.py`.
+- `ai_tools.py` (10 coach tools, Pydantic args, hybrid drafts), `gemini_service.py` (shared runner), `coach.py`, `routers/ai_coach.py` (text + audio, conversation persistence), `services/audio.py`.
+- RunningCoach knowledge-base sync + parsing (§6.7) and run stream metrics (§6.8), added in Phase 2 by decisions E11/E12.
 
 **Phase 3 — React frontend & PWA**
 - Scaffold with Vite, React, TypeScript, Tailwind, lucide-react, TanStack Query (+ persist client), recharts. Add the Vite dev service (`node:22`, `/api` proxy) to `docker-compose.dev.yml`.
