@@ -10,7 +10,7 @@ import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 from google import genai
@@ -21,9 +21,9 @@ from sqlmodel import Session, col, select
 
 from app.config import settings
 from app.models.chat import Assistant
-from app.models.nutrition import Food, FoodSource, MealLog, MealLogItem
+from app.models.nutrition import Food, FoodSource, MealLog, MealLogItem, MealType
 from app.services.conversations import get_conversation, load_history, store_turn
-from app.services.gemini_service import Tier, run_assistant, tier_settings
+from app.services.gemini_service import Tier, lite_model, run_assistant
 from app.services.nutrition.meals import MealEntry, save_meal
 from app.services.nutrition.nutrients import MACROS
 from app.services.nutrition.resolver import (
@@ -38,14 +38,14 @@ from app.timeutils import local_date, now_utc
 
 KNOWN_FOODS = 150
 CZECH_WEEKDAYS = ("pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota", "neděle")
-MealTypeName = Literal["breakfast", "morning_snack", "lunch", "afternoon_snack", "dinner", "second_dinner", "other"]
 
 NUTRITION_ROLE = """Jsi nutriční asistent uživatele (vlastní kalorické tabulky). Odpovídáš česky, stručně a věcně.
 
 Zapisování jídla:
 - Když uživatel popíše, co snědl (text nebo přepis hlasu, často s překlepy: "britský maso" = "krůtí maso"),
   zapiš to nástrojem log_meal_from_items: jedno volání na jedno jídlo, každá potravina jako zvláštní položka.
-- user_phrase = slova uživatele. canonical_name_cs = kanonický český název v 1. pádě i se stavem
+- user_phrase = slova uživatele pro potravinu, bez množství ("kuřecích stehen", ne "200g kuřecích stehen").
+  canonical_name_cs = kanonický český název v 1. pádě i se stavem
   (syrové/vařené/pečené), bez obchodu a zbytečností. amount_g = snědené množství v gramech.
 - Množství převeď na gramy. U známých potravin ze seznamu níže použij jejich typickou porci. Jinak:
   1 lžíce oleje/sádla 13 g, 1 lžička 5 g, 1 kelímek jogurtu/skyru 140 g, 1 vejce M 50 g (bez skořápky),
@@ -72,11 +72,18 @@ dej choice null. confidence 0–1 vyjadřuje, jak jistě kandidát odpovídá.
 
 """
 
-ESTIMATE_PROMPT = """Najdi na webu nutriční hodnoty na 100 g pro potravinu: "{name}" (uživatel řekl: "{phrase}").
-Přednostně kaloricketabulky.cz, kosik.cz, rohlik.cz nebo stránky výrobce. Odpověz POUZE jedním JSON objektem:
+ESTIMATE_PROMPT = """{task} nutriční hodnoty na 100 g pro potravinu: "{name}" (uživatel řekl: "{phrase}").
+{sources}Odpověz POUZE jedním JSON objektem:
 {{"name": "...", "brand": null, "kcal": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0, "sugar_g": null,
 "saturated_fat_g": null, "fiber_g": null, "salt_g": null, "source_url": "..."}}
-Neznámé hodnoty dej null. Když nic spolehlivého nenajdeš, odpověz {{}}."""
+Neznámé hodnoty dej null. Když hodnoty spolehlivě neznáš, odpověz {{}}."""
+GROUNDED = {
+    "task": "Najdi na webu",
+    "sources": "Přednostně kaloricketabulky.cz, kosik.cz, rohlik.cz nebo web výrobce. ",
+}
+# Search grounding isn't in the free tier (checked 2026-10-17: 429 on gemini-3.5-flash-lite), so without it the
+# model estimates from what it knows; the candidate is flagged grounded=False and shown as an AI estimate
+UNGROUNDED = {"task": "Odhadni z typického složení a běžných receptur", "sources": ""}
 
 
 class Pick(BaseModel):
@@ -90,8 +97,7 @@ class GeminiChooser:
 
     def __init__(self, client: genai.Client):
         self.client = client
-        self.model, level = tier_settings("fast")
-        self.thinking = types.ThinkingConfig(thinking_level=level.upper()) if level else None
+        self.model = lite_model()  # its own free-tier quota (E15)
 
     def choose(self, resolutions: list[Resolution]) -> list[tuple[int | None, float | None]]:
         lines = []
@@ -116,7 +122,6 @@ class GeminiChooser:
                     response_mime_type="application/json",
                     response_schema=list[Pick],
                     temperature=0,
-                    thinking_config=self.thinking,
                 ),
             )
         except Exception:  # quota, network, model errors: the draft still shows the best-scored candidate
@@ -132,18 +137,22 @@ class GeminiChooser:
         return out
 
     def estimate(self, item: MealItemInput) -> Candidate | None:
-        """Web-grounded estimate in its own call: search grounding isn't combined with function tools (C5)."""
-        try:
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=ESTIMATE_PROMPT.format(name=item.canonical_name_cs, phrase=item.user_phrase),
-                config=types.GenerateContentConfig(
-                    tools=[types.Tool(google_search=types.GoogleSearch())], temperature=0
-                ),
-            )
-        except Exception:
-            return None
-        return parse_estimate(response.text or "", item)
+        """Per-100 g estimate in its own call (search grounding isn't combined with function tools, C5): from the
+        web when grounding is available, else from the model's knowledge."""
+        for grounded, wording in ((True, GROUNDED), (False, UNGROUNDED)):
+            search = [types.Tool(google_search=types.GoogleSearch())] if grounded else None
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=ESTIMATE_PROMPT.format(name=item.canonical_name_cs, phrase=item.user_phrase, **wording),
+                    config=types.GenerateContentConfig(tools=search, temperature=0),
+                )
+            except Exception:
+                continue
+            if (candidate := parse_estimate(response.text or "", item)) is not None:
+                candidate.grounded = grounded
+                return candidate
+        return None
 
 
 def parse_estimate(text: str, item: MealItemInput) -> Candidate | None:
@@ -185,17 +194,18 @@ def _kcal(candidate: Candidate | None, grams: float) -> float | None:
 def build_nutrition_tools(ctx: NutritionContext) -> list[Callable[..., dict[str, Any]]]:
     session = ctx.session
 
-    def log_meal_from_items(
-        meal_type: MealTypeName, items: list[MealItemInput], date: str | None = None
-    ) -> dict[str, Any]:
+    # meal_type is a plain str: the SDK's argument conversion can't isinstance-check a top-level Literal
+    def log_meal_from_items(meal_type: str, items: list[MealItemInput], date: str | None = None) -> dict[str, Any]:
         """Log ONE meal the user ate. Saved directly when every food is already known and confirmed;
         otherwise returns status "needs_confirmation" and the user confirms the proposed foods in the app.
 
         Args:
-            meal_type: The meal slot.
+            meal_type: One of breakfast, morning_snack, lunch, afternoon_snack, dinner, second_dinner, other.
             items: Every food of the meal with its amount in grams.
             date: YYYY-MM-DD only when it wasn't today.
         """
+        if meal_type not in MealType.__members__:
+            return {"error": f"meal_type must be one of {', '.join(MealType.__members__)}"}
         if not items:
             return {"error": "No items"}
         try:
@@ -351,6 +361,7 @@ def nutrition_turn(
         history=history,
         parts=[*(extra_parts or []), types.Part.from_text(text=user_text)],
         tier=tier,
+        fast_model=settings.gemini_model_nutrition,
     )
     stored = stored_text or user_text
     for draft in ctx.drafts:

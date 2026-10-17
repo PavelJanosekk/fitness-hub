@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_model_fast: str | None = None
     gemini_model_smart: str | None = None
+    # Free-tier quotas are per model (E15): the nutrition assistant and the one-shot helpers (food picker, web
+    # estimate) can each use their own model. Both fall back to gemini_model_fast.
+    gemini_model_nutrition: str | None = None
+    gemini_model_lite: str | None = None
     gemini_thinking_fast: str | None = "low"
     gemini_thinking_smart: str | None = "high"
     # The user's running knowledge base on GitHub ("owner/repo"); read-only source for the coach (E11)

@@ -56,10 +56,12 @@ class Candidate:
     score: float = 0.0
     micronutrients: dict[str, float] = field(default_factory=dict)
     food: Food | None = None
+    grounded: bool | None = None  # web estimates only: found on the web (True) or the model's own estimate
 
     def to_dict(self) -> dict[str, Any]:
         out = {"ref": self.ref, "name": self.name, "source": self.source, "brand": self.brand}
-        return out | {"per_100g": self.per_100g, "micronutrients": self.micronutrients}
+        out |= {"per_100g": self.per_100g, "micronutrients": self.micronutrients}
+        return out | ({"grounded": self.grounded} if self.grounded is not None else {})
 
 
 @dataclass

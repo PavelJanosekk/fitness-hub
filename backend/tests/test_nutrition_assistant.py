@@ -179,6 +179,7 @@ def test_nothing_found_asks_the_web_for_an_estimate(client: TestClient, session:
     )
     search_call = gemini.generated[0]["config"]
     assert search_call.tools[0].google_search is not None and search_call.response_schema is None
+    assert chosen["grounded"] is True
 
 
 def test_summary_tool_reports_nutrients_with_coverage(client: TestClient, session: Session, fake) -> None:
@@ -261,3 +262,69 @@ def test_meal_on_a_given_date(client: TestClient, session: Session, fake) -> Non
 
     assert saved["date"] == "2026-10-01"
     assert session.get(MealLog, uuid.UUID(saved["meal_id"])).logged_date == dt.date(2026, 10, 1)
+
+
+def test_nutrition_and_helpers_use_their_own_models(
+    client: TestClient, session: Session, fake, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "gemini_model_nutrition", "nutrition-model")
+    monkeypatch.setattr(settings, "gemini_model_lite", "lite-model")
+    food(session, name_en="Lard", kcal=902, protein_g=0, fat_g=100)
+    gemini = fake(
+        calls=[
+            ("log_meal_from_items", {"meal_type": "lunch", "items": [item("sádla", "Sádlo", 13, usda_query_en="Lard")]})
+        ]
+    )
+    gemini.generate_responses = [SimpleNamespace(parsed=[Pick(item=0, choice=0, confidence=0.9)])]
+
+    chat(client)
+    gemini.calls = []  # the coach turn calls no tools
+    client.post("/api/ai/chat", json={"message": "Ahoj"})
+
+    assert [c["model"] for c in gemini.created] == ["nutrition-model", "fast-model"]
+    assert gemini.generated[0]["model"] == "lite-model"
+
+
+def test_estimate_falls_back_to_the_models_own_knowledge(client: TestClient, session: Session, fake) -> None:
+    gemini = fake(
+        calls=[("log_meal_from_items", {"meal_type": "dinner", "items": [item("bramboráky", "Bramboráky", 150)]})]
+    )
+    known = '{"name": "Bramboráky", "kcal": 230, "protein_g": 4, "carbs_g": 25, "fat_g": 12.5}'
+    gemini.generate_responses = [
+        RuntimeError("429: search grounding not in the free tier"),
+        SimpleNamespace(text=known),
+        SimpleNamespace(parsed=[Pick(item=0, choice=0, confidence=0.4)]),
+    ]
+
+    [draft] = chat(client, "Bramboráky 150 g")["drafts"]
+
+    chosen = draft["items"][0]["chosen"]
+    assert (chosen["source"], chosen["grounded"]) == ("web_estimate", False)
+    grounded_call, plain_call = gemini.generated[0]["config"], gemini.generated[1]["config"]
+    assert grounded_call.tools and not plain_call.tools
+    assert "Odhadni" in gemini.generated[1]["contents"]
+
+
+def test_tools_accept_arguments_the_way_the_sdk_converts_them(session: Session) -> None:
+    """AFC converts the model's JSON args with the SDK's own helpers; a top-level Literal broke that (live check)."""
+    from google.genai import _extra_utils
+
+    from app.services.nutrition.assistant import NutritionContext, build_nutrition_tools
+    from app.services.nutrition.resolver import TopScoreChooser
+
+    food(session, name_en="Lard", kcal=902, protein_g=0, fat_g=100)
+    ctx = NutritionContext(session=session, http=None, chooser_factory=TopScoreChooser)
+    log_meal, summary = build_nutrition_tools(ctx)
+    args = {
+        "meal_type": "lunch",
+        "items": [
+            {"user_phrase": "lžíci sádla", "canonical_name_cs": "Sádlo", "amount_g": 13, "usda_query_en": "Lard"}
+        ],
+    }
+
+    result = _extra_utils.invoke_function_from_dict_args(args, log_meal)
+    bad = _extra_utils.invoke_function_from_dict_args({"meal_type": "brunch", "items": args["items"]}, log_meal)
+
+    assert result["status"] == "needs_confirmation"
+    assert "meal_type must be one of" in bad["error"]
+    assert "nutrients" in _extra_utils.invoke_function_from_dict_args({}, summary)

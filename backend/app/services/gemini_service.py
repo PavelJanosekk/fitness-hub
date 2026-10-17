@@ -34,9 +34,10 @@ def get_client() -> genai.Client:
     return genai.Client(api_key=settings.gemini_api_key)
 
 
-def tier_settings(tier: Tier) -> tuple[str, str | None]:
-    """(model id, thinking level) for a tier; the smart tier falls back to the fast model."""
-    fast = settings.gemini_model_fast
+def tier_settings(tier: Tier, fast_model: str | None = None) -> tuple[str, str | None]:
+    """(model id, thinking level) for a tier; the smart tier falls back to the fast model. `fast_model` replaces
+    GEMINI_MODEL_FAST for an assistant with its own model (E15)."""
+    fast = fast_model or settings.gemini_model_fast
     model = fast if tier == "fast" else (settings.gemini_model_smart or fast)
     if not model:
         raise AINotConfiguredError("Set GEMINI_MODEL_FAST (and optionally GEMINI_MODEL_SMART)")
@@ -56,8 +57,9 @@ def run_assistant(
     history: list[types.Content],
     parts: list[types.Part],
     tier: Tier = "fast",
+    fast_model: str | None = None,
 ) -> AssistantReply:
-    model, thinking_level = tier_settings(tier)
+    model, thinking_level = tier_settings(tier, fast_model)
     config = types.GenerateContentConfig(
         system_instruction=system_instruction,
         tools=tools,
@@ -77,3 +79,11 @@ def run_assistant(
         if part.function_call
     ]
     return AssistantReply(reply=(response.text or "").strip(), tool_calls=tool_calls, model=response.model_version)
+
+
+def lite_model() -> str:
+    """Model for one-shot helper calls (food picker, web estimate): GEMINI_MODEL_LITE, else the fast model."""
+    model = settings.gemini_model_lite or settings.gemini_model_fast
+    if not model:
+        raise AINotConfiguredError("Set GEMINI_MODEL_FAST (and optionally GEMINI_MODEL_LITE)")
+    return model

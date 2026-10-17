@@ -141,6 +141,7 @@ class CandidateIn(BaseModel):
     brand: str | None = None
     per_100g: dict[str, float | None]
     micronutrients: dict[str, float] = Field(default_factory=dict)
+    grounded: bool | None = None
 
 
 class ProfileUpdate(BaseModel):
