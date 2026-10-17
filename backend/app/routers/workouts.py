@@ -4,11 +4,12 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel, TypeAdapter, ValidationError
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
 from app.database import SessionDep
-from app.models.gym import EndedBy, Exercise, MuscleGroup, Workout, WorkoutSet
+from app.models.gym import EndedBy, Exercise, MuscleGroup, Workout, WorkoutSet, WorkoutTemplate
 from app.schemas.gym import (
     ExerciseCreate,
     ExerciseRead,
@@ -20,7 +21,8 @@ from app.schemas.gym import (
     WorkoutIn,
     WorkoutRead,
     WorkoutSummary,
-    WorkoutTemplate,
+    WorkoutTemplateIn,
+    WorkoutTemplateRead,
 )
 from app.services import workouts as svc
 from app.services.strong_import import (
@@ -117,9 +119,38 @@ def active_workout(session: SessionDep) -> WorkoutRead | None:
     return svc.read_workout(session, workout) if workout else None
 
 
-@router.get("/workouts/templates", response_model=list[WorkoutTemplate])
-def workout_templates(session: SessionDep) -> list[WorkoutTemplate]:
+@router.get("/workouts/templates", response_model=list[WorkoutTemplateRead])
+def workout_templates(session: SessionDep) -> list[WorkoutTemplateRead]:
     return svc.list_templates(session)
+
+
+@router.put("/workouts/templates/{template_id}", response_model=WorkoutTemplateRead)
+def upsert_template(template_id: uuid.UUID, body: WorkoutTemplateIn, session: SessionDep) -> WorkoutTemplateRead:
+    """Idempotent create-or-replace (client UUID); a new template goes to the end of the list."""
+    unknown = {e.exercise_id for e in body.exercises} - set(
+        session.exec(select(Exercise.id).where(col(Exercise.id).in_({e.exercise_id for e in body.exercises}))).all()
+    )
+    if unknown:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Unknown exercise_id {sorted(unknown)}")
+    template = session.get(WorkoutTemplate, template_id)
+    if template is None:
+        last = session.exec(select(func.max(WorkoutTemplate.position))).one()
+        template = WorkoutTemplate(id=template_id, name="", position=(last + 1) if last is not None else 0)
+    template.name = body.name.strip()
+    template.exercises = [e.model_dump(mode="json") for e in body.exercises]
+    template.updated_at = now_utc()
+    session.add(template)
+    session.commit()
+    return svc.read_template(session, template)
+
+
+@router.delete("/workouts/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_template(template_id: uuid.UUID, session: SessionDep) -> Response:
+    template = session.get(WorkoutTemplate, template_id)
+    if template is not None:
+        session.delete(template)
+        session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/workouts/{workout_id}", response_model=WorkoutRead)

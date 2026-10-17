@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect } from "react";
 
 export function Button({
@@ -98,6 +98,23 @@ export function Segmented<T extends string | number>({
           {label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Prev/next with "2 / 5" between; renders nothing for a single page. */
+export function Pager({ page, pages, onChange }: { page: number; pages: number; onChange: (page: number) => void }) {
+  if (pages <= 1) return null;
+  const button = "flex size-11 items-center justify-center rounded-lg text-zinc-300 active:bg-zinc-800 disabled:text-zinc-700";
+  return (
+    <div className="-my-2 -mr-2 flex items-center text-xs tabular-nums text-zinc-400">
+      <button type="button" aria-label="Předchozí" className={button} disabled={page === 0} onClick={() => onChange(page - 1)}>
+        <ChevronLeft size={18} />
+      </button>
+      {page + 1} / {pages}
+      <button type="button" aria-label="Další" className={button} disabled={page >= pages - 1} onClick={() => onChange(page + 1)}>
+        <ChevronRight size={18} />
+      </button>
     </div>
   );
 }

@@ -1,8 +1,10 @@
 import datetime as dt
 import uuid
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import CheckConstraint, Index, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from app.models.common import AwareDateTime, one_of
@@ -94,4 +96,17 @@ class WorkoutSet(SQLModel, table=True):
     completed: bool = True
     completed_at: dt.datetime | None = Field(default=None, sa_type=AwareDateTime)
     notes: str | None = None
+    updated_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
+
+
+class WorkoutTemplate(SQLModel, table=True):
+    """A saved workout plan the user manages by hand (E18); "Start from template" pre-fills a workout from it."""
+
+    __tablename__ = "workout_templates"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)  # client-generated when created in the app
+    name: str
+    position: int = 0
+    # Ordered: [{"exercise_id": 1, "sets": [{"set_type": "normal", "weight_kg": 80.0, "reps": 8}, ...]}, ...]
+    exercises: list[dict[str, Any]] = Field(default_factory=list, sa_type=JSONB)
     updated_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)

@@ -95,25 +95,90 @@ def test_last_performance_without_history_is_empty(client: TestClient, exercises
     assert result["workout_id"] is None
 
 
-def test_templates_use_the_latest_workout_of_each_name_in_exercise_order(
+def put_template(client: TestClient, template_id: uuid.UUID, name: str, exercise_ids: list[int]) -> dict:
+    body = {
+        "name": name,
+        "exercises": [
+            {
+                "exercise_id": i,
+                "sets": [{"weight_kg": 60, "reps": 10}, {"weight_kg": 62.5, "reps": 8, "set_type": "drop"}],
+            }
+            for i in exercise_ids
+        ],
+    }
+    response = client.put(f"/api/workouts/templates/{template_id}", json=body)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_templates_are_managed_by_hand(client: TestClient, exercises: dict[str, int]) -> None:
+    chest, back = uuid.uuid4(), uuid.uuid4()
+    bench, fly = exercises["Bench Press (Barbell)"], exercises["Chest Fly"]
+
+    created = put_template(client, chest, " Chest tri ", [bench, fly])
+    put_template(client, back, "Back biceps", [exercises["Pull Up"]])
+    renamed = put_template(client, chest, "Chest 3", [fly])  # same id again: replaces, keeps its place
+
+    assert created["name"] == "Chest tri" and created["position"] == 0
+    assert [(e["name"], len(e["sets"])) for e in created["exercises"]] == [
+        ("Bench Press (Barbell)", 2),
+        ("Chest Fly", 2),
+    ]
+    assert created["exercises"][0]["sets"][1] == {"set_type": "drop", "weight_kg": 62.5, "reps": 8}
+    assert (renamed["name"], renamed["position"], len(renamed["exercises"])) == ("Chest 3", 0, 1)
+    assert [t["name"] for t in client.get("/api/workouts/templates").json()] == ["Chest 3", "Back biceps"]
+
+    assert client.delete(f"/api/workouts/templates/{chest}").status_code == 204
+    assert client.delete(f"/api/workouts/templates/{chest}").status_code == 204  # idempotent
+    assert [t["name"] for t in client.get("/api/workouts/templates").json()] == ["Back biceps"]
+
+
+def test_template_rejects_unknown_exercises_and_empty_sets(client: TestClient) -> None:
+    unknown = client.put(
+        f"/api/workouts/templates/{uuid.uuid4()}",
+        json={"name": "X", "exercises": [{"exercise_id": 999999, "sets": [{"reps": 5}]}]},
+    )
+    no_sets = client.put(
+        f"/api/workouts/templates/{uuid.uuid4()}", json={"name": "X", "exercises": [{"exercise_id": 1, "sets": []}]}
+    )
+
+    assert unknown.status_code == 422
+    assert no_sets.status_code == 422
+
+
+def lift(
+    client: TestClient, day: int, exercise_id: int, sets: list[tuple[float | None, int]], **set_fields
+) -> uuid.UUID:
+    workout_id = uuid.uuid4()
+    put_workout(
+        client, workout_id, started_at=T0 + dt.timedelta(days=day), ended_at=T0 + dt.timedelta(days=day, hours=1)
+    )
+    for order, (weight, reps) in enumerate(sets, start=1):
+        put_set(
+            client, workout_id, uuid.uuid4(), exercise_id, set_order=order, weight_kg=weight, reps=reps, **set_fields
+        )
+    return workout_id
+
+
+def test_personal_records_need_an_earlier_workout_and_report_one_per_exercise(
     client: TestClient, exercises: dict[str, int]
 ) -> None:
-    older, newer = uuid.uuid4(), uuid.uuid4()
-    put_workout(client, older)
-    put_set(client, older, uuid.uuid4(), exercises["Chest Dip"])
-    put_workout(client, newer, started_at=T0 + dt.timedelta(days=7))
-    put_set(client, newer, uuid.uuid4(), exercises["Chest Fly"], exercise_order=2)
-    put_set(client, newer, uuid.uuid4(), exercises["Bench Press (Barbell)"], exercise_order=1)
-    put_set(client, newer, uuid.uuid4(), exercises["Bench Press (Barbell)"], exercise_order=1, set_order=2)
+    bench, pull_up = exercises["Bench Press (Barbell)"], exercises["Pull Up"]
+    first = lift(client, 0, bench, [(80, 8)])
+    heavier = lift(client, 7, bench, [(80, 8), (85, 5)])
+    more_reps = lift(client, 14, bench, [(80, 10)])  # no heavier set, but a better estimated 1RM
+    worse = lift(client, 21, bench, [(70, 8)])
+    warmup_only_heavier = lift(client, 28, bench, [(120, 5)], set_type="warmup")
+    bodyweight = [lift(client, 0, pull_up, [(None, 8)]), lift(client, 7, pull_up, [(None, 10)])]
 
-    templates = client.get("/api/workouts/templates").json()
+    by_id = {w["id"]: w["prs"] for w in client.get("/api/workouts").json()}
 
-    assert len(templates) == 1
-    assert templates[0]["last_workout_id"] == str(newer)
-    assert [(e["name"], e["set_count"]) for e in templates[0]["exercises"]] == [
-        ("Bench Press (Barbell)", 2),
-        ("Chest Fly", 1),
-    ]
+    assert by_id[str(first)] == []  # the first time is never a record
+    assert [(p["kind"], p["value"], p["reps"]) for p in by_id[str(heavier)]] == [("weight", 85, 5)]
+    assert [(p["kind"], p["name"]) for p in by_id[str(more_reps)]] == [("e1rm", "Bench Press (Barbell)")]
+    assert by_id[str(worse)] == [] and by_id[str(warmup_only_heavier)] == []
+    assert by_id[str(bodyweight[0])] == []
+    assert [(p["kind"], p["value"]) for p in by_id[str(bodyweight[1])]] == [("reps", 10)]
 
 
 def test_auto_finish_closes_only_idle_workouts(session: Session, client: TestClient, exercises: dict[str, int]) -> None:

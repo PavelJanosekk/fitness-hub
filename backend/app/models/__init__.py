@@ -23,7 +23,7 @@ from app.models.body import (  # noqa: E402
 )
 from app.models.chat import ChatConversation, ChatMessage  # noqa: E402
 from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingDay, TrainingWeek  # noqa: E402
-from app.models.gym import Exercise, Workout, WorkoutSet  # noqa: E402
+from app.models.gym import Exercise, Workout, WorkoutSet, WorkoutTemplate  # noqa: E402
 from app.models.integrations import IntegrationToken  # noqa: E402
 from app.models.nutrition import (  # noqa: E402
     Food,
@@ -66,4 +66,5 @@ __all__ = [
     "TrainingWeek",
     "Workout",
     "WorkoutSet",
+    "WorkoutTemplate",
 ]

@@ -1,4 +1,4 @@
-import { type Mutation, type QueryClient, useQuery } from "@tanstack/react-query";
+import { type Mutation, type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "./client";
 
 export type Exercise = { id: number; name: string; muscle_group: string; equipment: string | null };
@@ -9,11 +9,15 @@ export type LastPerformance = {
   workout_started_at: string | null;
   sets: { set_order: number; set_type: SetType; weight_kg: number | null; reps: number | null }[];
 };
-export type Template = {
+export type TemplateSet = { set_type: SetType; weight_kg: number | null; reps: number | null };
+export type TemplateExercise = { exercise_id: number; name: string; sets: TemplateSet[] };
+export type Template = { id: string; name: string; position: number; exercises: TemplateExercise[] };
+export type PersonalRecord = {
+  exercise_id: number;
   name: string;
-  last_workout_id: string;
-  last_started_at: string;
-  exercises: { exercise_id: number; name: string; set_count: number }[];
+  kind: "weight" | "e1rm" | "reps";
+  value: number;
+  reps: number | null;
 };
 export type WorkoutSummary = {
   id: string;
@@ -25,6 +29,7 @@ export type WorkoutSummary = {
   duration_min: number | null;
   set_count: number;
   total_volume_kg: number;
+  prs: PersonalRecord[];
 };
 export type ServerSet = {
   id: string;
@@ -37,7 +42,7 @@ export type ServerSet = {
   completed: boolean;
   completed_at: string | null;
 };
-export type ServerWorkout = Omit<WorkoutSummary, "duration_min" | "set_count" | "total_volume_kg"> & {
+export type ServerWorkout = Omit<WorkoutSummary, "duration_min" | "set_count" | "total_volume_kg" | "prs"> & {
   notes: string | null;
   sets: ServerSet[];
 };
@@ -46,7 +51,8 @@ export type SetBody = Omit<ServerSet, "id">;
 
 export const gymKeys = {
   exercises: ["exercises"] as const,
-  templates: ["workouts", "templates"] as const,
+  // "v2": the persisted cache on phones still holds the old template shape (derived from history)
+  templates: ["workouts", "templates", "v2"] as const,
   history: ["workouts", "history"] as const,
   workout: (id: string) => ["workouts", id] as const,
   last: (exerciseId: number) => ["exercises", exerciseId, "last"] as const,
@@ -57,7 +63,36 @@ export const useExercises = () =>
 export const useTemplates = () =>
   useQuery({ queryKey: gymKeys.templates, queryFn: () => api<Template[]>("/api/workouts/templates") });
 export const useHistory = () =>
-  useQuery({ queryKey: gymKeys.history, queryFn: () => api<WorkoutSummary[]>("/api/workouts?limit=30") });
+  useQuery({ queryKey: gymKeys.history, queryFn: () => api<WorkoutSummary[]>("/api/workouts?limit=200") });
+export function useSaveTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name, exercises }: { id: string; name: string; exercises: { exercise_id: number; sets: TemplateSet[] }[] }) =>
+      api<Template>(`/api/workouts/templates/${id}`, { method: "PUT", body: { name, exercises } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: gymKeys.templates }),
+  });
+}
+
+export function useDeleteTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/api/workouts/templates/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: gymKeys.templates }),
+  });
+}
+
+/** Deleting a finished workout from the history (not queued: needs the server, errors are shown). */
+export function useDeleteWorkout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/api/workouts/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workouts"] });
+      queryClient.invalidateQueries({ queryKey: ["metrics"] });
+    },
+  });
+}
+
 export const useActiveServerWorkout = () =>
   useQuery({ queryKey: ["workouts", "active"], queryFn: () => api<ServerWorkout | null>("/api/workouts/active") });
 export const useWorkout = (id: string | null) =>
@@ -110,6 +145,17 @@ export function registerGymMutations(queryClient: QueryClient) {
     retry: retryGymWrite,
     retryDelay: gymRetryDelay,
     // Here, not at the call site: the workout screen is gone by the time a finish request settles
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["workouts"] });
+      queryClient.invalidateQueries({ queryKey: ["metrics"] });
+    },
+  });
+  // Discarding an unfinished workout: the delete is queued behind its earlier writes, so it can't be recreated by them
+  queryClient.setMutationDefaults(["gym", "discard"], {
+    mutationFn: ({ id }: { id: string }) => api(`/api/workouts/${id}`, { method: "DELETE" }),
+    scope: SYNC_SCOPE,
+    retry: retryGymWrite,
+    retryDelay: gymRetryDelay,
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["workouts"] });
       queryClient.invalidateQueries({ queryKey: ["metrics"] });

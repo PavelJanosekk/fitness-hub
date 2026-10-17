@@ -1,10 +1,20 @@
 import datetime as dt
+import itertools
+import uuid
+from typing import Any
 
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
-from app.models.gym import EndedBy, Exercise, Workout, WorkoutSet
-from app.schemas.gym import SetRead, TemplateExercise, WorkoutRead, WorkoutSummary, WorkoutTemplate
+from app.models.gym import EndedBy, Exercise, Workout, WorkoutSet, WorkoutTemplate
+from app.schemas.gym import (
+    PersonalRecord,
+    SetRead,
+    TemplateExercise,
+    WorkoutRead,
+    WorkoutSummary,
+    WorkoutTemplateRead,
+)
 from app.timeutils import now_utc
 
 AUTO_FINISH_IDLE = dt.timedelta(hours=2)
@@ -64,6 +74,7 @@ def list_summaries(session: Session, limit: int) -> list[WorkoutSummary]:
         .order_by(col(Workout.started_at).desc())
         .limit(limit)
     ).all()
+    records = personal_records(session)
     return [
         WorkoutSummary(
             id=w.id,
@@ -75,34 +86,95 @@ def list_summaries(session: Session, limit: int) -> list[WorkoutSummary]:
             duration_min=round((w.ended_at - w.started_at).total_seconds() / 60) if w.ended_at else None,
             set_count=set_count,
             total_volume_kg=round(float(volume), 1),
+            prs=records.get(w.id, []),
         )
         for w, set_count, volume in rows
     ]
 
 
-def list_templates(session: Session) -> list[WorkoutTemplate]:
-    """The most recent workout of each distinct name, with its exercises in order."""
-    latest = session.exec(
-        select(Workout)
-        .where(col(Workout.id).in_(select(WorkoutSet.workout_id)))
-        .distinct(col(Workout.name))
-        .order_by(col(Workout.name), col(Workout.started_at).desc())
-    ).all()
-    templates = []
-    for workout in latest:
-        exercises = session.exec(
-            select(Exercise.id, Exercise.name, func.count(col(WorkoutSet.id)))
-            .join(WorkoutSet, col(WorkoutSet.exercise_id) == Exercise.id)
-            .where(WorkoutSet.workout_id == workout.id)
-            .group_by(col(Exercise.id), col(Exercise.name))
-            .order_by(func.min(WorkoutSet.exercise_order))
-        ).all()
-        templates.append(
-            WorkoutTemplate(
-                name=workout.name,
-                last_workout_id=workout.id,
-                last_started_at=workout.started_at,
-                exercises=[TemplateExercise(exercise_id=i, name=n, set_count=c) for i, n, c in exercises],
-            )
+def read_template(session: Session, template: WorkoutTemplate) -> WorkoutTemplateRead:
+    ids = {e["exercise_id"] for e in template.exercises}
+    names = dict(session.exec(select(Exercise.id, Exercise.name).where(col(Exercise.id).in_(ids))).all()) if ids else {}
+    return WorkoutTemplateRead(
+        id=template.id,
+        name=template.name,
+        position=template.position,
+        exercises=[
+            TemplateExercise(exercise_id=e["exercise_id"], name=names.get(e["exercise_id"], "?"), sets=e["sets"])
+            for e in template.exercises
+        ],
+    )
+
+
+def list_templates(session: Session) -> list[WorkoutTemplateRead]:
+    templates = session.exec(select(WorkoutTemplate).order_by(col(WorkoutTemplate.position), col(WorkoutTemplate.name)))
+    return [read_template(session, t) for t in templates]
+
+
+E1RM_MAX_REPS = 12  # Epley gets unreliable for long sets
+
+
+def _epley(weight: float, reps: int) -> float:
+    return weight * (1 + reps / 30)
+
+
+def personal_records(session: Session) -> dict[uuid.UUID, list[PersonalRecord]]:
+    """Per workout, the exercises where it beat everything lifted in earlier workouts.
+
+    A record needs an earlier workout with the same kind of set, so the first time an exercise is done is never one.
+    Per exercise one record is reported: heaviest weight, else best estimated 1RM (more reps at a known weight), else
+    most reps on a bodyweight exercise. Warm-ups don't count.
+    """
+    rows = session.exec(
+        select(
+            Workout.id,
+            WorkoutSet.exercise_id,
+            Exercise.name,
+            WorkoutSet.weight_kg,
+            WorkoutSet.reps,
         )
-    return sorted(templates, key=lambda t: t.last_started_at, reverse=True)
+        .join(WorkoutSet, col(WorkoutSet.workout_id) == Workout.id)
+        .join(Exercise, col(Exercise.id) == WorkoutSet.exercise_id)
+        .where(WORKING_SET, col(WorkoutSet.reps) >= 1)
+        .order_by(col(Workout.started_at), col(Workout.id))
+    ).all()
+    best: dict[int, dict[str, float]] = {}  # exercise_id -> best weight / e1rm / reps from earlier workouts
+    result: dict[uuid.UUID, list[PersonalRecord]] = {}
+    for workout_id, group in itertools.groupby(rows, key=lambda r: r[0]):
+        today: dict[int, dict[str, Any]] = {}
+        for _, exercise_id, name, weight, reps in group:
+            entry = today.setdefault(exercise_id, {"name": name, "weight": (0.0, 0), "e1rm": (0.0, 0), "reps": 0})
+            if weight and weight > 0:
+                entry["weight"] = max(entry["weight"], (weight, reps))
+                if reps <= E1RM_MAX_REPS:
+                    entry["e1rm"] = max(entry["e1rm"], (_epley(weight, reps), reps))
+            else:
+                entry["reps"] = max(entry["reps"], reps)
+        for exercise_id, entry in today.items():
+            before = best.get(exercise_id, {})
+            record: PersonalRecord | None = None
+            if entry["weight"][0] > before.get("weight", float("inf")):
+                record = PersonalRecord(
+                    exercise_id=exercise_id,
+                    name=entry["name"],
+                    kind="weight",
+                    value=entry["weight"][0],
+                    reps=entry["weight"][1],
+                )
+            elif entry["e1rm"][0] > before.get("e1rm", float("inf")):
+                record = PersonalRecord(
+                    exercise_id=exercise_id,
+                    name=entry["name"],
+                    kind="e1rm",
+                    value=round(entry["e1rm"][0], 1),
+                    reps=entry["e1rm"][1],
+                )
+            elif entry["reps"] > before.get("reps", float("inf")):
+                record = PersonalRecord(exercise_id=exercise_id, name=entry["name"], kind="reps", value=entry["reps"])
+            if record:
+                result.setdefault(workout_id, []).append(record)
+            merged = best.setdefault(exercise_id, {})
+            for key, value in (("weight", entry["weight"][0]), ("e1rm", entry["e1rm"][0]), ("reps", entry["reps"])):
+                if value > 0:
+                    merged[key] = max(merged.get(key, 0.0), value)
+    return result

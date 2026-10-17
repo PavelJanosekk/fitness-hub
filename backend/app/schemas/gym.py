@@ -1,5 +1,6 @@
 import datetime as dt
 import uuid
+from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -87,6 +88,16 @@ class WorkoutRead(ORMModel):
     sets: list[SetRead] = []
 
 
+class PersonalRecord(BaseModel):
+    """A best the workout set for one exercise: heaviest weight, estimated 1RM, or most reps (bodyweight)."""
+
+    exercise_id: int
+    name: str
+    kind: Literal["weight", "e1rm", "reps"]
+    value: float
+    reps: int | None = None  # reps of the record set (weight and e1rm)
+
+
 class WorkoutSummary(BaseModel):
     id: uuid.UUID
     name: str
@@ -97,6 +108,7 @@ class WorkoutSummary(BaseModel):
     duration_min: int | None
     set_count: int
     total_volume_kg: float
+    prs: list[PersonalRecord] = []
 
 
 class LastPerformanceSet(ORMModel):
@@ -116,14 +128,28 @@ class LastPerformance(BaseModel):
     sets: list[LastPerformanceSet] = []
 
 
-class TemplateExercise(BaseModel):
+class TemplateSet(BaseModel):
+    set_type: SetType = SetType.normal
+    weight_kg: float | None = Field(default=None, ge=0)
+    reps: int | None = Field(default=None, ge=0)
+
+
+class TemplateExerciseIn(BaseModel):
     exercise_id: int
-    name: str
-    set_count: int
+    sets: list[TemplateSet] = Field(min_length=1, max_length=20)
 
 
-class WorkoutTemplate(BaseModel):
+class TemplateExercise(TemplateExerciseIn):
     name: str
-    last_workout_id: uuid.UUID
-    last_started_at: dt.datetime
+
+
+class WorkoutTemplateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    exercises: list[TemplateExerciseIn] = Field(max_length=30)
+
+
+class WorkoutTemplateRead(BaseModel):
+    id: uuid.UUID
+    name: str
+    position: int
     exercises: list[TemplateExercise]

@@ -1,6 +1,6 @@
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, CloudOff, Minus, Plus, Search, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Check, ChevronRight, CloudOff, Minus, Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   type Exercise,
   fetchLastPerformance,
@@ -9,6 +9,8 @@ import {
   SYNC_SCOPE,
   type SetBody,
   type Template,
+  type TemplateSet,
+  type WorkoutSummary,
   useExercises,
   useHistory,
   type ServerWorkout,
@@ -24,28 +26,22 @@ import { Markdown } from "../components/Markdown";
 import { VoiceRecorder } from "../components/VoiceRecorder";
 import { errorText } from "./AiCoach";
 import { RestTimer, PRESETS, restPreset, setRestPreset, startRest } from "../components/RestTimer";
-import { Button, Segmented, Sheet, parseDecimal } from "../components/ui";
+import { ExercisePicker, GROUP_LABELS } from "../components/gym/ExercisePicker";
+import { PrBadges } from "../components/gym/PersonalRecords";
+import { TemplateEditor } from "../components/gym/TemplateEditor";
+import { WorkoutDetail } from "../components/gym/WorkoutDetail";
+import { Button, Pager, Segmented, Sheet, parseDecimal } from "../components/ui";
 import { type ActiveWorkout, type LocalExercise, type LocalSet, saveActiveWorkout, useActiveWorkout } from "../lib/activeWorkout";
 import { formatDay, formatNumber, formatTime } from "../lib/format";
 import { uuid } from "../lib/uuid";
-
-const GROUP_LABELS: Record<string, string> = {
-  chest: "Hrudník",
-  back: "Záda",
-  legs: "Nohy",
-  shoulders: "Ramena",
-  arms: "Paže",
-  core: "Core",
-  full_body: "Celé tělo",
-  cardio: "Kardio",
-};
 
 /** Sync helpers: every call is an idempotent PUT/DELETE queued in order and persisted while offline. */
 function useGymSync() {
   const putWorkout = useMutation<unknown, Error, { id: string; body: Record<string, unknown> }>({ mutationKey: ["gym", "workout"], scope: SYNC_SCOPE });
   const putSet = useMutation<unknown, Error, { workoutId: string; setId: string; body: SetBody }>({ mutationKey: ["gym", "set"], scope: SYNC_SCOPE });
   const deleteSet = useMutation<unknown, Error, { setId: string }>({ mutationKey: ["gym", "delete-set"], scope: SYNC_SCOPE });
-  return { putWorkout: putWorkout.mutate, putSet: putSet.mutate, deleteSet: deleteSet.mutate };
+  const discard = useMutation<unknown, Error, { id: string }>({ mutationKey: ["gym", "discard"], scope: SYNC_SCOPE });
+  return { putWorkout: putWorkout.mutate, putSet: putSet.mutate, deleteSet: deleteSet.mutate, discard: discard.mutate };
 }
 
 const setBody = (exercise: LocalExercise, exerciseOrder: number, set: LocalSet, setOrder: number): SetBody => ({
@@ -76,6 +72,19 @@ function plannedSets(last: LastPerformance | null, count?: number): LocalSet[] {
   });
 }
 
+/** Sets of a template exercise; anything the template leaves blank falls back to the last session (ghost values). */
+function templateSets(sets: TemplateSet[], last: LastPerformance | null): LocalSet[] {
+  const ghost = plannedSets(last, sets.length);
+  return sets.map((s, i) => ({
+    ...ghost[i],
+    set_type: s.set_type,
+    weight: s.weight_kg !== null ? formatNumber(s.weight_kg, s.weight_kg % 1 ? 1 : 0) : ghost[i].weight,
+    reps: s.reps !== null ? String(s.reps) : ghost[i].reps,
+  }));
+}
+
+const HISTORY_PAGE_SIZE = 8;
+
 export function GymLogger() {
   const workout = useActiveWorkout();
   return (
@@ -90,10 +99,20 @@ function StartView() {
   const templates = useTemplates();
   const history = useHistory();
   const queryClient = useQueryClient();
-  const { putWorkout } = useGymSync();
+  const { putWorkout, discard } = useGymSync();
   const exercisesQuery = useExercises();
   const active = useActiveServerWorkout();
   const [starting, setStarting] = useState(false);
+  const [editing, setEditing] = useState<Template | "new" | null>(null);
+  const [viewing, setViewing] = useState<WorkoutSummary | null>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [historyPage, setHistoryPage] = useState(0);
+
+  const discardOpen = (id: string) => {
+    discard({ id });
+    queryClient.setQueryData(["workouts", "active"], null);
+    setConfirmDiscard(false);
+  };
 
   /** A workout still open on the server (started on another device or before a reinstall): continue it here. */
   const resume = (server: ServerWorkout) => {
@@ -130,7 +149,7 @@ function StartView() {
         exercise_id: item.exercise_id,
         name: item.name,
         muscle_group: known?.muscle_group ?? "",
-        sets: plannedSets(last, item.set_count),
+        sets: templateSets(item.sets, last),
         last,
       });
     }
@@ -139,6 +158,15 @@ function StartView() {
     putWorkout({ id: workout.id, body: { name, started_at: workout.started_at } });
     setStarting(false);
   };
+
+  if (editing) {
+    return <TemplateEditor template={editing === "new" ? null : editing} exercises={exercisesQuery.data ?? []} onClose={() => setEditing(null)} />;
+  }
+  if (viewing) return <WorkoutDetail summary={viewing} onBack={() => setViewing(null)} />;
+
+  const workouts = history.data ?? [];
+  const pages = Math.ceil(workouts.length / HISTORY_PAGE_SIZE);
+  const shownPage = Math.min(historyPage, Math.max(pages - 1, 0));
 
   return (
     <>
@@ -150,9 +178,12 @@ function StartView() {
             <p className="mb-3 text-sm text-zinc-400">
               {active.data.name} · od {formatDay(active.data.started_at)} {formatTime(active.data.started_at)} · {active.data.sets.length} sérií
             </p>
-            <Button className="w-full" onClick={() => resume(active.data!)}>
-              Pokračovat
-            </Button>
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <Button onClick={() => resume(active.data!)}>Pokračovat</Button>
+              <Button variant="danger" onClick={() => setConfirmDiscard(true)}>
+                Zahodit
+              </Button>
+            </div>
           </Card>
         )}
 
@@ -160,46 +191,90 @@ function StartView() {
           <h2 className="mb-3 font-semibold">Začít trénink</h2>
           <div className="space-y-2">
             {templates.data?.map((t) => (
-              <button
-                key={t.name}
-                disabled={starting}
-                onClick={() => start(t.name, t)}
-                className="flex w-full items-center gap-3 rounded-xl bg-zinc-800/70 p-3 text-left active:bg-zinc-700"
-              >
-                <div className="flex-1">
-                  <div className="font-medium">{t.name}</div>
-                  <div className="text-xs text-zinc-400">
-                    {t.exercises.length} cviků · naposledy {formatDay(t.last_started_at)}
+              <div key={t.id} className="flex items-stretch gap-1 rounded-xl bg-zinc-800/70">
+                <button disabled={starting} onClick={() => start(t.name, t)} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-3 text-left active:bg-zinc-700">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{t.name}</div>
+                    <div className="text-xs text-zinc-400">
+                      {t.exercises.length} cviků · {t.exercises.reduce((n, e) => n + e.sets.length, 0)} sérií
+                    </div>
                   </div>
-                </div>
-                <ChevronRight size={18} className="text-zinc-500" />
-              </button>
+                  <ChevronRight size={18} className="shrink-0 text-zinc-500" />
+                </button>
+                <button
+                  aria-label={`Upravit šablonu ${t.name}`}
+                  onClick={() => setEditing(t)}
+                  className="flex w-12 shrink-0 items-center justify-center rounded-xl text-zinc-400 active:bg-zinc-700"
+                >
+                  <Pencil size={16} />
+                </button>
+              </div>
             ))}
           </div>
-          <Button variant="ghost" className="mt-3 w-full" disabled={starting} onClick={() => start("Trénink")}>
-            Prázdný trénink
-          </Button>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Button variant="ghost" disabled={starting} onClick={() => start("Trénink")}>
+              Prázdný trénink
+            </Button>
+            <Button variant="ghost" onClick={() => setEditing("new")}>
+              + Nová šablona
+            </Button>
+          </div>
         </Card>
 
         <Card>
-          <h2 className="mb-2 font-semibold">Historie</h2>
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="font-semibold">Historie</h2>
+            <Pager page={shownPage} pages={pages} onChange={setHistoryPage} />
+          </div>
           <ul className="divide-y divide-zinc-800">
-            {history.data?.map((w) => (
-              <li key={w.id} className="flex items-center justify-between py-2.5 text-sm">
-                <div>
-                  <div className="font-medium">{w.name}</div>
-                  <div className="text-xs text-zinc-400">
-                    {formatDay(w.started_at)} · {w.set_count} sérií
-                    {w.duration_min !== null && ` · ${w.duration_min} min${w.ended_by === "user" ? "" : " (odhad)"}`}
+            {workouts.slice(shownPage * HISTORY_PAGE_SIZE, (shownPage + 1) * HISTORY_PAGE_SIZE).map((w) => (
+              <li key={w.id}>
+                <button onClick={() => setViewing(w)} className="flex w-full items-center gap-2 py-2.5 text-left text-sm active:bg-zinc-800/50">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium">{w.name}</div>
+                    <div className="text-xs text-zinc-400">
+                      {formatDay(w.started_at)} · {w.set_count} sérií
+                      {w.duration_min !== null && ` · ${w.duration_min} min${w.ended_by === "user" ? "" : " (odhad)"}`}
+                    </div>
+                    <PrBadges prs={w.prs} />
                   </div>
-                </div>
-                <div className="tabular-nums text-zinc-300">{formatNumber(w.total_volume_kg)} kg</div>
+                  <div className="shrink-0 tabular-nums text-zinc-300">{formatNumber(w.total_volume_kg)} kg</div>
+                  <ChevronRight size={16} className="shrink-0 text-zinc-600" />
+                </button>
               </li>
             ))}
           </ul>
+          {history.isSuccess && workouts.length === 0 && <p className="py-4 text-sm text-zinc-500">Zatím žádný trénink.</p>}
         </Card>
       </div>
+
+      {confirmDiscard && active.data && (
+        <DiscardSheet
+          setCount={active.data.sets.length}
+          onCancel={() => setConfirmDiscard(false)}
+          onConfirm={() => discardOpen(active.data!.id)}
+        />
+      )}
     </>
+  );
+}
+
+/** Confirmation before an unfinished workout (and every set already saved for it) is deleted. */
+function DiscardSheet({ setCount, onCancel, onConfirm }: { setCount: number; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <Sheet title="Zahodit trénink?" onClose={onCancel}>
+      <p className="mb-4 text-sm text-zinc-400">
+        Trénink se smaže, včetně {setCount} už uložených sérií. Nepůjde vrátit.
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="ghost" onClick={onCancel}>
+          Zpět
+        </Button>
+        <Button variant="danger" onClick={onConfirm}>
+          Zahodit
+        </Button>
+      </div>
+    </Sheet>
   );
 }
 
@@ -210,6 +285,7 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   const server = useWorkout(workout.id);
   const [picking, setPicking] = useState(false);
   const [confirmFinish, setConfirmFinish] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [voice, setVoice] = useState<{ busy: boolean; response?: ChatResponse; error?: string } | null>(null);
   const elapsed = useElapsed(workout.started_at);
 
@@ -295,6 +371,12 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
     setConfirmFinish(false);
   };
 
+  const discard = () => {
+    sync.discard({ id: workout.id });
+    queryClient.setQueryData(["workouts", "active"], null);
+    saveActiveWorkout(null);
+  };
+
   const done = workout.exercises.reduce((n, e) => n + e.sets.filter((s) => s.completed).length, 0);
 
   return (
@@ -347,6 +429,9 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
           + Přidat cvik
         </Button>
         <RestPresetPicker />
+        <Button variant="danger" className="w-full" onClick={() => setConfirmDiscard(true)}>
+          Zahodit trénink
+        </Button>
       </div>
 
       <div className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+9.5rem)] z-20 md:bottom-24">
@@ -366,6 +451,7 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
           )}
         </Sheet>
       )}
+      {confirmDiscard && <DiscardSheet setCount={done} onCancel={() => setConfirmDiscard(false)} onConfirm={discard} />}
       {picking && <ExercisePicker onPick={addExercise} onClose={() => setPicking(false)} />}
       {confirmFinish && (
         <Sheet title="Dokončit trénink?" onClose={() => setConfirmFinish(false)}>
@@ -379,8 +465,8 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
             </Button>
             <Button onClick={finish}>Dokončit</Button>
           </div>
-          <Button variant="danger" className="mt-2 w-full" onClick={() => (saveActiveWorkout(null), setConfirmFinish(false))}>
-            Zahodit jen v telefonu
+          <Button variant="danger" className="mt-2 w-full" onClick={() => (setConfirmFinish(false), setConfirmDiscard(true))}>
+            Zahodit trénink
           </Button>
         </Sheet>
       )}
@@ -476,34 +562,6 @@ function Stepper({
         <Plus size={18} />
       </button>
     </div>
-  );
-}
-
-function ExercisePicker({ onPick, onClose }: { onPick: (exercise: Exercise) => void; onClose: () => void }) {
-  const exercises = useExercises();
-  const [query, setQuery] = useState("");
-  const normalize = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-  const filtered = useMemo(
-    () => (exercises.data ?? []).filter((e) => normalize(e.name).includes(normalize(query.trim()))),
-    [exercises.data, query],
-  );
-  return (
-    <Sheet title="Přidat cvik" onClose={onClose}>
-      <label className="mb-3 flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950 px-3">
-        <Search size={18} className="text-zinc-500" />
-        <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Hledat" className="min-h-11 w-full bg-transparent outline-none" />
-      </label>
-      <ul className="divide-y divide-zinc-800">
-        {filtered.map((e) => (
-          <li key={e.id}>
-            <button onClick={() => onPick(e)} className="flex w-full items-center justify-between py-3 text-left active:bg-zinc-800">
-              <span>{e.name}</span>
-              <span className="text-xs text-zinc-500">{GROUP_LABELS[e.muscle_group] ?? e.muscle_group}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </Sheet>
   );
 }
 

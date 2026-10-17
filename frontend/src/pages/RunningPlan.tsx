@@ -1,10 +1,11 @@
-import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Flag, Thermometer } from "lucide-react";
+import { ChevronDown, ExternalLink, Flag, Thermometer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useWeekly } from "../api/queries";
 import { type Activity, type PlanWeek, stravaUrl, useActivities, useKb, useRunWeeks, zones } from "../api/running";
 import { RunVolumeChart } from "../components/charts/DashboardCharts";
 import { Card, PageHeader } from "../components/Layout";
 import { WeekRunList } from "../components/running/WeekRunList";
+import { Pager } from "../components/ui";
 import { formatDay, formatDayMonth, formatNumber, formatPace, isoDate } from "../lib/format";
 
 const RUN_TYPES = new Set(["Run", "TrailRun", "VirtualRun"]);
@@ -187,22 +188,6 @@ function PlanWeeks({
         <p className="py-4 text-sm text-zinc-500">Plán se načte ze znalostní báze (Nastavení → synchronizovat).</p>
       )}
     </Card>
-  );
-}
-
-function Pager({ page, pages, onChange }: { page: number; pages: number; onChange: (page: number) => void }) {
-  if (pages <= 1) return null;
-  const button = "flex size-11 items-center justify-center rounded-lg text-zinc-300 active:bg-zinc-800 disabled:text-zinc-700";
-  return (
-    <div className="-my-2 -mr-2 flex items-center text-xs tabular-nums text-zinc-400">
-      <button type="button" aria-label="Předchozí" className={button} disabled={page === 0} onClick={() => onChange(page - 1)}>
-        <ChevronLeft size={18} />
-      </button>
-      {page + 1} / {pages}
-      <button type="button" aria-label="Další" className={button} disabled={page >= pages - 1} onClick={() => onChange(page + 1)}>
-        <ChevronRight size={18} />
-      </button>
-    </div>
   );
 }
 
