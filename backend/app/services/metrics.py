@@ -5,10 +5,13 @@ from sqlalchemy import func
 from sqlmodel import Session, col, select
 
 from app.models.body import DailyMetric, DailyMetricKind, DailySourceMetric, HealthSource
+from app.models.gym import Exercise, Workout, WorkoutSet
 from app.models.nutrition import MealLog, MealLogItem
-from app.schemas.body import MetricDay, MetricUpsert
+from app.models.running import Activity
+from app.schemas.body import MetricDay, MetricUpsert, WeekStats
 from app.services.health_ingest import recompute_day
-from app.timeutils import today
+from app.services.run_analysis import RUN_TYPES
+from app.timeutils import day_bounds, local_date, today
 
 ROLLING_DAYS = 7
 
@@ -31,6 +34,43 @@ def upsert_daily_metric(session: Session, body: MetricUpsert) -> DailyMetric:
     session.commit()
     session.refresh(metric)
     return metric
+
+
+def weekly_stats(session: Session, weeks: int) -> list[WeekStats]:
+    """Monday-Sunday weeks (oldest first): running km and working sets per muscle group."""
+    current = today()
+    first_monday = current - dt.timedelta(days=current.weekday(), weeks=weeks - 1)
+    lo, _ = day_bounds(first_monday)
+    stats = {
+        first_monday + dt.timedelta(weeks=i): WeekStats(
+            week_start=first_monday + dt.timedelta(weeks=i), run_km=0, runs=0, gym_workouts=0, gym_sets={}
+        )
+        for i in range(weeks)
+    }
+
+    def week_of(moment: dt.datetime) -> WeekStats | None:
+        day = local_date(moment)
+        return stats.get(day - dt.timedelta(days=day.weekday()))
+
+    for run in session.exec(
+        select(Activity).where(col(Activity.activity_type).in_(RUN_TYPES), col(Activity.start_time) >= lo)
+    ):
+        if week := week_of(run.start_time):
+            week.run_km = round(week.run_km + run.distance_meters / 1000, 1)
+            week.runs += 1
+    workouts_seen: set = set()
+    for workout_id, started_at, group in session.exec(
+        select(Workout.id, Workout.started_at, Exercise.muscle_group)
+        .join(WorkoutSet, col(WorkoutSet.workout_id) == Workout.id)
+        .join(Exercise, col(Exercise.id) == WorkoutSet.exercise_id)
+        .where(col(Workout.started_at) >= lo, col(WorkoutSet.completed), WorkoutSet.set_type != "warmup")
+    ):
+        if week := week_of(started_at):
+            week.gym_sets[group] = week.gym_sets.get(group, 0) + 1
+            if workout_id not in workouts_seen:
+                workouts_seen.add(workout_id)
+                week.gym_workouts += 1
+    return list(stats.values())
 
 
 def intake_by_day(session: Session, start: dt.date, end: dt.date) -> dict[dt.date, tuple[float, ...]]:

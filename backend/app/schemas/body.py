@@ -14,6 +14,14 @@ class MetricUpsert(BaseModel):
     notes: str | None = None
 
 
+class WeekStats(BaseModel):
+    week_start: dt.date  # Monday
+    run_km: float
+    runs: int
+    gym_workouts: int
+    gym_sets: dict[str, int]  # completed working sets per muscle group
+
+
 class MetricDay(BaseModel):
     date: dt.date
     weight_kg: float | None = None

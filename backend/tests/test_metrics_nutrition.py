@@ -84,3 +84,32 @@ def test_deleting_the_last_item_removes_the_meal(client: TestClient, session: Se
     assert client.delete(f"/api/nutrition/items/{item_id}").status_code == 204
     assert session.get(MealLog, item_id) is None
     assert client.delete(f"/api/nutrition/items/{item_id}").status_code == 204
+
+
+def test_weekly_stats_count_runs_and_working_sets(client: TestClient, exercises: dict[str, int]) -> None:
+    from app.timeutils import today
+
+    monday = today() - dt.timedelta(days=today().weekday())
+    start = dt.datetime.combine(monday, dt.time(18, 0), tzinfo=dt.UTC)
+    client.post(
+        "/api/running/activities",
+        json={"start_time": start.isoformat(), "distance_meters": 8000, "duration_seconds": 2800},
+    )
+    workout_id = uuid.uuid4()
+    client.put(f"/api/workouts/{workout_id}", json={"name": "Legs", "started_at": start.isoformat()})
+    for order, set_type in [(1, "warmup"), (2, "normal"), (3, "normal")]:
+        client.put(
+            f"/api/workouts/{workout_id}/sets/{uuid.uuid4()}",
+            json={
+                "exercise_id": exercises["Squat (Barbell)"],
+                "exercise_order": 1,
+                "set_order": order,
+                "set_type": set_type,
+            },
+        )
+
+    weeks = client.get("/api/metrics/weekly", params={"weeks": 2}).json()
+
+    assert len(weeks) == 2 and weeks[-1]["week_start"] == monday.isoformat()
+    assert (weeks[-1]["run_km"], weeks[-1]["runs"], weeks[-1]["gym_workouts"]) == (8.0, 1, 1)
+    assert weeks[-1]["gym_sets"] == {"legs": 2}
