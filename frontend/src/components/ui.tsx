@@ -1,0 +1,103 @@
+import { X } from "lucide-react";
+import { useEffect } from "react";
+
+export function Button({
+  children,
+  variant = "primary",
+  className = "",
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" }) {
+  const styles = {
+    primary: "bg-emerald-500 text-zinc-950 active:bg-emerald-400 disabled:bg-zinc-700 disabled:text-zinc-400",
+    ghost: "bg-zinc-800 text-zinc-100 active:bg-zinc-700",
+    danger: "bg-red-500/15 text-red-300 active:bg-red-500/25",
+  }[variant];
+  return (
+    <button className={`min-h-11 rounded-xl px-4 font-medium transition-colors ${styles} ${className}`} {...props}>
+      {children}
+    </button>
+  );
+}
+
+/** Text input that opens the decimal keypad on phones and accepts a Czech decimal comma. */
+export function DecimalInput({
+  value,
+  onChange,
+  placeholder,
+  ariaLabel,
+  className = "",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  ariaLabel: string;
+  className?: string;
+}) {
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      aria-label={ariaLabel}
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value.replace(/[^\d.,]/g, ""))}
+      className={`min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-lg tabular-nums outline-none focus:border-emerald-500 ${className}`}
+    />
+  );
+}
+
+export const parseDecimal = (value: string): number | null => {
+  const number = Number.parseFloat(value.replace(",", "."));
+  return Number.isFinite(number) ? number : null;
+};
+
+/** Bottom sheet on phones, centered dialog on desktop. */
+export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 md:items-center" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-label={title}
+        className="pb-safe max-h-[85dvh] w-full overflow-y-auto rounded-t-3xl border border-zinc-800 bg-zinc-900 p-4 md:max-w-lg md:rounded-3xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <button aria-label="Zavřít" onClick={onClose} className="rounded-full p-2 text-zinc-400 active:bg-zinc-800">
+            <X size={20} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function Segmented<T extends string | number>({
+  options,
+  value,
+  onChange,
+}: {
+  options: readonly (readonly [T, string])[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-xl bg-zinc-800 p-1 text-sm">
+      {options.map(([key, label]) => (
+        <button
+          key={String(key)}
+          onClick={() => onChange(key)}
+          className={`min-h-9 rounded-lg px-3 ${value === key ? "bg-zinc-950 text-white" : "text-zinc-400"}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}

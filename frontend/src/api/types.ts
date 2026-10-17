@@ -1,0 +1,39 @@
+export type MetricDay = {
+  date: string;
+  weight_kg: number | null;
+  weight_7d_avg: number | null;
+  calories_in: number | null;
+  calories_in_7d_avg: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  calories_out: number | null;
+  steps: number | null;
+  sleep_hours: number | null;
+  notes: string | null;
+};
+
+export type WeekStats = {
+  week_start: string;
+  run_km: number;
+  runs: number;
+  gym_workouts: number;
+  gym_sets: Record<string, number>;
+};
+
+export type StepsBreakdown = {
+  date: string;
+  steps: number | null;
+  steps_method: "manual" | "buckets" | "max_daily" | "single_source" | null;
+  sleep_hours: number | null;
+  source_totals: Record<string, number>;
+  buckets: { start: string; merged: number; per_source: Record<string, number> }[];
+};
+
+export type MealItem = { id: string; label: string; kcal: number; protein_g: number | null; carbs_g: number | null; fat_g: number | null };
+export type Meal = { id: string; logged_date: string; meal_type: string; notes: string | null; items: MealItem[] };
+export type DayIntake = {
+  date: string;
+  meals: Meal[];
+  totals: { kcal: number; protein_g: number | null; carbs_g: number | null; fat_g: number | null };
+};

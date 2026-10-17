@@ -1,7 +1,7 @@
 # Progress
 
 **Current phase:** Phases 0–2 done and verified (backend + AI coach, 122 tests, live free-tier check passed). Phase 3 (React frontend & PWA) not started.
-**Next step:** Phase 3, step 3.2 (Layout polish + API hooks + Dashboard). Dev UI: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` → http://127.0.0.1:5173. Each step is committed and pushed to `origin/dev` as soon as it's verified.
+**Next step:** Phase 3, step 3.3 GymLogger (the biggest; offline-safe). Dev UI: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` → http://127.0.0.1:5173. Each step is committed and pushed to `origin/dev` as soon as it's verified.
 **Dev stack:** `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build` serves http://127.0.0.1:8010 (containers `fitness-hub-app-1`, `fitness-hub-db-1`).
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -66,7 +66,7 @@
 ### Phase 3: Frontend & PWA. Mobile-first: the user is mostly on the iPhone
 Work in small steps; after each step **commit + push + tick here** (the user asked that nothing gets lost).
 - [x] 3.1 Scaffold `frontend/` (Vite, React, TS, Tailwind v4, react-router, TanStack Query + persist, lucide, recharts, vite-plugin-pwa); `frontend` service in `docker-compose.dev.yml` (node:22, Vite :5173, `/api` → app:8000); `npm run build` + `tsc` pass
-- [ ] 3.2 Layout (bottom nav on phone, sidebar on desktop, safe-area insets), API client, Dashboard (weight + kcal quick input, weight 7d chart + kcal bars, steps/sleep tile)
+- [x] 3.2 Layout (bottom nav on phone, sidebar on desktop, safe-area insets), API client, Dashboard (weight + kcal quick input, weight 7d chart + kcal bars, steps/sleep tile)
 - [ ] 3.3 GymLogger: start from template / empty, active workout with ghost values, ±steppers, 1-tap complete + RestTimer, client UUIDs + persisted offline mutation queue, finish
 - [ ] 3.4 Run page: races countdown, plan vs actual weeks, activities with stream metrics
 - [ ] 3.5 AI Coach: chat, tier toggle, quick prompts, VoiceRecorder (MediaRecorder), DraftCard confirm
@@ -126,3 +126,7 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
   - Versions: React 19.3, Vite 8.3.2, TypeScript 7.0.2, Tailwind 4.3.3, react-router 8.4, TanStack Query 5.104.1 (persisted to localStorage, offlineFirst mutations), vite-plugin-pwa 1.3.0. Installed with `npm install --before=2026-10-03T10:00:00Z` (14-day rule).
   - Icons are generated with pure Python.
   - Frontend dev service is on :5173 with the `/api` proxy verified.
+- **2026-10-17 (10):** 3.2 Dashboard: quick weight/kcal(+protein) entry, steps tile with a breakdown sheet, sleep, weight + kcal charts, weekly gym sets per muscle group and weekly run km.
+  - Chart colors are the dataviz dark palette, validated against the card surface #111113.
+  - The spec's weight + kcal combo chart would need two y-axes (a chart anti-pattern), so it is two stacked charts instead.
+  - New backend endpoint `/api/metrics/weekly`. The bundle is 692 kB (recharts); code-split routes in 3.6.
