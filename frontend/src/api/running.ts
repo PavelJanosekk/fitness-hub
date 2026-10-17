@@ -62,9 +62,10 @@ export type KbStatus = {
   plan_weeks: number;
 };
 
+// "v2": the persisted query cache on phones still holds the old shape without `days`/`runs`
 export const useRunWeeks = () =>
   useQuery({
-    queryKey: ["running", "weeks"],
+    queryKey: ["running", "weeks", "v2"],
     queryFn: () => api<PlanWeek[]>(`/api/running/weeks?end_date=${addDays(isoDate(), 400)}`),
   });
 export const useActivities = () =>
