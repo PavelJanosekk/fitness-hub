@@ -1,5 +1,5 @@
-import { type QueryClient, useQuery } from "@tanstack/react-query";
-import { api } from "./client";
+import { type Mutation, type QueryClient, useQuery } from "@tanstack/react-query";
+import { ApiError, api } from "./client";
 
 export type Exercise = { id: number; name: string; muscle_group: string; equipment: string | null };
 export type SetType = "normal" | "warmup" | "drop" | "failure";
@@ -77,12 +77,38 @@ export const fetchLastPerformance = (queryClient: QueryClient, exerciseId: numbe
  */
 export const SYNC_SCOPE = { id: "gym-sync" };
 
+/**
+ * The phone can be online while the server is not (a deploy, Tailscale off, `tailscale serve` answering 502), and
+ * offlineFirst only pauses for the browser's own offline state. So a write keeps retrying for as long as the
+ * server is unreachable. A rejected write (4xx) would fail again, and other 5xx get a few tries.
+ */
+function retryGymWrite(failureCount: number, error: unknown): boolean {
+  if (!(error instanceof ApiError)) return true; // fetch itself failed: no connection to the server
+  if ([408, 429, 502, 503, 504].includes(error.status)) return true;
+  return error.status >= 500 && failureCount < 5;
+}
+
+const gymRetryDelay = (attempt: number) => Math.min(1000 * 2 ** attempt, 30_000);
+
+export const isGymWrite = (mutation: Mutation<unknown, Error, unknown, unknown>) => mutation.options.mutationKey?.[0] === "gym";
+
+/**
+ * Called once the persisted cache is restored. Besides the paused writes (queued while offline), it resumes the
+ * write that was in flight or retrying when the app closed: those are persisted too (see main.tsx), because
+ * TanStack only keeps paused ones by default. Scoped writes still run one at a time, in order.
+ */
+export function resumePendingMutations(queryClient: QueryClient) {
+  const pending = queryClient.getMutationCache().getAll().filter((m) => m.state.isPaused || m.state.status === "pending");
+  return Promise.all(pending.map((m) => m.continue().catch(() => undefined)));
+}
+
 export function registerGymMutations(queryClient: QueryClient) {
   queryClient.setMutationDefaults(["gym", "workout"], {
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api(`/api/workouts/${id}`, { method: "PUT", body }),
     scope: SYNC_SCOPE,
-    retry: 5,
+    retry: retryGymWrite,
+    retryDelay: gymRetryDelay,
     // Here, not at the call site: the workout screen is gone by the time a finish request settles
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["workouts"] });
@@ -93,12 +119,14 @@ export function registerGymMutations(queryClient: QueryClient) {
     mutationFn: ({ workoutId, setId, body }: { workoutId: string; setId: string; body: SetBody }) =>
       api(`/api/workouts/${workoutId}/sets/${setId}`, { method: "PUT", body }),
     scope: SYNC_SCOPE,
-    retry: 5,
+    retry: retryGymWrite,
+    retryDelay: gymRetryDelay,
   });
   queryClient.setMutationDefaults(["gym", "delete-set"], {
     mutationFn: ({ setId }: { setId: string }) => api(`/api/workouts/sets/${setId}`, { method: "DELETE" }),
     scope: SYNC_SCOPE,
-    retry: 5,
+    retry: retryGymWrite,
+    retryDelay: gymRetryDelay,
   });
 }
 

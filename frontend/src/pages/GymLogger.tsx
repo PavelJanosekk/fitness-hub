@@ -287,6 +287,9 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   };
 
   const finish = () => {
+    // Every completed set once more before the finish (idempotent PUTs, same queue): repairs any set whose
+    // earlier write was dropped, because the local copy is gone after this
+    workout.exercises.forEach((exercise, e) => exercise.sets.forEach((_, s) => syncSet(e, s)));
     sync.putWorkout({ id: workout.id, body: { ended_at: new Date().toISOString() } });
     saveActiveWorkout(null);
     setConfirmFinish(false);
