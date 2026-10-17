@@ -4,10 +4,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionDep
-from app.routers import metrics, nutrition, running, workouts
+from app.routers import metrics, nutrition, running, webhooks, workouts
 
 app = FastAPI(title="Fitness Hub")
-for module in (metrics, nutrition, running, workouts):
+for module in (metrics, nutrition, running, webhooks, workouts):
     app.include_router(module.router)
 
 

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     database_url: str
     app_tz: str = "Europe/Prague"
+    webhook_token: str | None = None  # required by /api/webhooks/*; webhooks are disabled while unset
 
     @field_validator("database_url")
     @classmethod

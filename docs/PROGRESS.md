@@ -50,7 +50,7 @@
 - [x] Idempotent exercise seed: 58 exercises (all 42 from the Strong export, 2 remap targets, extras), run on container start
 - [x] Routers: metrics, nutrition quick-add, workouts (last-performance, active, templates, UUID upserts), running (steps breakdown comes with the health webhook)
 - [x] Strong CSV importer (NBSP/over-4 h durations, local tz, remap rules, lbs, `;` exports) + real import into the dev DB: 123 workouts, 2,361 sets, 0 new exercises, 76 estimated durations; re-import skips all 123
-- [ ] Health webhook + `health_ingest.py` (15-min buckets, merge, sleep attribution)
+- [x] Health webhook `POST /api/webhooks/health` (X-Webhook-Token, replace-per-day) + `health_ingest.py` (15-min buckets, max per bucket summed, daily-max fallback, manual wins; sleep by wake-up day, overlaps counted once, Samsung > Apple) + `GET /api/metrics/steps-breakdown`
 - [ ] Strava OAuth + sync; `scheduler.py` (Strava poll, auto-finish sweep)
 - [ ] Research O2 (Health Connect forwarder)
 - [ ] Tests (see SPEC §9, Phase 1)
