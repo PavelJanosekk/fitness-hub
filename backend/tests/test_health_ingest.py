@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -143,6 +144,27 @@ def test_wrong_token_is_rejected(client: TestClient) -> None:
 
     assert client.post("/api/webhooks/health", json=body).status_code == 401
     assert client.post("/api/webhooks/health", json=body, headers={"X-Webhook-Token": "nope"}).status_code == 401
+
+
+def test_json_is_accepted_whatever_the_content_type(client: TestClient) -> None:
+    body = {"source": "apple_health", "days": [DAY.isoformat()], "steps": steps((at(8), at(8, 10), 500))}
+    response = client.post(
+        "/api/webhooks/health",
+        content=json.dumps(body),
+        headers={"X-Webhook-Token": TOKEN, "Content-Type": "application/octet-stream"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()[0]["steps"] == 500
+
+
+def test_invalid_payload_is_a_422_naming_the_problem(client: TestClient) -> None:
+    body = {"source": "apple_health", "days": [DAY.isoformat()], "steps": steps((at(9), at(8), 500))}
+
+    response = client.post("/api/webhooks/health", json=body, headers={"X-Webhook-Token": TOKEN})
+
+    assert response.status_code == 422
+    assert "end must not be before start" in response.text
 
 
 def test_webhooks_are_disabled_without_a_configured_token(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

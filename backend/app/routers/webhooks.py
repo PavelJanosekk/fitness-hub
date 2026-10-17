@@ -4,7 +4,7 @@ import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.config import settings
 from app.database import SessionDep
@@ -27,13 +27,27 @@ async def raw_body(request: Request) -> bytes:
     return await request.body()
 
 
+def parse_body[T: BaseModel](model: type[T], body: bytes) -> T:
+    try:
+        return model.model_validate_json(body)
+    except ValidationError as exc:
+        # No ctx: it can hold the validator's exception object, which is not JSON-serializable
+        detail = exc.errors(include_url=False, include_context=False)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail) from None
+
+
 @router.post("/health", response_model=list[DayMerge])
 def health_push(
-    push: HealthPush, session: SessionDep, x_webhook_token: Annotated[str | None, Header()] = None
+    session: SessionDep,
+    body: Annotated[bytes, Depends(raw_body)],
+    x_webhook_token: Annotated[str | None, Header()] = None,
 ) -> list[DayMerge]:
-    """Complete-day pushes, e.g. from the iOS Shortcut (apple_health)."""
+    """Complete-day pushes, e.g. from the iOS Shortcut (apple_health).
+
+    The JSON is read from the raw body whatever the Content-Type: Shortcuts may label it application/octet-stream.
+    """
     require_token(x_webhook_token)
-    return ingest(session, push)
+    return ingest(session, parse_body(HealthPush, body))
 
 
 @router.post("/health-connect", response_model=HealthConnectResult)
@@ -55,9 +69,5 @@ def health_connect_push(
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid signature")
     else:
         require_token(x_webhook_token)
-    try:
-        payload = HCPayload.model_validate_json(body)
-    except ValidationError as exc:
-        # 422 makes the app keep this payload for a week while later ones still get through
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors(include_url=False)) from None
-    return ingest_health_connect(session, payload)
+    # A 422 makes the app keep this payload for a week while later ones still get through
+    return ingest_health_connect(session, parse_body(HCPayload, body))

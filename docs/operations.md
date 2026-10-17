@@ -53,6 +53,19 @@ The config survives reboots. `sudo` is needed unless the user was made the Tails
 (`sudo tailscale set --operator=$USER`). That also lets any process running as that user change the serve
 config, so it is optional. Only tailnet devices can reach these URLs (no Funnel).
 
+## Integrations
+
+Server side, `.env` has `PUBLIC_BASE_URL` (the tailnet URL, used for the Strava OAuth redirect) and
+`WEBHOOK_TOKEN` (shared secret for the webhooks; read it with `grep '^WEBHOOK_TOKEN=' .env`). After changing
+`.env`, run `docker compose up -d app`. Setup per source:
+
+- [Strava](integrations/strava.md): runs, HR, stream metrics.
+- [iOS Shortcut](integrations/ios-shortcut.md): iPhone steps from Apple Health.
+- [Health Connect](integrations/health-connect.md): watch steps and sleep via Life Dashboard Companion.
+
+**Nastavení** shows the state of each source: Strava connection and last sync, plus the last payload per
+webhook source.
+
 ## Backups
 
 The `backup` compose service (`scripts/backup.sh`, image `postgres:16-alpine`) writes a `pg_dump --format=custom`

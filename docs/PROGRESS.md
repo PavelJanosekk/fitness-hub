@@ -4,7 +4,7 @@
 **Next step:**
 1. The user runs the `tailscale serve` switch (needs sudo, see the 2026-10-17 (15) session log). Until then prod is published on host port **5173** as a stopgap and the dev Vite server is down. After the switch: `docker compose up -d app` (back to 8010) and `./dev up -d`.
 2. Check on the iPhone: PWA install, mic/voice, GymLogger (no visual check has been done yet).
-3. Integrations: Strava app keys, `WEBHOOK_TOKEN`, `PUBLIC_BASE_URL`, iOS Shortcut, Life Dashboard Companion. Guides go in `docs/integrations/`.
+3. Integrations, following `docs/integrations/`: Strava keys into `.env` + connect, the iOS Shortcut, Life Dashboard Companion on the Android phone. `WEBHOOK_TOKEN` and `PUBLIC_BASE_URL` are already set.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -82,7 +82,8 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [x] Backups: daily `pg_dump`, 7/4/6 rotation, restore verified; `docs/operations.md`
 - [x] E14 split: prod live on the existing volume, dev project with its own DB + `scripts/seed-dev-db.sh`, `./dev` wrapper; CLAUDE.md/SPEC commands updated
 - [ ] `tailscale serve` → :443 prod (8010), :8443 dev (5173): **waiting on the user's sudo**; verify mic + PWA install on the iPhone
-- [ ] Integrations: Strava app + connect, iOS Shortcut, Health Connect forwarder; guides in `docs/integrations/`; data visible on the Settings page
+- [x] Integration guides `docs/integrations/` (strava, ios-shortcut, health-connect); `.env` has `PUBLIC_BASE_URL` + a generated `WEBHOOK_TOKEN`; webhooks verified end to end on dev; `/api/webhooks/health` reads JSON whatever the Content-Type (Shortcuts)
+- [ ] User: Strava keys into `.env` + connect; build the Shortcut + automations; install and configure Life Dashboard Companion + 365-day backfill; check that each source shows up in Nastavení
 
 ### Phase 5: Nutrition module
 - [ ] Decide E3, verify O3, then steps 1–6 of `docs/nutrition-module-spec.md` with its Amendments (KT via SDK)
@@ -156,3 +157,6 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
   - The user was logging a workout ("Chest tri") on the phone through `tailscale serve` → :5173 when the old dev Vite container was removed, about 3 minutes of downtime. `tailscale serve` can't be changed without sudo, so as a stopgap prod is published on host port 5173 (`APP_PORT=5173 docker compose up -d app`); :443 already points there. The user's switch, from the repo root:
     `sudo tailscale serve reset && sudo tailscale serve --bg 8010 && sudo tailscale serve --bg --https=8443 5173 && docker compose up -d app && ./dev up -d`
   - Slip: one `docker compose config` printout showed the resolved Postgres password in the session log (nowhere else). Since then only key presence is checked, never values.
+  - Integrations: guides for Strava, the iOS Shortcut and Health Connect. Set `PUBLIC_BASE_URL` and a random `WEBHOOK_TOKEN` in `.env` (values never printed). Prod rejects wrong tokens (401); full pushes tested on dev (Shortcut payload shape, the documented Life Dashboard ping).
+    - The Shortcut design accounts for iOS locking Health data while the phone is locked: a guard (0 samples → stop) protects the replace-per-day rule, and an "app opened" trigger runs while the phone is in use.
+    - `/api/webhooks/health` now parses the raw body (Shortcuts may label JSON as octet-stream). Both webhooks drop pydantic's `ctx` from 422 details: a validator's ValueError there made the old 422 path crash with a 500 (132 tests).
