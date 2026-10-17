@@ -13,3 +13,26 @@ SQLModel.metadata.naming_convention = {
     "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
     "pk": "pk_%(table_name)s",
 }
+
+from app.models.body import DailyMetric, DailySourceMetric, StepBucket  # noqa: E402
+from app.models.chat import ChatConversation, ChatMessage  # noqa: E402
+from app.models.gym import Exercise, Workout, WorkoutSet  # noqa: E402
+from app.models.integrations import IntegrationToken  # noqa: E402
+from app.models.nutrition import MealLog, MealLogItem  # noqa: E402
+from app.models.running import Activity, TrainingPlanItem  # noqa: E402
+
+__all__ = [
+    "Activity",
+    "ChatConversation",
+    "ChatMessage",
+    "DailyMetric",
+    "DailySourceMetric",
+    "Exercise",
+    "IntegrationToken",
+    "MealLog",
+    "MealLogItem",
+    "StepBucket",
+    "TrainingPlanItem",
+    "Workout",
+    "WorkoutSet",
+]

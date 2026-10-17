@@ -18,7 +18,7 @@ RUN pip install -r requirements-dev.txt -c constraints.txt
 ENV HOME=/tmp \
     RUFF_CACHE_DIR=/tmp/ruff-cache
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+CMD ["sh", "-c", "alembic upgrade head && python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
 
 # ---- Prod: Phase 4 adds the frontend build stage and copies its dist/ here ----
 FROM base AS prod
@@ -26,4 +26,4 @@ RUN useradd --system --uid 10001 --no-create-home app
 COPY backend/ ./
 USER app
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "alembic upgrade head && python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]

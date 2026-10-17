@@ -9,11 +9,13 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.config import settings
 from app.database import get_session
 from app.main import app
+from app.models.gym import Exercise
+from app.seed import seed_exercises
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 _app_url = make_url(settings.database_url)
@@ -52,6 +54,13 @@ def session(engine: Engine) -> Iterator[Session]:
         with Session(bind=conn, join_transaction_mode="create_savepoint") as db_session:
             yield db_session
         outer.rollback()
+
+
+@pytest.fixture
+def exercises(session: Session) -> dict[str, int]:
+    """Seeded default exercises, name -> id."""
+    seed_exercises(session)
+    return {e.name: e.id for e in session.exec(select(Exercise)).all()}
 
 
 @pytest.fixture
