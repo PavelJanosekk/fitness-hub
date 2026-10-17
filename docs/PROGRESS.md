@@ -1,7 +1,7 @@
 # Progress
 
 **Current phase:** Phases 0–2 done and verified (backend + AI coach, 122 tests, live free-tier check passed). Phase 3 (React frontend & PWA) not started.
-**Next step:** Phase 3 scaffold (Vite + React + TS in a `node:22` dev container).
+**Next step:** Phase 3, step 3.1 scaffold (see the checklist). Each step is committed and pushed to `origin/dev` as soon as it's verified.
 **Dev stack:** `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build` serves http://127.0.0.1:8010 (containers `fitness-hub-app-1`, `fitness-hub-db-1`).
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -63,10 +63,14 @@
 - [x] E12: stream metrics (port of metrics.py), streams stored, budgeted backfill, recompute on LTHR change, `get_efficiency_trend`
 - [x] Live check (free tier, 3 turns): progression from the real Strong data, races and plan from the KB, dictation "kelso šrag" → exact Kelso Shrug saved. Found and fixed: tool calls weren't captured in chat mode. The test workout was deleted afterwards.
 
-### Phase 3: Frontend & PWA
-- [ ] Scaffold; Layout, RestTimer, VoiceRecorder, DraftCard
-- [ ] Pages: Dashboard (steps breakdown), GymLogger (templates, auto-finish), RunningPlan, AiCoach, Settings
-- [ ] PWA manifest
+### Phase 3: Frontend & PWA. Mobile-first: the user is mostly on the iPhone
+Work in small steps; after each step **commit + push + tick here** (the user asked that nothing gets lost).
+- [ ] 3.1 Scaffold `frontend/` (Vite, React, TS, Tailwind v4, react-router, TanStack Query + persist, lucide, recharts, vite-plugin-pwa); `frontend` service in `docker-compose.dev.yml` (node:22, Vite :5173, `/api` → app:8000); `npm run build` + `tsc` pass
+- [ ] 3.2 Layout (bottom nav on phone, sidebar on desktop, safe-area insets), API client, Dashboard (weight + kcal quick input, weight 7d chart + kcal bars, steps/sleep tile)
+- [ ] 3.3 GymLogger: start from template / empty, active workout with ghost values, ±steppers, 1-tap complete + RestTimer, client UUIDs + persisted offline mutation queue, finish
+- [ ] 3.4 Run page: races countdown, plan vs actual weeks, activities with stream metrics
+- [ ] 3.5 AI Coach: chat, tier toggle, quick prompts, VoiceRecorder (MediaRecorder), DraftCard confirm
+- [ ] 3.6 Settings: integrations + KB status/sync, Strong import; PWA manifest/icons; FastAPI serves built SPA (prep for Phase 4)
 
 ### Phase 4: Docker & deploy
 - [ ] Multi-stage Dockerfile (ffmpeg), compose (db, app, backup), healthcheck, SPA fallback
@@ -117,3 +121,4 @@
   - `.env` now has GEMINI_MODEL_FAST/SMART and COACH_KB_REPO.
   - Stream metrics aren't tried on real data yet, because Strava isn't connected (Phase 4; the user's RunningCoach Strava API app can be reused).
   - Dev image is 1.04 GB due to ffmpeg; slim it in Phase 4.
+- **2026-10-17 (8):** Pushed Phase 2 to origin/dev (6a6ffa1). Phase 3 started with a step plan; the user is close to the usage cap, so commit + push after every step.
