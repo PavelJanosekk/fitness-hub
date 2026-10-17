@@ -11,8 +11,8 @@ import httpx
 from sqlmodel import Session, delete, select
 
 from app.config import settings
-from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingWeek
-from app.services.kb_parser import parse_index, parse_plan
+from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingDay, TrainingWeek
+from app.services.kb_parser import parse_days, parse_index, parse_plan
 from app.services.run_analysis import recompute_metrics
 from app.timeutils import now_utc, today
 
@@ -133,6 +133,9 @@ def _apply_parsed_facts(session: Session, result: KBSyncResult) -> None:
             result.weeks = len(weeks)
         else:
             result.warnings.append(f"{PLAN_DOC}: no weekly plan rows recognised; previous plan kept")
+        days = parse_days(plan.content, athlete.kb_updated or today())
+        session.exec(delete(TrainingDay))
+        session.add_all(TrainingDay(**vars(day)) for day in days)
     result.lthr = athlete.lthr
     session.add(athlete)
     session.flush()

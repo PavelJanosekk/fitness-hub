@@ -37,6 +37,18 @@ class TrainingWeek(SQLModel, table=True):
     notes: str | None = None
 
 
+class TrainingDay(SQLModel, table=True):
+    """A dated line of the day-by-day schedule in 04_timeline_plan.md, e.g. "Pá 16.  Easy 5 km" (replaced on sync)."""
+
+    __tablename__ = "training_days"
+
+    planned_date: dt.date = Field(primary_key=True)
+    text: str
+    is_rest: bool = False  # "Volno ..." lines
+    km_min: float | None = None
+    km_max: float | None = None
+
+
 class Race(SQLModel, table=True):
     __tablename__ = "races"
 

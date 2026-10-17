@@ -19,6 +19,9 @@ RACE_LINE = re.compile(
     r"\*\*(Cílový závod|Generálka):\*\*\s*(?P<name>[^,*]+),\s*\**\s*\w+\s+(?P<d>\d{1,2})\.(?P<m>\d{1,2})\.(?P<y>\d{4})"
 )
 GOAL_LINE = re.compile(r"\*\*Cíl:\*\*\s*(?P<goal>.+?)(?:\n\s*\n|\n\*\*|\Z)", re.DOTALL)  # may wrap lines
+DAY_LINE = re.compile(r"^(?P<dow>Po|Út|St|Čt|Pá|So|Ne)\s+(?P<day>\d{1,2})\.\s+(?P<text>\S.*)$")
+WEEKDAYS = ("Po", "Út", "St", "Čt", "Pá", "So", "Ne")
+DAY_KM = re.compile(r"(\d+(?:[.,]\d+)?)(?:\s*[–-]\s*(\d+(?:[.,]\d+)?))?\s*km")
 QUALITY_COLUMNS = ("kvalita", "náplň")
 
 
@@ -35,6 +38,15 @@ class ParsedWeek:
     long_run_km_max: float | None
     quality: str | None
     notes: str | None
+
+
+@dataclass
+class ParsedDay:
+    planned_date: dt.date
+    text: str
+    is_rest: bool
+    km_min: float | None
+    km_max: float | None
 
 
 @dataclass
@@ -137,6 +149,46 @@ def parse_plan(markdown: str, reference: dt.date) -> tuple[list[ParsedWeek], lis
             )
         )
     return weeks, warnings
+
+
+def parse_days(markdown: str, reference: dt.date) -> list[ParsedDay]:
+    """Day-by-day schedule lines ("Čt 15.  Volno", "Pá 16.  Easy 5 km, HR ≤150") in a code block under a dated heading.
+
+    The heading's range gives the month and year; the weekday abbreviation must agree with the date, otherwise the
+    line is not a schedule line and is skipped.
+    """
+    days: dict[dt.date, ParsedDay] = {}
+    window: tuple[dt.date, dt.date] | None = None
+    in_fence = False
+    for raw in markdown.splitlines():
+        line = raw.strip()
+        if line.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            if line.startswith("#"):
+                window = parse_date_range(line, reference)
+            continue  # prose also mentions days ("Ne 20. LR 16 km · Po 21. volno"); only code blocks are schedules
+        match = DAY_LINE.match(line)
+        if window is None or match is None:
+            continue
+        date = next(
+            (
+                window[0] + dt.timedelta(days=offset)
+                for offset in range((window[1] - window[0]).days + 1)
+                if (window[0] + dt.timedelta(days=offset)).day == int(match["day"])
+                and WEEKDAYS[(window[0] + dt.timedelta(days=offset)).weekday()] == match["dow"]
+            ),
+            None,
+        )
+        if date is None:
+            continue
+        text = _clean(match["text"])
+        km = DAY_KM.search(text)
+        km_min = float(km[1].replace(",", ".")) if km else None
+        km_max = float(km[2].replace(",", ".")) if km and km[2] else km_min
+        days[date] = ParsedDay(date, text, text.casefold().startswith("volno"), km_min, km_max)
+    return sorted(days.values(), key=lambda d: d.planned_date)
 
 
 def parse_index(markdown: str) -> ParsedFacts:

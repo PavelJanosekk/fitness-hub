@@ -5,9 +5,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
 
 from app.database import SessionDep
-from app.models.coach import TrainingWeek
+from app.models.coach import TrainingDay, TrainingWeek
 from app.models.running import Activity, ActivityMetrics, TrainingPlanItem
-from app.schemas.running import ActivityCreate, ActivityRead, PlanItemIn, PlanItemRead, PlanWeekRead
+from app.schemas.running import ActivityCreate, ActivityRead, PlanDayRead, PlanItemIn, PlanItemRead, PlanWeekRead
 from app.services.run_analysis import RUN_TYPES, is_heat
 from app.timeutils import day_bounds, today
 
@@ -71,24 +71,40 @@ def plan_vs_actual(
         .where(TrainingWeek.week_end >= start, TrainingWeek.week_start <= end)
         .order_by(col(TrainingWeek.week_start))
     ).all()
+    if not weeks:
+        return []
+    lo, _ = day_bounds(weeks[0].week_start)
+    _, hi = day_bounds(weeks[-1].week_end)
+    runs = session.exec(
+        select(Activity)
+        .where(
+            col(Activity.activity_type).in_(RUN_TYPES),
+            col(Activity.start_time) >= lo,
+            col(Activity.start_time) < hi,
+        )
+        .order_by(col(Activity.start_time))
+    ).all()
+    days = session.exec(
+        select(TrainingDay)
+        .where(col(TrainingDay.planned_date).between(weeks[0].week_start, weeks[-1].week_end))
+        .order_by(col(TrainingDay.planned_date))
+    ).all()
     result = []
     for week in weeks:
-        lo, _ = day_bounds(week.week_start)
-        _, hi = day_bounds(week.week_end)
-        runs = session.exec(
-            select(Activity).where(
-                col(Activity.activity_type).in_(RUN_TYPES),
-                col(Activity.start_time) >= lo,
-                col(Activity.start_time) < hi,
-            )
-        ).all()
-        km = [r.distance_meters / 1000 for r in runs]
+        week_lo, _ = day_bounds(week.week_start)
+        _, week_hi = day_bounds(week.week_end)
+        week_runs = [r for r in runs if week_lo <= r.start_time < week_hi]
+        km = [r.distance_meters / 1000 for r in week_runs]
         result.append(
             PlanWeekRead(
                 **week.model_dump(),
                 actual_km=round(sum(km), 1),
-                actual_runs=len(runs),
+                actual_runs=len(week_runs),
                 longest_run_km=round(max(km), 2) if km else None,
+                days=[
+                    PlanDayRead.model_validate(d) for d in days if week.week_start <= d.planned_date <= week.week_end
+                ],
+                runs=[read_activity(r) for r in week_runs],
             )
         )
     return result

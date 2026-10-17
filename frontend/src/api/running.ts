@@ -1,5 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
+import { addDays, isoDate } from "../lib/format";
 import { api } from "./client";
+
+export type PlanDay = {
+  planned_date: string;
+  text: string;
+  is_rest: boolean;
+  km_min: number | null;
+  km_max: number | null;
+};
 
 export type PlanWeek = {
   week_start: string;
@@ -16,10 +25,13 @@ export type PlanWeek = {
   actual_km: number;
   actual_runs: number;
   longest_run_km: number | null;
+  days: PlanDay[];
+  runs: Activity[];
 };
 
 export type Activity = {
   id: number;
+  external_id: string | null;
   start_time: string;
   activity_type: string;
   distance_meters: number;
@@ -50,7 +62,11 @@ export type KbStatus = {
   plan_weeks: number;
 };
 
-export const useRunWeeks = () => useQuery({ queryKey: ["running", "weeks"], queryFn: () => api<PlanWeek[]>("/api/running/weeks") });
+export const useRunWeeks = () =>
+  useQuery({
+    queryKey: ["running", "weeks"],
+    queryFn: () => api<PlanWeek[]>(`/api/running/weeks?end_date=${addDays(isoDate(), 400)}`),
+  });
 export const useActivities = () =>
   useQuery({ queryKey: ["running", "activities"], queryFn: () => api<Activity[]>("/api/running/activities?limit=40") });
 export const useKb = () => useQuery({ queryKey: ["coach", "kb"], queryFn: () => api<KbStatus>("/api/coach/kb") });
@@ -66,3 +82,7 @@ export function zones(lthr: number) {
     { zone: "Z5", label: "Nad prahem", range: `≥${lthr + 1}` },
   ];
 }
+
+/** Link to the activity on strava.com (external ids look like "strava:1234567890"). */
+export const stravaUrl = (activity: Pick<Activity, "external_id">) =>
+  activity.external_id?.startsWith("strava:") ? `https://www.strava.com/activities/${activity.external_id.slice(7)}` : null;

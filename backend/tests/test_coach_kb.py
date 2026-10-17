@@ -15,7 +15,7 @@ from app.routers.coach_kb import get_http
 from app.services.ai_tools import ToolContext, build_coach_tools
 from app.services.coach import coach_system_instruction
 from app.services.coach_kb import KnowledgeBaseError, sync_knowledge_base
-from app.services.kb_parser import parse_date_range, parse_index, parse_plan
+from app.services.kb_parser import parse_date_range, parse_days, parse_index, parse_plan
 
 INDEX = """# Knowledge Base
 
@@ -53,6 +53,17 @@ PLAN = """# Timeline
 | Týden | Datum | km | LR | Náplň |
 |---|---|---|---|---|
 | 9 | 12.–18.4. | 60–65 (68 bonus) | **30 (10–12 km @ MP)** | jediný peak |
+
+### Návrat 15.–25.10. — konkrétně
+```
+Čt 15.  Volno (krevní test odložen)
+Pá 16.  Easy 5 km, HR ≤150
+So 17.  Volno (upper jen lehce)
+Ne 18.  Easy 7–8 km (podle rýmy, jinak 5–6; místo LR 12)
+Út 20.  Easy 5 km + 4–6 strides (až bez rýmy)
+Po 21.  Easy 7 km
+Ne 25.  Long run 10 km
+```
 """
 CLAUDE = "# Running coach\n\nAthlete wants short, direct, evidence-based answers."
 ERRATA = "# ERRATA\n\n## ❌ Kadence 163 je nízká\nOprava: 172 spm."
@@ -83,6 +94,21 @@ def test_plan_tables_of_every_shape_are_parsed() -> None:
     assert weeks[0].block == "Hlavní blok: 12.10.–20.12.2026"
     assert weeks[0].quality == "nic" and weeks[0].notes == "návrat"
     assert weeks[-1].quality == "jediný peak"
+
+
+def test_day_schedule_lines_are_dated_from_the_heading_and_weekday() -> None:
+    days = parse_days(PLAN, dt.date(2026, 10, 15))
+
+    # "Po 21." is skipped: 21.10.2026 is a Wednesday, so the weekday disagrees with the date
+    assert [(d.planned_date.isoformat(), d.is_rest, d.km_min, d.km_max) for d in days] == [
+        ("2026-10-15", True, None, None),
+        ("2026-10-16", False, 5, 5),
+        ("2026-10-17", True, None, None),
+        ("2026-10-18", False, 7, 8),
+        ("2026-10-20", False, 5, 5),
+        ("2026-10-25", False, 10, 10),
+    ]
+    assert days[1].text == "Easy 5 km, HR ≤150"
 
 
 def test_index_gives_lthr_races_and_wrapped_goal() -> None:
@@ -201,6 +227,8 @@ def test_weeks_endpoint_compares_plan_with_actual_runs(client: TestClient, sessi
     weeks = client.get("/api/running/weeks", params={"start_date": "2026-10-12", "end_date": "2026-10-18"}).json()
 
     assert len(weeks) == 1
+    assert [r["external_id"] for r in weeks[0]["runs"]] == ["strava:13", "strava:18"]
+    assert [d["planned_date"] for d in weeks[0]["days"]] == ["2026-10-15", "2026-10-16", "2026-10-17", "2026-10-18"]
     assert (weeks[0]["km_text"], weeks[0]["actual_km"], weeks[0]["actual_runs"], weeks[0]["longest_run_km"]) == (
         "~12",
         12.5,

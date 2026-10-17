@@ -30,6 +30,7 @@ class ActivityRead(BaseModel):
     max_hr: int | None
     calories: int | None
     notes: str | None
+    description: str | None = None  # Strava description
     pace_sec_per_km: int | None = None
     pace: str | None = None  # "5:12" min/km
     rpe: int | None = None
@@ -40,6 +41,18 @@ class ActivityRead(BaseModel):
     decoupling_pct: float | None = None
     pct_above_easy: float | None = None
     z4_minutes: float | None = None
+
+
+class PlanDayRead(BaseModel):
+    """A dated line of the day-by-day schedule in the plan ("Pá 16. Easy 5 km")."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    planned_date: dt.date
+    text: str
+    is_rest: bool
+    km_min: float | None
+    km_max: float | None
 
 
 class PlanWeekRead(BaseModel):
@@ -59,6 +72,8 @@ class PlanWeekRead(BaseModel):
     actual_km: float
     actual_runs: int
     longest_run_km: float | None
+    days: list[PlanDayRead] = []  # empty when the plan has no day-by-day schedule for this week
+    runs: list[ActivityRead] = []  # the week's actual runs, oldest first
 
 
 class PlanItemIn(BaseModel):

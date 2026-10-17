@@ -14,6 +14,8 @@ export function addDays(iso: string, days: number): string {
 }
 
 export const formatDay = (iso: string) => dateFormat.format(new Date(iso.length === 10 ? `${iso}T12:00:00` : iso));
+/** "12.10." without a weekday, for week ranges. */
+export const formatDayMonth = (iso: string) => `${Number(iso.slice(8, 10))}.${Number(iso.slice(5, 7))}.`;
 export const formatTime = (iso: string) => timeFormat.format(new Date(iso));
 
 export function formatNumber(value: number | null | undefined, digits = 0): string {

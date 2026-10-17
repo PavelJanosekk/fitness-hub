@@ -160,3 +160,45 @@ export function WeeklyRunChart({ weeks }: { weeks: WeekStats[] }) {
     </ResponsiveContainer>
   );
 }
+
+export type RunVolumeWeek = { week_start: string; run_km: number; runs: number; plan_km: number | null };
+
+/** Weekly running volume (bars) against the plan's upper km bound (dots) where the plan has one. */
+export function RunVolumeChart({ weeks }: { weeks: RunVolumeWeek[] }) {
+  const hasPlan = weeks.some((w) => w.plan_km !== null);
+  return (
+    <>
+      <Legend
+        items={[
+          { label: "Odběhnuto (km)", color: SERIES[2] },
+          ...(hasPlan ? [{ label: "Plán (horní hranice)", color: INK.secondary, kind: "dot" as const }] : []),
+        ]}
+      />
+      <ResponsiveContainer width="100%" height={180}>
+        <ComposedChart data={weeks} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
+          <CartesianGrid vertical={false} stroke={INK.grid} />
+          <XAxis dataKey="week_start" tickFormatter={shortDate} minTickGap={16} {...axis} />
+          <YAxis width={44} {...axis} />
+          <Tooltip
+            {...tooltip}
+            labelFormatter={(d) => `Týden od ${shortDate(String(d))}`}
+            formatter={(v, name, item) =>
+              name === "run_km"
+                ? [`${formatNumber(Number(v), 1)} km · ${item.payload.runs} běhů`, "Odběhnuto"]
+                : [`${formatNumber(Number(v))} km`, "Plán"]
+            }
+          />
+          <Bar dataKey="run_km" fill={SERIES[2]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+          <Line
+            dataKey="plan_km"
+            stroke={INK.secondary}
+            strokeOpacity={0}
+            dot={{ r: 4, fill: INK.secondary, stroke: SURFACE, strokeWidth: 2 }}
+            activeDot={{ r: 5, fill: INK.secondary, stroke: SURFACE, strokeWidth: 2 }}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </>
+  );
+}

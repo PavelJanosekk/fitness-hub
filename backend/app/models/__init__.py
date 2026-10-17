@@ -22,7 +22,7 @@ from app.models.body import (  # noqa: E402
     StepBucket,
 )
 from app.models.chat import ChatConversation, ChatMessage  # noqa: E402
-from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingWeek  # noqa: E402
+from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingDay, TrainingWeek  # noqa: E402
 from app.models.gym import Exercise, Workout, WorkoutSet  # noqa: E402
 from app.models.integrations import IntegrationToken  # noqa: E402
 from app.models.nutrition import (  # noqa: E402
@@ -61,6 +61,7 @@ __all__ = [
     "Race",
     "RecipeComponent",
     "StepBucket",
+    "TrainingDay",
     "TrainingPlanItem",
     "TrainingWeek",
     "Workout",
