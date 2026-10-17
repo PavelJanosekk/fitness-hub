@@ -1,11 +1,14 @@
+import json
 import uuid
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile, status
+from pydantic import BaseModel, TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
 from app.database import SessionDep
-from app.models.gym import EndedBy, Exercise, Workout, WorkoutSet
+from app.models.gym import EndedBy, Exercise, MuscleGroup, Workout, WorkoutSet
 from app.schemas.gym import (
     ExerciseCreate,
     ExerciseRead,
@@ -20,6 +23,13 @@ from app.schemas.gym import (
     WorkoutTemplate,
 )
 from app.services import workouts as svc
+from app.services.strong_import import (
+    DEFAULT_REMAP_RULES,
+    ImportSummary,
+    RemapRule,
+    StrongImportError,
+    import_strong_csv,
+)
 from app.timeutils import now_utc
 
 router = APIRouter(prefix="/api", tags=["gym"])
@@ -157,6 +167,42 @@ def upsert_set(workout_id: uuid.UUID, set_id: uuid.UUID, body: SetIn, session: S
     session.commit()
     session.refresh(workout_set)
     return workout_set
+
+
+MAX_IMPORT_BYTES = 20 * 1024 * 1024
+
+
+class RemapRuleIn(BaseModel):
+    strong_name: str
+    map_to: str
+    muscle_group: MuscleGroup
+    equipment: str | None = None
+    marker_note: str | None = None
+    all_workouts: bool = True
+
+
+@router.post("/workouts/import-strong-csv", response_model=ImportSummary)
+def import_strong(
+    session: SessionDep,
+    file: Annotated[UploadFile, File(description="CSV exported from the Strong app")],
+    weight_unit: Annotated[Literal["kg", "lbs"], Form()] = "kg",
+    exercise_map: Annotated[str | None, Form(description="JSON list of remap rules; replaces the defaults")] = None,
+) -> ImportSummary:
+    content = file.file.read(MAX_IMPORT_BYTES + 1)
+    if len(content) > MAX_IMPORT_BYTES:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "File too large")
+    rules: tuple[RemapRule, ...] | list[RemapRule] = DEFAULT_REMAP_RULES
+    if exercise_map:
+        try:
+            parsed = TypeAdapter(list[RemapRuleIn]).validate_python(json.loads(exercise_map))
+        except (ValueError, ValidationError) as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Invalid exercise_map: {exc}") from None
+        rules = [RemapRule(**rule.model_dump()) for rule in parsed]
+    try:
+        return import_strong_csv(session, content, weight_unit=weight_unit, rules=rules)
+    except (StrongImportError, UnicodeDecodeError) as exc:
+        session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
 
 
 @router.delete("/workouts/sets/{set_id}", status_code=status.HTTP_204_NO_CONTENT)

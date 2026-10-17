@@ -46,10 +46,10 @@
 - [x] Verified: dev stack healthy, `/api/health` ok, 13 tests pass with no warnings, ruff clean; prod image smoke-tested (non-root uid 10001, migrations on start, health ok)
 
 ### Phase 1: Backend core & database
-- [ ] Models (§5): DailyMetric, Exercise, Workout, WorkoutSet, Activity, TrainingPlanItem, MealLog/MealLogItem (minimal), ChatConversation/ChatMessage, StepBucket, DailySourceMetric, IntegrationToken + migration
-- [ ] Idempotent exercise seed (all 42 exercises from the Strong export + extras, Strong naming)
-- [ ] Routers: metrics (+ steps breakdown), nutrition quick-add, workouts (last-performance, active, templates, UUID upserts), running
-- [ ] Strong CSV importer (NBSP/over-4 h durations, local tz, remap rules), then run the real import
+- [x] Models (§5): DailyMetric, Exercise, Workout, WorkoutSet (+ `exercise_order`), Activity, TrainingPlanItem, MealLog/MealLogItem (minimal), ChatConversation/ChatMessage, StepBucket, DailySourceMetric, IntegrationToken + migration `0002`
+- [x] Idempotent exercise seed: 58 exercises (all 42 from the Strong export, 2 remap targets, extras), run on container start
+- [x] Routers: metrics, nutrition quick-add, workouts (last-performance, active, templates, UUID upserts), running (steps breakdown comes with the health webhook)
+- [x] Strong CSV importer (NBSP/over-4 h durations, local tz, remap rules, lbs, `;` exports) + real import into the dev DB: 123 workouts, 2,361 sets, 0 new exercises, 76 estimated durations; re-import skips all 123
 - [ ] Health webhook + `health_ingest.py` (15-min buckets, merge, sleep attribution)
 - [ ] Strava OAuth + sync; `scheduler.py` (Strava poll, auto-finish sweep)
 - [ ] Research O2 (Health Connect forwarder)

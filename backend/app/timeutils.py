@@ -29,3 +29,10 @@ def day_bounds(day: date) -> tuple[datetime, datetime]:
     start = datetime.combine(day, time.min, tzinfo=settings.tz)
     end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=settings.tz)
     return start.astimezone(UTC), end.astimezone(UTC)
+
+
+def localize(naive: datetime) -> datetime:
+    """Interpret a naive wall-clock time (e.g. a Strong export timestamp) as APP_TZ local time."""
+    if naive.tzinfo is not None:
+        raise ValueError("datetime is already timezone-aware")
+    return naive.replace(tzinfo=settings.tz)
