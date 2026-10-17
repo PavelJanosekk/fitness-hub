@@ -1,6 +1,57 @@
 # Operations
 
-Running the production stack on the server. Commands run from the repo root.
+Running the app on the server. Commands run from the repo root.
+
+## Two stacks (E14)
+
+| | Prod | Dev |
+|---|---|---|
+| Command | `docker compose …` | `./dev …` (adds `docker-compose.dev.yml`) |
+| Compose project | `fitness-hub` | `fitness-hub-dev` |
+| Database | volume `fitness-hub_pgdata`, the real data | volume `fitness-hub-dev_pgdata`, a copy (`scripts/seed-dev-db.sh`) |
+| App | built image (API + SPA), `127.0.0.1:8010` | `uvicorn --reload` on the bind-mounted code, `127.0.0.1:8020` |
+| Frontend | served by the app | Vite on `127.0.0.1:5173` |
+| Scheduler (Strava, KB sync, auto-finish) | on | off |
+| Backups | daily | none |
+| Tailnet URL | `https://biggyserver.tailfff1d3.ts.net` | `https://biggyserver.tailfff1d3.ts.net:8443` |
+
+Both stacks can run at the same time. They are separate origins on the phone (the port is part of the origin),
+so the dev PWA never shares the service worker, offline queue or active workout with the real one.
+
+### Deploy a new version to prod
+
+```sh
+git switch dev && git pull                # or whichever commit should go live
+docker compose up -d --build              # rebuilds the image; the app runs migrations on start
+docker compose ps                         # app, db, backup: all (healthy)
+docker compose logs --tail 50 app         # no tracebacks
+```
+
+Before a release with a migration, take a manual backup (see below). Phones pick up the new frontend on their
+next load: `index.html` and `sw.js` are served `no-cache`, and the PWA updates itself.
+
+### Dev stack
+
+```sh
+./dev up -d --build          # db, app (8020), frontend (5173)
+scripts/seed-dev-db.sh       # optional: replace the dev DB with the newest prod backup (Strava tokens dropped)
+./dev exec app pytest        # tests use their own <db>_test database inside the dev Postgres
+./dev down                   # stop dev; prod keeps running
+```
+
+## HTTPS on the tailnet (E13)
+
+`tailscale serve` terminates HTTPS with a Tailscale-issued certificate and proxies to localhost:
+
+```sh
+sudo tailscale serve --bg 8010                 # https://<host>.<tailnet>.ts.net       → prod
+sudo tailscale serve --bg --https=8443 5173    # https://<host>.<tailnet>.ts.net:8443  → dev Vite
+tailscale serve status
+```
+
+The config survives reboots. `sudo` is needed unless the user was made the Tailscale operator once
+(`sudo tailscale set --operator=$USER`). That also lets any process running as that user change the serve
+config, so it is optional. Only tailnet devices can reach these URLs (no Funnel).
 
 ## Backups
 

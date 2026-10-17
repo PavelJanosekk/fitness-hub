@@ -44,15 +44,16 @@ Devices (F2): **iPhone 16 Pro** is the main phone and runs the PWA. **Galaxy Wat
 - **Containerization:** Docker & `docker-compose.yml`
 - **Services:**
   1. `db`: `postgres:16-alpine` with persistent volume
-  2. `app`: Multi-stage Docker build (Stage 1 builds React static files via Node, Stage 2 runs Python FastAPI serving `/api/*` and mounting the built React SPA at `/`). Runs `alembic upgrade head` on start.
-  3. `backup`: daily `pg_dump` into `./data/backups` with rotation (e.g. 7 daily / 4 weekly / 6 monthly) **[A11]**
+  2. `app`: Multi-stage Docker build (Stage 1 builds React static files via Node, Stage 2 runs Python FastAPI serving `/api/*` and mounting the built React SPA at `/`). Runs `alembic upgrade head` on start. ffmpeg is a minimal static build (audio decode → FLAC only) from a pinned, signature-checked source tarball.
+  3. `backup`: daily `pg_dump` into `BACKUP_DIR` (default `./data/backups`) with rotation: 7 daily / 4 weekly / 6 monthly **[A11]**. Restore steps: `docs/operations.md`.
 - **Ports:** inside the container the app listens on 8000. On the host it is published **on localhost only**, at `APP_PORT` (default **8010**; host port 8000 is already taken on the server). Postgres is only published in dev (`127.0.0.1:5432`).
-- **Dev loop:** `docker-compose.dev.yml` override **[A12]**:
-  - backend: `uvicorn --reload` with a bind mount, running as the host uid so files it creates stay yours;
-  - frontend (added in Phase 3): Vite dev server in a `node:22` container, with `/api` proxied to the backend.
+- **Dev loop:** `docker-compose.dev.yml` override **[A12]**, run through the `./dev` wrapper. It is a **separate compose project** (`fitness-hub-dev`) with its own database, so prod keeps running while you develop **[E14]**:
+  - backend: `uvicorn --reload` with a bind mount on `127.0.0.1:${DEV_APP_PORT:-8020}`, running as the host uid so files it creates stay yours; the scheduler is off;
+  - frontend (added in Phase 3): Vite dev server in a `node:22` container on `127.0.0.1:5173`, with `/api` proxied to the dev backend;
+  - `scripts/seed-dev-db.sh` copies the newest prod backup into the dev database and drops the Strava tokens.
 
   No local Node or Python is needed.
-- **HTTPS:** `tailscale serve --bg 8010` (the `APP_PORT`) → `https://<host>.<tailnet>.ts.net`. Microphone (`getUserMedia`), camera (barcode scanning, Phase 5) and service workers (PWA install) only work in a secure context **[A2]**. Because the app is bound to localhost, plain HTTP is never reachable from the LAN.
+- **HTTPS:** `tailscale serve --bg 8010` (the `APP_PORT`) → `https://<host>.<tailnet>.ts.net` serves prod; `tailscale serve --bg --https=8443 5173` serves the dev Vite server on `:8443` **[E13]**. Microphone (`getUserMedia`), camera (barcode scanning, Phase 5) and service workers (PWA install) only work in a secure context **[A2]**. Because the app is bound to localhost, plain HTTP is never reachable from the LAN.
 - **No CORS:** in prod the SPA and `/api` share one origin, and in dev Vite proxies `/api`.
 
 ---
@@ -74,7 +75,7 @@ Devices (F2): **iPhone 16 Pro** is the main phone and runs the PWA. **Galaxy Wat
 fitness-hub/
 ├── CLAUDE.md                 # Agent guide: rules, commands, where things are
 ├── docker-compose.yml        # db + app + backup
-├── docker-compose.dev.yml    # dev override: reload backend + Vite dev server
+├── docker-compose.dev.yml    # dev stack (project fitness-hub-dev): reload backend + Vite; run via ./dev
 ├── Dockerfile
 ├── .env.example
 ├── docs/
@@ -479,7 +480,7 @@ Execute in order, verifying each before moving on. Track status in `docs/PROGRES
 - Multi-stage `Dockerfile` (frontend build stage, ffmpeg), `docker-compose.yml` (db + app on `127.0.0.1:${APP_PORT}` + backup), healthcheck on `/api/health`.
 - Refresh `backend/constraints.txt` if dependencies changed (it has been frozen since Phase 0; see CLAUDE.md "Dependencies").
 - FastAPI serves the built React `dist/` as an SPA fallback so refreshing any route works.
-- `tailscale serve --bg 8000`; verify mic + PWA install on the iPhone over HTTPS.
+- `tailscale serve --bg 8010`; verify mic + PWA install on the iPhone over HTTPS.
 - Integration setup with guides in `docs/integrations/`:
   - register the Strava API app and connect it;
   - build the iOS Shortcut and its automations;
@@ -493,10 +494,10 @@ Execute in order, verifying each before moving on. Track status in `docs/PROGRES
 ---
 
 ## 10. Commands & Verification
-- Dev stack: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build`
-- Migrations: `docker compose exec app alembic revision --autogenerate --rev-id 0002 -m "<msg>"` (sequential ids), `docker compose exec app alembic upgrade head` (also runs on every app start)
-- Tests / lint: `docker compose exec app pytest`, `docker compose exec app ruff check .`, frontend `npm run typecheck`
-- Production: `docker compose up -d --build`; logs `docker compose logs -f app`
-- Health: `curl -f http://127.0.0.1:8010/api/health && curl -f http://127.0.0.1:8010/api/exercises`
-- HTTPS over the tailnet: `tailscale serve --bg 8010`
+- Dev stack (project `fitness-hub-dev`): `./dev up -d --build`; seed its DB from prod with `scripts/seed-dev-db.sh`
+- Migrations: `./dev exec app alembic revision --autogenerate --rev-id 000N -m "<msg>"` (sequential ids), `./dev exec app alembic upgrade head` (also runs on every app start, in prod too)
+- Tests / lint: `./dev exec app pytest`, `./dev exec app ruff check .`, frontend `npm run typecheck`
+- Production (project `fitness-hub`): `docker compose up -d --build`; logs `docker compose logs -f app`; backups and restore in `docs/operations.md`
+- Health: `curl -f http://127.0.0.1:8010/api/health && curl -f http://127.0.0.1:8010/api/exercises` (dev: port 8020)
+- HTTPS over the tailnet: `tailscale serve --bg 8010` (prod), `tailscale serve --bg --https=8443 5173` (dev)
 - Always verify container health and fix any startup tracebacks before finishing a phase.

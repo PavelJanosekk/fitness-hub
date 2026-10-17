@@ -1,4 +1,8 @@
-# Dev override: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# Dev stack (E14): its own compose project and database, so prod (`fitness-hub`) keeps running alongside.
+# Use the ./dev wrapper: ./dev up -d --build, ./dev exec app pytest, ./dev logs -f app
+# Seed the dev DB from the newest prod backup: scripts/seed-dev-db.sh
+name: fitness-hub-dev
+
 services:
   db:
     ports:
@@ -9,10 +13,20 @@ services:
       target: dev
     # Host uid/gid so files created in the bind mount (e.g. new migrations) stay owned by you
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      # Strava polling, KB sync and auto-finish run only in prod
+      SCHEDULER_ENABLED: "false"
+    # Prod owns APP_PORT (8010)
+    ports: !override
+      - "127.0.0.1:${DEV_APP_PORT:-8020}:8000"
     volumes:
       - ./backend:/app
 
-  # Vite dev server (Phase 3): http://127.0.0.1:5173, /api proxied to the backend
+  # Backups cover the prod database only; this profile is never enabled
+  backup:
+    profiles: ["prod-only"]
+
+  # Vite dev server: http://127.0.0.1:5173 (phone: https://<host>.<tailnet>.ts.net:8443), /api proxied to the backend
   frontend:
     image: node:22-bookworm-slim
     working_dir: /app

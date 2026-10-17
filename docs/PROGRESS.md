@@ -1,13 +1,11 @@
 # Progress
 
-**Current phase:** Phases 0–2 done and verified (backend + AI coach, 122 tests, live free-tier check passed). Phase 3 (React frontend & PWA) not started.
-**Next step:** Phase 3 is code-complete but **not yet checked in a real phone browser** (headless screenshots hung). Then Phase 4:
-- build and smoke-test the prod image (frontend stage added but never built);
-- `tailscale serve`, or Caddy (O6);
-- backups;
-- integration setup (Strava app, WEBHOOK_TOKEN, iOS Shortcut, Life Dashboard Companion);
-- slim the ffmpeg image. GymLogger still needs a check in a real phone browser (no visual check yet). Dev UI: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` → http://127.0.0.1:5173. Each step is committed and pushed to `origin/dev` as soon as it's verified.
-**Dev stack:** `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build` serves http://127.0.0.1:8010 (containers `fitness-hub-app-1`, `fitness-hub-db-1`).
+**Current phase:** Phases 0–3 code-complete. Phase 4 in progress: the prod stack is **live** on the real data (project `fitness-hub`, daily backups), and the dev stack is separate (`./dev`, E14).
+**Next step:**
+1. The user runs the `tailscale serve` switch (needs sudo, see the 2026-10-17 (15) session log). Until then prod is published on host port **5173** as a stopgap and the dev Vite server is down. After the switch: `docker compose up -d app` (back to 8010) and `./dev up -d`.
+2. Check on the iPhone: PWA install, mic/voice, GymLogger (no visual check has been done yet).
+3. Integrations: Strava app keys, `WEBHOOK_TOKEN`, `PUBLIC_BASE_URL`, iOS Shortcut, Life Dashboard Companion. Guides go in `docs/integrations/`.
+**Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
 ## Decisions
@@ -26,6 +24,8 @@
 | E10 | 2026-10-17 | Strava via OAuth + polling (no public webhook). Strava is the only automatic activity source. |
 | E11 | 2026-10-17 | The coach builds on the user's **RunningCoach** repo (github.com/PavelJanosekk/RunningCoach), which **stays the source of truth**. The app syncs it from GitHub daily and on demand. Rules, quick facts, zones and errata go into every coach request; other docs are read via a tool. The weekly plan tables, races and LTHR are parsed into the DB for the Run page. The user keeps their Claude Code "aktualizuj log" workflow there. |
 | E12 | 2026-10-17 | Port RunningCoach `scripts/metrics.py`: per-run GAP (Minetti), EF, decoupling and time per LTHR zone from per-second Strava streams, plus RPE and description from the activity detail. Backfilled within Strava rate limits. Progress is judged at equal HR and GAP; heat runs are excluded from trends. |
+| E13 | 2026-10-17 | O6: HTTPS via **`tailscale serve`**, not Caddy. Caddy's config stays untouched. |
+| E14 | 2026-10-17 | **Separate dev stack.** Prod is compose project `fitness-hub` (existing DB volume with the real data, backups) and stays up on 8010. Dev is project `fitness-hub-dev` with its own DB seeded from the newest prod backup, the scheduler off, Strava tokens wiped, backend on 8020 and Vite on 5173. `./dev` wraps the dev compose command. tailscale serve: :443 → prod, :8443 → dev Vite. |
 
 ## User facts (answers F1–F5, 2026-10-17)
 - **F1:** Strong export is in `data/imports/strong_workouts.csv`: 123 workouts, 2,361 sets, 42 exercises, 2025-08-07 → 2026-10-17. Analysed in review §G1.
@@ -40,7 +40,7 @@
 | O3 | KT `unit` grams: per entry or per unit? Are nutrient values per entry? Verify on one real diary day | Phase 5 |
 | O4 | E3: USDA bulk seed vs. lazy API | Before Phase 5 |
 | O5 | ✅ Live list checked: fast = `gemini-3.7-flash` (works with tool calls + typed args; served as 3.8-flash). **The key is on the free tier: Pro = 0 quota.** Smart tier = same Flash with high thinking until billing is enabled. Free-tier data may be used by Google; paid tier not. User: no paid calls for now | Phase 2 |
-| O6 | HTTPS: Caddy is already running on the server. Serve the app through it (with a Tailscale cert) or through `tailscale serve`? | Phase 4 |
+| O6 | ✅ `tailscale serve` (E13) | Phase 4 |
 
 ## Phase checklist
 
@@ -78,8 +78,10 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [x] 3.6 Settings: integrations + KB status/sync, Strong import; PWA manifest/icons; FastAPI serves built SPA (prep for Phase 4)
 
 ### Phase 4: Docker & deploy
-- [ ] Multi-stage Dockerfile (ffmpeg), compose (db, app, backup), healthcheck, SPA fallback
-- [ ] `tailscale serve`; verify mic + PWA install on the iPhone
+- [x] Multi-stage Dockerfile (minimal static ffmpeg 8.1.3), compose (db, app, backup), healthchecks, SPA fallback; prod image smoke-tested on a fresh DB (363 MB, was 1.04 GB with Debian's ffmpeg)
+- [x] Backups: daily `pg_dump`, 7/4/6 rotation, restore verified; `docs/operations.md`
+- [x] E14 split: prod live on the existing volume, dev project with its own DB + `scripts/seed-dev-db.sh`, `./dev` wrapper; CLAUDE.md/SPEC commands updated
+- [ ] `tailscale serve` → :443 prod (8010), :8443 dev (5173): **waiting on the user's sudo**; verify mic + PWA install on the iPhone
 - [ ] Integrations: Strava app + connect, iOS Shortcut, Health Connect forwarder; guides in `docs/integrations/`; data visible on the Settings page
 
 ### Phase 5: Nutrition module
@@ -146,3 +148,11 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - **2026-10-17 (14):** 3.6 Settings page (Strava connect/sync, webhook sources, KB status/sync, Strong import, pending changes), route code-splitting (core 305 kB, Dashboard + recharts 384 kB), FastAPI `mount_spa` (`STATIC_DIR`, no-cache index/sw, API 404s win, traversal-safe, 129 tests), and a Dockerfile frontend build stage.
   - **The prod image has not been built or tested yet.**
   - Session ended at the usage limit.
+- **2026-10-17 (15):** Phase 4, part 1.
+  - Slim image: ffmpeg 8.1.3 built from a GPG-verified, sha256-pinned tarball with only the audio parts the voice path uses (2.9 MB binary). Dev image 1.04 GB → 418 MB, prod 363 MB. The voice test uses committed 1 s fixtures (Chrome webm/Opus, Safari fragmented mp4/AAC).
+  - Prod image smoke-tested as a throwaway project on an empty DB: migrations 0001–0006, seed, SPA deep links, PWA files, no-cache/immutable headers, traversal, ffmpeg as uid 10001.
+  - Backup service + `docs/operations.md`. Rotation tested with fake old dumps; restore (also `--clean` over an existing DB) matches a real-data copy exactly.
+  - Decisions E13 (tailscale serve) and E14 (separate dev stack). Prod now runs on the existing volume, and a safety dump `data/backups/manual-pre-split-2026-10-17.dump` was taken before the switch. Dev was seeded from the first prod backup; the leftover `fitness_db_test` was dropped from prod.
+  - The user was logging a workout ("Chest tri") on the phone through `tailscale serve` → :5173 when the old dev Vite container was removed, about 3 minutes of downtime. `tailscale serve` can't be changed without sudo, so as a stopgap prod is published on host port 5173 (`APP_PORT=5173 docker compose up -d app`); :443 already points there. The user's switch, from the repo root:
+    `sudo tailscale serve reset && sudo tailscale serve --bg 8010 && sudo tailscale serve --bg --https=8443 5173 && docker compose up -d app && ./dev up -d`
+  - Slip: one `docker compose config` printout showed the resolved Postgres password in the session log (nowhere else). Since then only key presence is checked, never values.

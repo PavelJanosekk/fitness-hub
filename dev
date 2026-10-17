@@ -1,0 +1,4 @@
+#!/bin/sh
+# Dev stack (compose project fitness-hub-dev, docker-compose.dev.yml). Prod stays plain `docker compose`.
+#   ./dev up -d --build    ./dev exec app pytest    ./dev logs -f app    ./dev down
+exec docker compose -f docker-compose.yml -f docker-compose.dev.yml "$@"

@@ -29,12 +29,14 @@ Gemini-powered assistants. Single user, accessed over Tailscale (HTTPS via `tail
 - Frontend: React 18 + Vite + TypeScript, Tailwind, lucide-react, TanStack Query v5 (persisted mutations), recharts, react-router-dom, vite-plugin-pwa.
 
 ## Commands
-- Dev stack: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build`
-- Migrations: `docker compose exec app alembic upgrade head` / `alembic revision --autogenerate --rev-id 000N -m "<msg>"` (sequential ids)
-- Tests & lint: `docker compose exec app pytest`, `docker compose exec app ruff check .`, frontend `npm run typecheck`
-- Production: `docker compose up -d --build`; logs: `docker compose logs -f app`
-- Health: `curl -f http://127.0.0.1:8010/api/health` (host port = `APP_PORT`, default 8010, localhost only)
-- HTTPS on the tailnet: `tailscale serve --bg 8010`
+Prod and dev are separate compose projects (E14). Plain `docker compose` means **prod** (`fitness-hub`, real data);
+`./dev` wraps the dev project (`fitness-hub-dev`, its own DB). Develop, migrate and test only through `./dev`.
+- Dev stack: `./dev up -d --build` (backend http://127.0.0.1:8020, Vite http://127.0.0.1:5173); refresh its DB from the newest prod backup with `scripts/seed-dev-db.sh`
+- Migrations: `./dev exec app alembic upgrade head` / `./dev exec app alembic revision --autogenerate --rev-id 000N -m "<msg>"` (sequential ids)
+- Tests & lint: `./dev exec app pytest`, `./dev exec app ruff check .`, frontend `npm run typecheck`
+- Production: `docker compose up -d --build` (runs migrations on start); logs: `docker compose logs -f app`; backups/restore: `docs/operations.md`
+- Health: `curl -f http://127.0.0.1:8010/api/health` (prod host port = `APP_PORT`, default 8010, localhost only; dev = 8020)
+- HTTPS on the tailnet: `tailscale serve --bg 8010` (prod on :443), `tailscale serve --bg --https=8443 5173` (dev Vite on :8443). Needs sudo unless the user is the Tailscale operator.
 - Fix any container startup traceback before finishing a phase.
 
 ## Dependencies
@@ -51,7 +53,7 @@ Gemini-powered assistants. Single user, accessed over Tailscale (HTTPS via `tail
 ## Local environment notes
 - `.env` exists (POSTGRES_*, DATABASE_URL with host `db`, GEMINI_API_KEY) — never print or commit it; `.env.example` documents the keys.
 - Node and python3-venv are not installed on the host, so everything runs in containers (frontend in `node:22` from Phase 3).
-- Host port 8000 belongs to **Portainer**. The server also runs Caddy, Home Assistant, Immich and others, so never stop or reconfigure containers outside the `fitness-hub` compose project. The app uses `APP_PORT` (8010).
+- Host port 8000 belongs to **Portainer**. The server also runs Caddy, Home Assistant, Immich and others, so never stop or reconfigure containers outside the `fitness-hub` and `fitness-hub-dev` compose projects. The app uses `APP_PORT` (8010).
 - Docker: user `biggys` is in the `docker` group. If a session still gets "permission denied" on the socket (it started before the group change), wrap commands in `sg docker -c "..."`.
 - `data/` is gitignored. It holds import samples (the real Strong export is `data/imports/strong_workouts.csv`) and backups. Test fixtures derived from it must be anonymized slices.
 - Devices: an iPhone (PWA, Apple Health steps via iOS Shortcut), a Galaxy Watch paired with an Android phone (Samsung Health → Health Connect forwarder), and Strava for runs. See `docs/SPEC.md` §6.5.
