@@ -41,6 +41,8 @@ DEFAULT_REMAP_RULES = (
         marker_note="Takovej ten bent over pulldown",
     ),
     RemapRule("Lat Pulldown - Underhand (Cable)", "Kelso Shrug", MuscleGroup.back, "cable", marker_note="Kelso shrug"),
+    # Named "Dragon Fly 🐉" in Strong by mistake; renamed in the app (migration 0011)
+    RemapRule("Dragon Fly 🐉", "Dragon Flag", MuscleGroup.core, "bodyweight"),
 )
 
 # Ordered: more specific phrases first ("reverse fly" before "fly", "leg curl" before "curl")

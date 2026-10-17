@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export function Button({
   children,
@@ -51,19 +51,46 @@ export const parseDecimal = (value: string): number | null => {
   return Number.isFinite(number) ? number : null;
 };
 
-/** Bottom sheet on phones, centered dialog on desktop. */
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+/** The visible area above the on-screen keyboard (iOS keeps the layout viewport full-height and only shrinks this one). */
+function useVisibleArea(): { top: number; height: number } | null {
+  const [area, setArea] = useState<{ top: number; height: number } | null>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const update = () => setArea({ top: viewport.offsetTop, height: viewport.height });
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+    };
+  }, []);
+  return area;
+}
+
+/**
+ * Bottom sheet on phones, centered dialog on desktop. It is sized to the area above the keyboard, so a search field
+ * inside it never pushes the content under the keyboard. `tall` keeps a steady height (e.g. a filtered list).
+ */
+export function Sheet({ title, onClose, children, tall = false }: { title: string; onClose: () => void; children: React.ReactNode; tall?: boolean }) {
+  const area = useVisibleArea();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 md:items-center" onClick={onClose}>
+    <div
+      className="fixed inset-x-0 top-0 bottom-0 z-40 flex items-end justify-center bg-black/60 md:items-center"
+      style={area ? { top: area.top, bottom: "auto", height: area.height } : undefined}
+      onClick={onClose}
+    >
       <div
         role="dialog"
         aria-label={title}
         className="pb-safe max-h-[85dvh] w-full overflow-y-auto rounded-t-3xl border border-zinc-800 bg-zinc-900 p-4 md:max-w-lg md:rounded-3xl"
+        style={area ? { maxHeight: area.height * 0.92, height: tall ? area.height * 0.92 : undefined } : undefined}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">

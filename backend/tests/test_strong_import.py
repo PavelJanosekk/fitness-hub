@@ -101,6 +101,16 @@ def test_remap_rules_apply_to_all_workouts_and_drop_marker_note(
     assert all(s.notes is None for s in kelso)
 
 
+def test_dragon_fly_from_strong_lands_on_dragon_flag(
+    session: Session, client: TestClient, exercises: dict[str, int]
+) -> None:
+    row = "2026-01-05 18:00:00,Core,10m,Dragon Fly 🐉,1,0,8,0,0,,,"
+    upload(client, "\n".join([HEADER, row]))
+
+    assert [(s.weight_kg, s.reps) for s in sets_of(session, "Dragon Flag")] == [(0.0, 8)]
+    assert session.exec(select(Exercise).where(Exercise.name == "Dragon Fly 🐉")).first() is None
+
+
 def test_bodyweight_and_added_load(session: Session, client: TestClient, exercises: dict[str, int]) -> None:
     upload(client)
 

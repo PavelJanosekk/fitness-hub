@@ -27,7 +27,7 @@ EXERCISES: list[tuple[str, MuscleGroup, str | None]] = [
     ("Chest Fly", M.chest, "machine"),
     ("Chest Fly (Band)", M.chest, "band"),
     ("Chest Fly (Dumbbell)", M.chest, "dumbbell"),
-    ("Dragon Fly 🐉", M.core, "bodyweight"),
+    ("Dragon Flag", M.core, "bodyweight"),
     ("Flat Leg Raise", M.core, "bodyweight"),
     ("Hammer Curl (Dumbbell)", M.arms, "dumbbell"),
     ("Hanging Leg Raise", M.core, "bodyweight"),
