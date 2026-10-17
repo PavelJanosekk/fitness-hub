@@ -6,19 +6,31 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlmodel import Session
 
 from app.config import settings
-from app.database import SessionDep
+from app.database import SessionDep, engine
 from app.routers import ai_coach, coach_kb, integrations, metrics, nutrition, running, webhooks, workouts
 from app.services import scheduler
+from app.services.nutrition import kt_import
 from app.spa import mount_spa
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     tasks = scheduler.start() if settings.scheduler_enabled else []
+    if settings.scheduler_enabled:
+        resume_kt_import()
     yield
     await scheduler.stop(tasks)
+
+
+def resume_kt_import() -> None:
+    """A KT import interrupted by a restart or deploy continues from its cursor."""
+    with Session(engine) as session:
+        running = kt_import.get_state(session).status == "running"
+    if running and settings.kaloricketabulky_email and settings.kaloricketabulky_password:
+        nutrition.start_kt_import()
 
 
 app = FastAPI(title="Fitness Hub", lifespan=lifespan)

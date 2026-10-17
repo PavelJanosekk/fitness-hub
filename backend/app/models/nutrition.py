@@ -137,15 +137,20 @@ class NutritionProfile(SQLModel, table=True):
     updated_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
 
 
+class MealSource(StrEnum):
+    kaloricke_tabulky = "kaloricke_tabulky"  # imported; null = logged in this app
+
+
 class MealLog(SQLModel, table=True):
-    """The single home of intake data (docs/SPEC.md §5.7). Minimal now, extended in Phase 5."""
+    """The single home of intake data (docs/SPEC.md §5.7)."""
 
     __tablename__ = "meal_logs"
-    __table_args__ = (one_of("meal_type", MealType),)
+    __table_args__ = (one_of("meal_type", MealType), one_of("source", MealSource))
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     logged_date: dt.date = Field(index=True)
     meal_type: str = MealType.other
+    source: str | None = None
     raw_user_input: str | None = None
     notes: str | None = None
     created_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
@@ -171,3 +176,24 @@ class MealLogItem(SQLModel, table=True):
     protein_g: float | None = None
     carbs_g: float | None = None
     fat_g: float | None = None
+
+
+class KTImportState(SQLModel, table=True):
+    """Single row (id = 1): the resumable KalorickéTabulky import (Phase 5.5). `next_day` is the cursor."""
+
+    __tablename__ = "kt_import_state"
+    __table_args__ = (CheckConstraint("id = 1", name="single_row"),)
+
+    id: int = Field(default=1, primary_key=True)
+    status: str = "idle"  # idle | running | done | error
+    range_from: dt.date | None = None
+    range_to: dt.date | None = None
+    next_day: dt.date | None = None
+    days_done: int = 0
+    days_skipped: int = 0
+    items_imported: int = 0
+    foods_created: int = 0
+    weights_filled: int = 0
+    warnings: list[str] = Field(default_factory=list, sa_type=JSONB)
+    last_error: str | None = None
+    updated_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)

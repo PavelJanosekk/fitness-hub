@@ -8,11 +8,13 @@ from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, Response, UploadFile, status
+from kaloricketabulky.sdk import KaloricketabulkyClient
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import select
+from sqlmodel import Session, select
 
-from app.database import SessionDep
+from app.config import settings
+from app.database import SessionDep, engine
 from app.models.nutrition import Food, FoodSource, MealLog, MealLogItem, MealType, NutritionProfile
 from app.routers.ai_coach import ChatRequest, GeminiDep, audio_part, run_gemini
 from app.schemas.nutrition import (
@@ -29,7 +31,7 @@ from app.schemas.nutrition import (
     Totals,
 )
 from app.services.gemini_service import Tier
-from app.services.nutrition import off
+from app.services.nutrition import kt_import, off
 from app.services.nutrition import quick_add as quick_add_meal
 from app.services.nutrition.assistant import NutritionTurn, nutrition_turn
 from app.services.nutrition.foods import create_food, read_food, search_foods, update_food
@@ -273,6 +275,60 @@ def confirm_draft(body: MealDraftConfirm, session: SessionDep) -> MealRead:
     meal = session.get(MealLog, body.id)
     assert meal is not None
     return next(m for m in day_meals(session, meal.logged_date) if m.id == meal.id)
+
+
+class KTImportRequest(BaseModel):
+    date_from: dt.date
+    date_to: dt.date | None = None  # default: yesterday (today is still being eaten)
+
+
+class KTImportRead(BaseModel):
+    configured: bool
+    running: bool
+    status: str
+    range_from: dt.date | None
+    range_to: dt.date | None
+    next_day: dt.date | None
+    days_done: int
+    days_skipped: int
+    items_imported: int
+    foods_created: int
+    weights_filled: int
+    warnings: list[str]
+    last_error: str | None
+
+
+def _kt_read(session: SessionDep) -> KTImportRead:
+    state = kt_import.get_state(session)
+    configured = bool(settings.kaloricketabulky_email and settings.kaloricketabulky_password)
+    return KTImportRead(
+        configured=configured, running=kt_import.is_running(), **state.model_dump(exclude={"id", "updated_at"})
+    )
+
+
+@router.get("/import/kaloricke-tabulky", response_model=KTImportRead)
+def kt_import_status(session: SessionDep) -> KTImportRead:
+    return _kt_read(session)
+
+
+@router.post("/import/kaloricke-tabulky", response_model=KTImportRead)
+async def kt_import_start(body: KTImportRequest, session: SessionDep) -> KTImportRead:
+    """Start (or resume, for the same range) the background import of KalorickéTabulky history."""
+    if not (settings.kaloricketabulky_email and settings.kaloricketabulky_password):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Set KALORICKETABULKY_EMAIL and _PASSWORD in .env")
+    if kt_import.is_running():
+        raise HTTPException(status.HTTP_409_CONFLICT, "The import is already running")
+    date_to = body.date_to or today() - dt.timedelta(days=1)
+    if body.date_from > date_to or date_to >= today():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Range must be in the past, from <= to")
+    kt_import.prepare(session, body.date_from, date_to)
+    start_kt_import()
+    return _kt_read(session)
+
+
+def start_kt_import() -> None:
+    credentials = (settings.kaloricketabulky_email or "", settings.kaloricketabulky_password or "")
+    kt_import.start_task(KaloricketabulkyClient(), lambda: Session(engine), credentials)
 
 
 def _food(session: SessionDep, food_id: int) -> Food:

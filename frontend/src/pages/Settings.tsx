@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api } from "../api/client";
 import { useKb } from "../api/running";
 import { Card, PageHeader } from "../components/Layout";
+import { KTImportCard } from "../components/nutrition/KTImportCard";
 import { Button } from "../components/ui";
 import { formatDay, formatTime } from "../lib/format";
 import { errorText } from "./AiCoach";
@@ -159,6 +160,8 @@ export function Settings() {
             />
           </label>
         </Card>
+
+        <KTImportCard />
 
         <Card>
           <h2 className="mb-1 flex items-center gap-2 font-semibold">

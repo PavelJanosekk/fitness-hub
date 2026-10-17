@@ -59,6 +59,7 @@ Ids refer to `docs/plan-review-2026-10-17.md`; the verified USDA/OFF facts behin
   - Diary `activities` are **not** imported (Strava and the health sources own activity data).
 - KT foods have no vitamins or other minerals, so link them to a USDA equivalent through `micros_reference_food_id` (an optional, Gemini-assisted background step for frequently eaten foods).
 - Tests are built from one real diary day, anonymized. The SDK's own fixtures contain random values.
+- **E16 (2026-10-17):** imported items keep KT's exact per-day kcal/protein/carbs/fat (the user's own recipes change composition daily and the API exposes no ingredients), the only exception to C8. The KT food is refreshed to the newest composition seen. O3 verified: grams = count × unit grams, nutrients per entry, Na/Ca in g.
 
 ---
 
