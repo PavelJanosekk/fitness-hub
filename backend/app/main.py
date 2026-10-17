@@ -1,13 +1,26 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.config import settings
 from app.database import SessionDep
-from app.routers import metrics, nutrition, running, webhooks, workouts
+from app.routers import integrations, metrics, nutrition, running, webhooks, workouts
+from app.services import scheduler
 
-app = FastAPI(title="Fitness Hub")
-for module in (metrics, nutrition, running, webhooks, workouts):
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    tasks = scheduler.start() if settings.scheduler_enabled else []
+    yield
+    await scheduler.stop(tasks)
+
+
+app = FastAPI(title="Fitness Hub", lifespan=lifespan)
+for module in (integrations, metrics, nutrition, running, webhooks, workouts):
     app.include_router(module.router)
 
 

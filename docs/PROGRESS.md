@@ -51,7 +51,7 @@
 - [x] Routers: metrics, nutrition quick-add, workouts (last-performance, active, templates, UUID upserts), running (steps breakdown comes with the health webhook)
 - [x] Strong CSV importer (NBSP/over-4 h durations, local tz, remap rules, lbs, `;` exports) + real import into the dev DB: 123 workouts, 2,361 sets, 0 new exercises, 76 estimated durations; re-import skips all 123
 - [x] Health webhook `POST /api/webhooks/health` (X-Webhook-Token, replace-per-day) + `health_ingest.py` (15-min buckets, max per bucket summed, daily-max fallback, manual wins; sleep by wake-up day, overlaps counted once, Samsung > Apple) + `GET /api/metrics/steps-breakdown`
-- [ ] Strava OAuth + sync; `scheduler.py` (Strava poll, auto-finish sweep)
+- [x] Strava OAuth (connect/callback with CSRF state) + incremental sync (7-day overlap, cursor only advances on complete syncs, calories via detail for runs ≤14 days, max 20/sync) + `/api/integrations/status`; `scheduler.py` asyncio loops (auto-finish every 10 min, Strava every 30 min); migration `0003` (health_source_status)
 - [ ] Research O2 (Health Connect forwarder)
 - [ ] Tests (see SPEC §9, Phase 1)
 

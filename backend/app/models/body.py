@@ -33,6 +33,17 @@ class DailyMetric(SQLModel, table=True):
     notes: str | None = None
 
 
+class HealthSourceStatus(SQLModel, table=True):
+    """When each webhook source last delivered data, so a broken Shortcut or forwarder gets noticed."""
+
+    __tablename__ = "health_source_status"
+    __table_args__ = (one_of("source", HealthSource),)
+
+    source: str = Field(primary_key=True)
+    last_received_at: dt.datetime = Field(sa_type=AwareDateTime)
+    last_day: dt.date  # newest day in the last payload
+
+
 class StepBucket(SQLModel, table=True):
     """Interval step data of one source, spread over 15-minute buckets."""
 

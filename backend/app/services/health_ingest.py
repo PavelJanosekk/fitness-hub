@@ -10,9 +10,16 @@ from collections import defaultdict
 
 from sqlmodel import Session, col, delete, select
 
-from app.models.body import DailyMetric, DailyMetricKind, DailySourceMetric, HealthSource, StepBucket
+from app.models.body import (
+    DailyMetric,
+    DailyMetricKind,
+    DailySourceMetric,
+    HealthSource,
+    HealthSourceStatus,
+    StepBucket,
+)
 from app.schemas.health import BucketRow, DayMerge, HealthPush, SleepSession, StepsBreakdown
-from app.timeutils import day_bounds, local_date
+from app.timeutils import day_bounds, local_date, now_utc
 
 BUCKET = dt.timedelta(minutes=15)
 SLEEP_SOURCE_PRIORITY = (HealthSource.manual, HealthSource.samsung_health, HealthSource.apple_health)
@@ -89,6 +96,7 @@ def ingest(session: Session, push: HealthPush) -> list[DayMerge]:
                     value=round(_merged_minutes(night), 1),
                 )
             )
+    session.merge(HealthSourceStatus(source=push.source, last_received_at=now_utc(), last_day=days[-1]))
     session.flush()
     results = [recompute_day(session, day) for day in days]
     session.commit()

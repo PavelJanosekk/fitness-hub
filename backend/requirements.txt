@@ -1,5 +1,6 @@
 # Direct runtime dependencies (exact pins). Full resolved set: constraints.txt
 fastapi==0.142.2
+httpx==0.28.1
 uvicorn[standard]==0.54.0
 sqlmodel==0.0.47
 psycopg[binary]==3.3.6

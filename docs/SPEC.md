@@ -27,7 +27,7 @@ Devices (F2): **iPhone 16 Pro** is the main phone and runs the PWA. **Galaxy Wat
 - **Data Processing:** Python built-in `csv` module (Strong CSV imports)
 - **Multipart/Audio handling:** `python-multipart`; `ffmpeg` in the image for audio transcoding fallback **[A8]**
 - **HTTP client:** `httpx` (Strava; later USDA/OFF)
-- **Background jobs:** APScheduler `AsyncIOScheduler`, started in the FastAPI lifespan, runs Strava polling and the workout auto-finish sweep **[E9][E10]**. Run a **single Uvicorn worker** so jobs never run twice.
+- **Background jobs:** two small asyncio loops started in the FastAPI lifespan (`services/scheduler.py`) run Strava polling and the workout auto-finish sweep **[E9][E10]**. This replaced APScheduler during Phase 1, because two jobs need no extra dependency. Run a **single Uvicorn worker** so jobs never run twice. `SCHEDULER_ENABLED=false` turns them off (tests do this).
 - **KalorickéTabulky import (Phase 5):** `kaloricketabulky-sdk` (PyPI, MIT, async, read-only), pinned to an exact version
 - **Quality:** `pytest` + `httpx` (FastAPI TestClient), recorded fixtures for external APIs (Gemini, later USDA/OFF), `ruff` **[A13]**
 
@@ -95,7 +95,8 @@ fitness-hub/
 │       ├── database.py       # SQLModel engine, session dependency
 │       ├── timeutils.py      # today()/day bounds in APP_TZ
 │       ├── seed.py           # Default gym exercises seeder (idempotent)
-│       ├── models/           # One module per domain [A13]
+│       ├── schemas/          # API request/response models (pydantic), one module per domain
+│       ├── models/           # One module per domain [A13] (+ common.py, integrations.py)
 │       │   ├── __init__.py
 │       │   ├── body.py       # DailyMetric
 │       │   ├── gym.py        # Exercise, Workout, WorkoutSet
@@ -113,6 +114,8 @@ fitness-hub/
 │       └── services/
 │           ├── gemini_service.py  # Shared google-genai runner (system prompt + toolset + history)
 │           ├── ai_tools.py        # Coach tools exposed to Gemini
+│           ├── workouts.py        # Workout read helpers, templates, auto-finish
+│           ├── metrics.py         # Daily series with 7-day rolling averages
 │           ├── strong_import.py   # Strong CSV parser/importer (+ exercise remap rules)
 │           ├── strava_client.py   # Strava OAuth token refresh + activity sync
 │           ├── health_ingest.py   # Step bucketing + multi-source merge, sleep attribution
@@ -174,7 +177,8 @@ Intake (calories/macros) is **not** stored here — the single source of truth i
 - `id`: `UUID` (Primary Key, client-generated) **[A5]**
 - `workout_id`: `UUID` (FK `workouts.id`, ondelete CASCADE)
 - `exercise_id`: `int` (FK `exercises.id`)
-- `set_order`: `int` (1, 2, 3…)
+- `exercise_order`: `int`, the position of the exercise within the workout (1-based). Added in Phase 1 for history display and templates.
+- `set_order`: `int` (1, 2, 3…), the position within its exercise
 - `set_type`: `str` (`normal`, `warmup`, `drop`, `failure`; replaces `is_warmup`) **[A6]**
 - `weight_kg`: `Optional[float]` (0 for bodyweight; null for pure time/distance sets)
 - `reps`: `Optional[int]`
@@ -221,8 +225,10 @@ Created in Phase 1 so intake has one home from day one; Phase 5 extends them (se
 Interval step data per source, normalized to 15-minute buckets.
 - `source`: `str` (`apple_health`, `samsung_health`)
 - `bucket_start`: `timestamptz`, aligned to :00/:15/:30/:45
-- `steps`: `int`
+- `steps`: `float` (samples are split proportionally; rounding happens on the day total)
 - PK (`source`, `bucket_start`)
+
+**HealthSourceStatus** (table `health_source_status`, added in Phase 1): `source` PK, `last_received_at`, `last_day`. It records when each webhook source last delivered data, for the Settings page.
 
 ### 5.10 DailySourceMetric (table `daily_source_metrics`) [E7][E8]
 Per-source daily values. Used when a source sends totals instead of intervals, and for metrics that have no buckets.
@@ -273,7 +279,7 @@ Per-source daily values. Used when a source sends totals instead of intervals, a
   - `Date` is **naive local time**, so localize it in `APP_TZ` before storing it as `timestamptz`.
   - `Weight 0.0` means bodyweight. On bodyweight exercises (Pull Up, Chest Dip) a weight > 0 is **added** load. `Distance`/`Seconds` of 0 and an empty `RPE` are stored as null. Numeric `Set Order` maps to `set_type=normal` (other markers map to set types if they ever appear).
   - `Duration` such as `"1h 8m"`, `"39m"`, `"1h"` or `"2 103h 34m"` (the thousands separator is a **non-breaking space**): strip spaces and NBSP before parsing. A duration **over 4 h** is treated as a workout never finished in Strong (62 % of the real export). For those, `ended_at = started_at + set_count × 3 min` (the user's empirical average) and `ended_by = import_estimate`, and the workout is listed in `warnings`.
-  - **Exercise remap rules [E5]:** the user logged some movements under the closest Strong exercise and marked them with a sticky note on set 1. Each rule is `{strong_name, note_contains | null, map_to, muscle_group}` and applies to every set of that exercise in matching workouts (all workouts when `note_contains` is null). The marker note is then dropped. Default rules:
+  - **Exercise remap rules [E5]:** the user logged some movements under the closest Strong exercise and marked them with a sticky note on set 1. Each rule is `{strong_name, map_to, muscle_group, equipment?, marker_note?, all_workouts}`. It applies to every set of that exercise, in all workouts, or with `all_workouts=false` only in workouts where the marker note appears. The marker note is dropped from the imported sets. Default rules:
     - `Lat Pulldown (Machine)` → **Bent-over Pulldown** (back), all workouts (the note is on 41/41).
     - `Lat Pulldown - Underhand (Cable)` → **Kelso Shrug** (back), all workouts. This is an assumption: the note first appears on 2025-09-30, but loads continue seamlessly from the note-less workouts before it.
     - Rules can be overridden per import via an `exercise_map` JSON field.
@@ -304,7 +310,8 @@ Per-source daily values. Used when a source sends totals instead of intervals, a
   - It is incremental via `after=last_activity_start`. The first run backfills the full history page by page.
   - It refreshes the access token when it has expired. It maps each activity to `Activity` with `external_id = "strava:<id>"`, `source = strava`, and fetches details (calories) only for new activities.
   - It stays far below Strava's rate limits.
-- `GET /api/integrations/status`: Strava connection + last sync, and the last payload received per webhook source.
+- `GET /api/integrations/status`: Strava configured/connected + last sync, whether webhooks are enabled, and the last payload received per webhook source.
+- **Not configured = refused, never silent:** without `STRAVA_CLIENT_ID`/`SECRET`, connect returns 503. Without `WEBHOOK_TOKEN`, webhooks return 503. Sync without a connection returns 409.
 
 **`POST /api/webhooks/health`**: `X-Webhook-Token` required **[A13]**.
 ```json

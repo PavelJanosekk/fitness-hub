@@ -17,6 +17,9 @@ from app.main import app
 from app.models.gym import Exercise
 from app.seed import seed_exercises
 
+# Background jobs would run against the dev database, not the test one
+settings.scheduler_enabled = False
+
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 _app_url = make_url(settings.database_url)
 TEST_DB_URL = _app_url.set(database=f"{_app_url.database}_test")

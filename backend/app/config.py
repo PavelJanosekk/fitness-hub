@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     database_url: str
     app_tz: str = "Europe/Prague"
     webhook_token: str | None = None  # required by /api/webhooks/*; webhooks are disabled while unset
+    strava_client_id: str | None = None
+    strava_client_secret: str | None = None
+    # Public HTTPS origin (e.g. https://host.tailnet.ts.net) for OAuth redirects; falls back to the request URL
+    public_base_url: str | None = None
+    scheduler_enabled: bool = True
 
     @field_validator("database_url")
     @classmethod
