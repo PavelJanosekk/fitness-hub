@@ -1,15 +1,17 @@
 # Fitness Hub — Core Specification
 
 > Source: the original project spec (formerly the whole `CLAUDE.md`, commit `d93d650`), restructured
-> on 2026-10-17 with the accepted changes from `docs/plan-review-2026-10-17.md` (decisions E0, E1,
-> E2, E4). Changed or new items are tagged with their review id, e.g. **[A5]**.
+> on 2026-10-17 with the accepted changes from `docs/plan-review-2026-10-17.md` (decisions E0–E2,
+> E4–E10). Changed or new items are tagged with their review id, e.g. **[A5]**.
 > Nutrition module (Phase 5): `docs/nutrition-module-spec.md`.
 
 ## 1. Project Overview
 Build a full-stack, self-hosted, mobile-first Progressive Web App (PWA) for tracking personal health metrics, gym workouts (Strong app replacement), marathon running preparation, and an integrated AI Coach powered by the Google Gemini API.
 The application runs inside Docker containers and is accessed primarily via smartphone and desktop over a private network (Tailscale), **served over HTTPS via `tailscale serve`** **[A2]**.
 
-Single user — no `user_id` columns (assumption, pending confirmation F4).
+Single user **for now**, so there are no `user_id` columns. This may become multi-user later (F4). To keep that change cheap, keep data access in per-domain service functions. When it happens, use the `Tailscale-User-Login` header that `tailscale serve` injects as the identity source.
+
+Devices (F2): **iPhone 16 Pro** is the main phone and runs the PWA. **Galaxy Watch 6 Classic** is paired with an Android phone running Samsung Health. Runs are recorded to **Strava**. Steps come from both the watch (Samsung Health) and the iPhone (Apple Health). See §6.5.
 
 ---
 
@@ -24,6 +26,9 @@ Single user — no `user_id` columns (assumption, pending confirmation F4).
 - **AI SDK:** `google-genai` (CRITICAL: use ONLY the new official `google-genai` package with `from google import genai`. DO NOT use the deprecated `google-generativeai` package!)
 - **Data Processing:** Python built-in `csv` module (Strong CSV imports)
 - **Multipart/Audio handling:** `python-multipart`; `ffmpeg` in the image for audio transcoding fallback **[A8]**
+- **HTTP client:** `httpx` (Strava; later USDA/OFF)
+- **Background jobs:** APScheduler `AsyncIOScheduler`, started in the FastAPI lifespan, runs Strava polling and the workout auto-finish sweep **[E9][E10]**. Run a **single Uvicorn worker** so jobs never run twice.
+- **KalorickéTabulky import (Phase 5):** `kaloricketabulky-sdk` (PyPI, MIT, async, read-only), pinned to an exact version
 - **Quality:** `pytest` + `httpx` (FastAPI TestClient), recorded fixtures for external APIs (Gemini, later USDA/OFF), `ruff` **[A13]**
 
 ### Frontend
@@ -70,7 +75,8 @@ fitness-hub/
 │   ├── SPEC.md               # This file
 │   ├── PROGRESS.md           # Phase checklist, decisions, open questions, session log
 │   ├── nutrition-module-spec.md
-│   └── plan-review-2026-10-17.md
+│   ├── plan-review-2026-10-17.md
+│   └── integrations/         # Setup guides: iOS Shortcut, Health Connect forwarder, Strava app
 ├── backend/
 │   ├── requirements.txt
 │   ├── alembic.ini
@@ -79,7 +85,7 @@ fitness-hub/
 │   └── app/
 │       ├── __init__.py
 │       ├── main.py           # FastAPI app init, CORS, static files mount, /api/health
-│       ├── config.py         # Settings (DATABASE_URL, GEMINI_API_KEY, model tiers, APP_TZ, WEBHOOK_TOKEN)
+│       ├── config.py         # Settings (DATABASE_URL, GEMINI_API_KEY, model tiers, APP_TZ, WEBHOOK_TOKEN, STRAVA_CLIENT_ID/SECRET)
 │       ├── database.py       # SQLModel engine, session dependency
 │       ├── timeutils.py      # today()/day bounds in APP_TZ
 │       ├── seed.py           # Default gym exercises seeder (idempotent)
@@ -95,12 +101,16 @@ fitness-hub/
 │       │   ├── workouts.py   # Gym workouts, sets, ghost values, Strong CSV import
 │       │   ├── running.py    # Cardio activities & marathon training plan
 │       │   ├── nutrition.py  # Quick-add intake (Phase 1); full module in Phase 5
-│       │   ├── webhooks.py   # Ingestion endpoints for mobile health exports
+│       │   ├── webhooks.py   # Health data ingestion (iOS Shortcut, Health Connect forwarder)
+│       │   ├── integrations.py # Strava OAuth connect/callback/sync, integration status
 │       │   └── ai_coach.py   # Coach chat, voice workout logging
 │       └── services/
 │           ├── gemini_service.py  # Shared google-genai runner (system prompt + toolset + history)
 │           ├── ai_tools.py        # Coach tools exposed to Gemini
-│           ├── strong_import.py   # Strong CSV parser/importer
+│           ├── strong_import.py   # Strong CSV parser/importer (+ exercise remap rules)
+│           ├── strava_client.py   # Strava OAuth token refresh + activity sync
+│           ├── health_ingest.py   # Step bucketing + multi-source merge, sleep attribution
+│           ├── scheduler.py       # APScheduler jobs (Strava poll, workout auto-finish)
 │           └── audio.py           # MIME detection + ffmpeg transcode fallback
 └── frontend/
     ├── package.json
@@ -121,7 +131,8 @@ fitness-hub/
             ├── Dashboard.tsx    # Weight 7d avg chart, intake, weekly summary
             ├── GymLogger.tsx    # Active workout UI, ghost values, +/- steppers
             ├── RunningPlan.tsx  # Marathon schedule vs completed runs
-            └── AiCoach.tsx      # Chat UI + Voice workout dictation
+            ├── AiCoach.tsx      # Chat UI + Voice workout dictation
+            └── Settings.tsx     # Integrations: Strava connect/sync, last data received per source
 ```
 
 ---
@@ -133,8 +144,8 @@ Intake (calories/macros) is **not** stored here — the single source of truth i
 - `date`: `datetime.date` (Primary Key)
 - `weight_kg`: `Optional[float]`
 - `calories_out`: `Optional[int]`
-- `steps`: `Optional[int]`
-- `sleep_hours`: `Optional[float]`
+- `steps`: `Optional[int]`: the **merged** day value. `services/health_ingest.py` keeps it up to date from §5.9/§5.10 **[E7]**. A manual entry via `POST /api/metrics` is recorded as source `manual`.
+- `sleep_hours`: `Optional[float]`: the merged value, from Samsung Health sleep sessions when they exist **[E8]**
 - `notes`: `Optional[str]`
 
 ### 5.2 Exercise (table `exercises`)
@@ -148,6 +159,7 @@ Intake (calories/macros) is **not** stored here — the single source of truth i
 - `name`: `str` (e.g. "Push Day", "Full Body")
 - `started_at`: `timestamptz` (Indexed)
 - `ended_at`: `Optional[timestamptz]` (null = active workout)
+- `ended_by`: `Optional[str]`: `user`, `auto_idle` (auto-finish **[E9]**), or `import_estimate` (Strong duration was implausible **[E5]**)
 - `source`: `str` (`manual`, `ai`, `strong_import`)
 - `notes`: `Optional[str]`
 - Strong re-imports are deduplicated on (`started_at`, `name`) **[A6]**.
@@ -164,6 +176,8 @@ Intake (calories/macros) is **not** stored here — the single source of truth i
 - `distance_m`: `Optional[float]` (rower, sled, carries) **[A6]**
 - `rpe`: `Optional[float]` (1.0–10.0)
 - `completed`: `bool` (default True)
+- `completed_at`: `Optional[timestamptz]`: when the set was ticked off. This drives auto-finish **[E9]**. Null for imported sets.
+- `notes`: `Optional[str]` (e.g. Strong set/exercise notes)
 - `updated_at`: `timestamptz` (last-write-wins for upserts)
 
 ### 5.5 Activity (table `activities` — Running & Cardio)
@@ -190,12 +204,36 @@ Intake (calories/macros) is **not** stored here — the single source of truth i
 
 ### 5.7 MealLog / MealLogItem (tables `meal_logs`, `meal_log_items`) — minimal in Phase 1 [E1]
 Created in Phase 1 so intake has one home from day one; Phase 5 extends them (see the nutrition spec amendments).
-- **MealLog:** `id` UUID PK (client-generated), `logged_date` date (Indexed, in `APP_TZ`), `meal_type` (`breakfast`, `morning_snack`, `lunch`, `afternoon_snack`, `dinner`, `other`), `raw_user_input` Optional[text], `notes` Optional[text], `created_at` timestamptz.
+- **MealLog:** `id` UUID PK (client-generated), `logged_date` date (Indexed, in `APP_TZ`), `meal_type` (`breakfast`, `morning_snack`, `lunch`, `afternoon_snack`, `dinner`, `second_dinner`, `other`). `second_dinner` matches KT's "Druhá večeře" **[G2]**., `raw_user_input` Optional[text], `notes` Optional[text], `created_at` timestamptz.
 - **MealLogItem:** `id` UUID PK, `meal_log_id` UUID (FK, ondelete CASCADE), `label` str (e.g. "Rychlý zápis"), `kcal` float, `protein_g` / `carbs_g` / `fat_g` Optional[float]. Phase 5 adds `food_id` (nullable FK `foods.id`) + `amount_g`; for those items nutrients are computed live from the food, and the manual fields stay for quick-add items.
 
 ### 5.8 ChatConversation / ChatMessage (tables `chat_conversations`, `chat_messages`) [A10]
 - **ChatConversation:** `id` UUID PK, `assistant` (`coach`; Phase 5 adds `nutrition`) **[E2]**, `created_at`, `updated_at`.
 - **ChatMessage:** `id` PK, `conversation_id` UUID (FK, ondelete CASCADE), `role` (`user`, `model`), `content` text, `tool_calls` JSONB (names + args summary), `created_at`.
+
+### 5.9 StepBucket (table `step_buckets`) [E7]
+Interval step data per source, normalized to 15-minute buckets.
+- `source`: `str` (`apple_health`, `samsung_health`)
+- `bucket_start`: `timestamptz`, aligned to :00/:15/:30/:45
+- `steps`: `int`
+- PK (`source`, `bucket_start`)
+
+### 5.10 DailySourceMetric (table `daily_source_metrics`) [E7][E8]
+Per-source daily values. Used when a source sends totals instead of intervals, and for metrics that have no buckets.
+- `date`: `date` (in `APP_TZ`)
+- `source`: `str` (`apple_health`, `samsung_health`, `manual`)
+- `metric`: `str` (`steps_total`, `sleep_minutes`, `resting_hr`, `weight_kg`)
+- `value`: `float`
+- `received_at`: `timestamptz`
+- PK (`date`, `source`, `metric`)
+
+### 5.11 IntegrationToken (table `integration_tokens`) [E10]
+- `provider`: `str` PK (`strava`)
+- `access_token`, `refresh_token`: `str`
+- `expires_at`: `timestamptz`
+- `athlete_id`: `Optional[str]`
+- `last_synced_at`: `Optional[timestamptz]`
+- `last_activity_start`: `Optional[timestamptz]`: the cursor for incremental polling (`after=`)
 
 ---
 
@@ -219,24 +257,76 @@ Created in Phase 1 so intake has one home from day one; Phase 5 extends them (se
 - `GET /api/exercises/{exercise_id}/last-performance`: **CRITICAL FOR GYM UI.** Returns the sets (`set_order`, `set_type`, `weight_kg`, `reps`, `duration_s`, `distance_m`, `rpe`) from the most recent completed workout containing this exercise. Used to pre-fill "ghost values".
 - `GET /api/workouts`: recent workouts with aggregated total volume (`sum(weight_kg * reps)` over non-warmup sets) and set count.
 - `GET /api/workouts/active`: the unfinished workout (if any) with its sets, for "Resume".
+- `GET /api/workouts/templates`: for each distinct workout name (Chest tri, Back biceps, …), the most recent workout's ordered exercise list with set counts. Used by "Start from last …" **[E9]**. The client creates the new workout with its own UUID and pre-adds the exercises. Ghost values come from `/last-performance`.
+- **Auto-finish [E9]:** an active workout with no newly completed set for **2 h** is closed by the scheduler sweep (every 10 min) and also on any read of `/api/workouts/active`. It gets `ended_at = last set's completed_at + 2 min` (or `started_at` if there are no sets) and `ended_by = auto_idle`. The UI shows "automaticky ukončeno" and lets the user adjust it.
 - `PUT /api/workouts/{workout_id}`: create-or-update a workout (client UUID); may include nested sets **[A5]**.
 - `PUT /api/workouts/{workout_id}/sets/{set_id}`: create-or-update a set (client UUID) **[A5]**.
 - `DELETE /api/workouts/sets/{set_id}`: idempotent delete (204 even if already gone).
-- `POST /api/workouts/import-strong-csv`: accepts a CSV exported from the Strong app (`Date, Workout Name, Duration, Exercise Name, Set Order, Weight, Reps, Distance, Seconds, Notes, Workout Notes, RPE`) **[A6]**:
-  - sniff the delimiter (`,` or `;`); query param `weight_unit=kg|lbs` (default `kg`) — export units follow the app setting;
-  - map `Seconds`/`Distance` to `duration_s`/`distance_m`; map set markers (if present) to `set_type`;
-  - auto-create missing exercises; skip workouts already imported (dedupe on `started_at` + `name`);
-  - return `{workouts_created, workouts_skipped, sets_created, exercises_created, warnings[]}`.
-  - Build and test against a real export (open question F1).
+- `POST /api/workouts/import-strong-csv`: accepts a CSV exported from the Strong app (`Date, Workout Name, Duration, Exercise Name, Set Order, Weight, Reps, Distance, Seconds, Notes, Workout Notes, RPE`) **[A6]**. Behaviour is tuned to the user's real export (`data/imports/strong_workouts.csv`, analysed in review §G1):
+  - Format: UTF-8, comma-delimited in the real export. Still sniff `,` vs `;` as a cheap safeguard. Query param `weight_unit=kg|lbs` (default `kg`; the real export is kg).
+  - `Date` is **naive local time**, so localize it in `APP_TZ` before storing it as `timestamptz`.
+  - `Weight 0.0` means bodyweight. On bodyweight exercises (Pull Up, Chest Dip) a weight > 0 is **added** load. `Distance`/`Seconds` of 0 and an empty `RPE` are stored as null. Numeric `Set Order` maps to `set_type=normal` (other markers map to set types if they ever appear).
+  - `Duration` such as `"1h 8m"`, `"39m"`, `"1h"` or `"2 103h 34m"` (the thousands separator is a **non-breaking space**): strip spaces and NBSP before parsing. A duration **over 4 h** is treated as a workout never finished in Strong (62 % of the real export). For those, `ended_at = started_at + set_count × 3 min` (the user's empirical average) and `ended_by = import_estimate`, and the workout is listed in `warnings`.
+  - **Exercise remap rules [E5]:** the user logged some movements under the closest Strong exercise and marked them with a sticky note on set 1. Each rule is `{strong_name, note_contains | null, map_to, muscle_group}` and applies to every set of that exercise in matching workouts (all workouts when `note_contains` is null). The marker note is then dropped. Default rules:
+    - `Lat Pulldown (Machine)` → **Bent-over Pulldown** (back), all workouts (the note is on 41/41).
+    - `Lat Pulldown - Underhand (Cable)` → **Kelso Shrug** (back), all workouts. This is an assumption: the note first appears on 2025-09-30, but loads continue seamlessly from the note-less workouts before it.
+    - Rules can be overridden per import via an `exercise_map` JSON field.
+  - Any other notes are kept in `WorkoutSet.notes`.
+  - Missing exercises are auto-created. The seed already covers all 42 exercises of the real export with muscle groups, so this should only happen for future exercises. Workouts already imported are skipped (dedupe on `started_at` + `name`).
+  - Returns `{workouts_created, workouts_skipped, sets_created, exercises_created, warnings[]}`.
+  - Tests run against a small anonymized slice of the real export, covering an NBSP duration, an over-4 h duration, the remap rules and bodyweight sets.
 
 ### 6.4 Running & Marathon Plan (`/api/running`)
 - `GET /api/running/activities`: cardio activities with calculated pace (min/km).
-- `POST /api/running/activities`: log a run manually or via webhook (dedupe on `external_id`).
+- `POST /api/running/activities`: log a run manually (Strava-synced runs arrive via §6.5; dedupe on `external_id`).
+- **Strava is the only automatic source of activities [E10].** Samsung Health and Apple Health workouts are not ingested, so runs are never duplicated.
 - `GET /api/running/plan?start_date=...&end_date=...`: planned marathon workouts alongside linked actual activities.
 - `POST /api/running/plan`: create/update a planned run.
 
-### 6.5 Webhooks (`/api/webhooks`)
-- Ingestion endpoints for mobile health exports, protected by `X-Webhook-Token` **[A13]**. Payload format depends on the user's devices/apps (open question F2).
+### 6.5 Health & activity data ingestion (`/api/webhooks`, `/api/integrations`)
+
+**Sources**
+| Data | Source | Path |
+|---|---|---|
+| Runs (+ HR, calories) | Strava | OAuth app + **polling**, no public webhook **[E10]** |
+| iPhone steps | Apple Health | **iOS Shortcuts** personal automation → `POST /api/webhooks/health` **[E6]** |
+| Watch steps, sleep, resting HR | Samsung Health → Health Connect (on the Android phone paired with the watch) | Forwarder app on that phone → `POST /api/webhooks/health` **[E8]** |
+
+**Strava [E10]**
+- `GET /api/integrations/strava/connect` redirects to Strava authorize (scope `activity:read_all`). `GET /api/integrations/strava/callback` exchanges the code and stores it in `integration_tokens`. The redirect runs in the browser, so the tailnet hostname works as the callback domain and nothing is exposed publicly.
+- `POST /api/integrations/strava/sync`: manual sync. The scheduler also syncs every 30 min, plus once when the app is opened.
+  - It is incremental via `after=last_activity_start`. The first run backfills the full history page by page.
+  - It refreshes the access token when it has expired. It maps each activity to `Activity` with `external_id = "strava:<id>"`, `source = strava`, and fetches details (calories) only for new activities.
+  - It stays far below Strava's rate limits.
+- `GET /api/integrations/status`: Strava connection + last sync, and the last payload received per webhook source.
+
+**`POST /api/webhooks/health`**: `X-Webhook-Token` required **[A13]**.
+```json
+{
+  "source": "apple_health",
+  "days": ["2026-10-16", "2026-10-17"],
+  "steps": [{"start": "2026-10-17T08:03:00+02:00", "end": "2026-10-17T08:11:00+02:00", "count": 812}],
+  "daily": [{"date": "2026-10-17", "metric": "steps_total", "value": 8123}],
+  "sleep_sessions": [{"start": "2026-10-16T23:40:00+02:00", "end": "2026-10-17T06:55:00+02:00"}]
+}
+```
+- **Replace semantics:** a push carries the **complete** data of that `source` for each listed day. The server replaces that source's buckets, daily values and sessions for those days, so repeated pushes are idempotent. Senders always include **yesterday and today**, which catches steps around midnight and late syncs.
+- Every field except `source`/`days` is optional. Each sender sends what it can (intervals preferred, daily totals as fallback).
+
+**Step merge algorithm [E7]** (`services/health_ingest.py`, re-run for each affected day after every push)
+1. Interval samples are distributed into **15-min buckets** (`step_buckets`) in proportion to their time overlap.
+2. When **two or more sources have interval data** for the day: for each bucket, the merged value is **max over sources**, and the day total is the **sum** of those maxima. When both devices are carried, they count the same walking, so the max avoids double counting. When only one is carried or worn, that one fills the bucket, so steps taken with only the phone or only the watch are added together.
+3. **Fallback** when a source has only a daily total: day total = **max** over the sources' daily totals. A source's bucket sum counts as its daily total.
+4. The result is written to `DailyMetric.steps`. `GET /api/metrics/steps-breakdown?date=` returns per-source totals, the method used (`buckets` or `max_daily`), the merged total and the merged bucket series, so the number is explainable.
+
+**Sleep [E8]:** sleep sessions are attributed to the **date of wake-up** (session end, in `APP_TZ`). `DailyMetric.sleep_hours` is the total of all sessions ending on that date, naps included. Samsung Health is the primary sleep source.
+
+**Sender setup** (guides to be written in `docs/integrations/` during Phase 4, once the HTTPS URL exists):
+- **iOS Shortcut [E6]:** one shortcut, triggered by several "Time of Day" personal automations set to run without asking (e.g. 12:00, 18:00 and 23:30), and also runnable by hand.
+  - It uses `Find Health Samples` for Steps with Start Date today/yesterday and Source = this iPhone, so it doesn't re-send other apps' data.
+  - It builds the JSON with each sample's start, end and count and runs `Get Contents of URL` (POST plus the token header).
+  - Tailscale on-demand must be enabled on the iPhone.
+- **Health Connect forwarder [E8]:** an app on the Android phone the watch is paired with. It must read Health Connect `StepsRecord` (with start/end) and `SleepSessionRecord` (resting HR optional), push them on a schedule in the background to a custom URL with a custom header, and work over Tailscale. **The app is chosen in Phase 1** (research task). Tailscale runs on that phone, and Samsung Health → Health Connect sync must be enabled.
 
 ### 6.6 AI Coach & Voice Dictation (`/api/ai`)
 The coach is one of **two separate assistants** (the nutrition assistant arrives in Phase 5) **[E2]**. Both use the shared runner in `gemini_service.py` with their own system prompt and toolset.
@@ -334,6 +424,8 @@ Clean, dark-mode default UI (Tailwind slate-900 / zinc-900 background) optimized
 
 **Gym Logger Page (`GymLogger.tsx`) — key UX features:**
 - **Start Workout / Resume Active Workout:** active workout state mirrored in `localStorage`; workouts and sets get client UUIDs and every change goes through the persisted mutation queue, so a dropped signal in a basement gym loses nothing and retries never duplicate **[A5]**.
+- **Start from last … [E9]:** the start screen lists templates from `/api/workouts/templates` ("Chest tri", "Back biceps", …). Tapping one creates the workout with that exercise order pre-filled, and ghost values load per exercise. "Empty workout" remains available.
+- **Auto-finish [E9]:** a forgotten workout closes itself after 2 h with no sets (see §6.3). The history marks it as "automaticky ukončeno" with an editable end time.
 - **Ghost Values:** when an exercise is added, fetch `/api/exercises/{id}/last-performance` and show the previous session's weight & reps as placeholders / defaults.
 - **Quick Stepper Controls:** −2.5 / +2.5 buttons for weight and −1 / +1 for reps next to the inputs, so the keyboard is rarely needed. Set type toggle (W / D / F) **[A6]**.
 - **1-Tap Complete & Rest Timer:** the checkmark marks the set completed, sends an optimistic mutation, and starts the floating `RestTimer` (60 / 90 / 120 / 180 s with a progress bar).
@@ -343,6 +435,12 @@ Clean, dark-mode default UI (Tailwind slate-900 / zinc-900 background) optimized
 - Quick input card at the top: "Dnešní váha (kg)" (→ `POST /api/metrics`) & "Rychlý zápis kcal" (→ `POST /api/nutrition/quick-add` **[E1]**) with instant save.
 - Chart 1 (Recharts `ComposedChart`): daily weight (dots) with a smooth 7-day rolling average line + daily caloric intake bars.
 - Chart 2: weekly gym volume by muscle group & weekly running mileage (km).
+- Steps & sleep tile: the merged daily steps. Tapping it shows the per-source breakdown (iPhone vs. watch, merge method) from `/api/metrics/steps-breakdown` **[E7]**.
+
+**Settings Page (`Settings.tsx`)** (gear icon on the Dashboard, plus an item in the desktop sidebar; not a bottom tab):
+- Strava: connect button, connection state, last sync, "Synchronizovat teď" **[E10]**.
+- Webhook sources: last payload received per source (`apple_health`, `samsung_health`), so a broken Shortcut or forwarder is noticed.
+- Strong CSV import (file picker + result summary with warnings).
 
 **AI Coach Page (`AiCoach.tsx`):**
 - Model tier toggle at top: Rychlý (zápis & dotazy) vs. Hloubkový (analýza) → `fast` / `smart` **[A7]**.
@@ -363,9 +461,18 @@ Execute in order, verifying each before moving on. Track status in `docs/PROGRES
 - `docker-compose.yml` (db) + `docker-compose.dev.yml`; `.env.example`; pytest + ruff wired up.
 
 **Phase 1 — Backend core & database**
-- All models from §5 (incl. minimal meal tables and chat tables) + migrations; idempotent exercise seed.
-- Routers: `metrics.py`, `nutrition.py` (quick-add), `workouts.py` (incl. `/last-performance`, `/active`, UUID upserts, Strong importer), `running.py`, `webhooks.py`.
-- Tests for upsert idempotency, last-performance, Strong import (real sample file), timezone day bucketing.
+- All models from §5 (incl. minimal meal tables, chat tables, step buckets, daily source metrics, integration tokens) + migrations. The idempotent exercise seed covers all 42 exercises of the real Strong export with muscle groups, plus common extras.
+- Routers: `metrics.py` (+ steps breakdown), `nutrition.py` (quick-add), `workouts.py` (`/last-performance`, `/active`, `/templates`, UUID upserts, Strong importer with remap rules), `running.py`, `webhooks.py` (health ingestion + merge), `integrations.py` (Strava OAuth + sync).
+- `scheduler.py`: Strava poll every 30 min, auto-finish sweep every 10 min.
+- Research: choose the Health Connect forwarder app for the Android phone **[E8]**.
+- Tests:
+  - upsert idempotency, last-performance, templates, auto-finish;
+  - Strong import (anonymized slice of the real export);
+  - step merge (overlapping buckets, single source, daily-total fallback);
+  - sleep attribution;
+  - Strava mapping (recorded fixtures);
+  - timezone day bucketing.
+- Run the real Strong import against the dev DB and check the summary.
 
 **Phase 2 — Gemini AI service & coach tools**
 - Verify the current Gemini model ids; configure tiers.
@@ -378,7 +485,13 @@ Execute in order, verifying each before moving on. Track status in `docs/PROGRES
 **Phase 4 — Dockerization & deploy**
 - Multi-stage `Dockerfile` (with ffmpeg), `docker-compose.yml` (db + app on port 8000 + backup), healthcheck on `/api/health`.
 - FastAPI serves the built React `dist/` as an SPA fallback so refreshing any route works.
-- `tailscale serve --bg 8000`; verify mic + PWA install on the phone over HTTPS.
+- `tailscale serve --bg 8000`; verify mic + PWA install on the iPhone over HTTPS.
+- Integration setup with guides in `docs/integrations/`:
+  - register the Strava API app and connect it;
+  - build the iOS Shortcut and its automations;
+  - install and configure the Health Connect forwarder plus Tailscale on the Android phone.
+
+  Verify that data arrives from every source (Settings page).
 
 **Phase 5 — Nutrition module**
 - Per `docs/nutrition-module-spec.md`, including its "Amendments" section.

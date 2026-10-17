@@ -47,7 +47,18 @@ Ids refer to `docs/plan-review-2026-10-17.md`; the verified USDA/OFF facts behin
 
 **Daily summary [C1]:** each nutrient total comes with **coverage** (share of the day's kcal from foods that have a value for it); the micronutrient grid shows it so partial data isn't read as a deficiency.
 
-**KalorickéTabulky [C10]:** file import first (format depends on what export the user has — open question F3); the session/cookie scraper is an optional, isolated adapter (no official API; may break or conflict with KT's terms). Imported foods carry macros only → link to a USDA equivalent via `micros_reference_food_id` for micronutrients.
+**KalorickéTabulky [C10][G2]:** the user is not on Premium, so there is no file export. Data loads through the **`kaloricketabulky-sdk`** Python package (`tomasvotava/kaloricketabulky`; MIT, async, read-only, httpx + pydantic), pinned to an exact version. This replaces §3C's scraper/file modes. Details are in review §G2.
+- `client.login(email, password)` with `KALORICKETABULKY_EMAIL` / `KALORICKETABULKY_PASSWORD` from `.env`. Credentials are never stored in the DB. When the session expires, log in again.
+- **Weight history:** `get_snapshot(SnapshotType.WEIGHT, from, to)` → `daily_metrics.weight_kg`. It fills only days that have no value yet.
+- **Diary:** `get_diary(day)` runs once per day of the chosen range as a background job. The job is **throttled** (about 1 request per 2 s, per the SDK author's request) and **resumable** (it stores the last imported day and can continue after a stop or failure). Its progress shows in the UI.
+- Mapping:
+  - KT meal slot titles → `meal_type`: Snídaně → breakfast, Dopolední svačina → morning_snack, Oběd → lunch, Odpolední svačina → afternoon_snack, Večeře → dinner, Druhá večeře → second_dinner.
+  - Foodstuff `guidType` → `foods.external_id` (dedupe), `title` → `name_cs`, `source = kaloricke_tabulky`.
+  - Grams are parsed from `unit` (`"2 x kus (90 g)"`, `"0,6 x porce (50 g)"`, Czech decimal comma). Per-100 g values = entry value / grams × 100. **Verify on one real day first** whether the grams in parentheses are the entry total or per unit, and whether nutrient values are per entry. Entries without grams (e.g. ml) go to `warnings`, and ml are treated as g only for drinks.
+  - KT nutrient fields → `foods` columns: energy, protein, carbohydrate, fat, fiber, sugar, salt, saturatedFattyAcid. `sodium` and `calcium` go into the `micronutrients` JSON in mg after unit verification. Everything else is ignored.
+  - Diary `activities` are **not** imported (Strava and the health sources own activity data).
+- KT foods have no vitamins or other minerals, so link them to a USDA equivalent through `micros_reference_food_id` (an optional, Gemini-assisted background step for frequently eaten foods).
+- Tests are built from one real diary day, anonymized. The SDK's own fixtures contain random values.
 
 ---
 

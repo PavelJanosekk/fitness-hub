@@ -13,6 +13,7 @@ Gemini-powered assistants. Single user, accessed over Tailscale (HTTPS via `tail
 - Do all work in the main session — no subagents or workflows.
 - Propose spec/architecture changes with a recommendation and get a decision before editing the specs; record decisions in `docs/PROGRESS.md`.
 - Execute phases in order (`docs/SPEC.md` §9) and verify each before moving on.
+- Git: work on the `dev` branch, commit after each verified step, and never commit `.env` or anything in `data/`.
 
 ## Hard rules
 - Backend: Python 3.12+, FastAPI, SQLModel, PostgreSQL 16 via psycopg 3 (`postgresql+psycopg://`).
@@ -39,4 +40,5 @@ Gemini-powered assistants. Single user, accessed over Tailscale (HTTPS via `tail
 ## Local environment notes
 - `.env` exists (POSTGRES_*, DATABASE_URL with host `db`, GEMINI_API_KEY) — never print or commit it; `.env.example` documents the keys.
 - Node is not installed on the host; the frontend runs in a `node:22` container in dev.
-- `data/` is gitignored — put import samples (Strong CSV, KT export) and backups there.
+- `data/` is gitignored. It holds import samples (the real Strong export is `data/imports/strong_workouts.csv`) and backups. Test fixtures derived from it must be anonymized slices.
+- Devices: an iPhone (PWA, Apple Health steps via iOS Shortcut), a Galaxy Watch paired with an Android phone (Samsung Health → Health Connect forwarder), and Strava for runs. See `docs/SPEC.md` §6.5.

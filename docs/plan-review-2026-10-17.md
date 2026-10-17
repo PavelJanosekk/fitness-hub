@@ -117,6 +117,12 @@ These checks back the findings in §C.
 | E2 | One assistant or two | One unified Gemini assistant with all tools. The Coach page and the quick food logger are two entry points into it. | **Two separate assistants** (2026-10-17). They share the Gemini runner but have separate prompts, toolsets and conversations; the coach only reads intake totals. |
 | E3 | USDA strategy | Bulk-seed SR Legacy + Foundation locally | *pending, decide before Phase 5* |
 | E4 | Meal logging flow | Hybrid: auto-save when every item resolves through a confirmed alias or food, otherwise show a draft card to confirm | **Hybrid, as recommended** (2026-10-17). Applies to dictated workouts as well. |
+| E5 | Meaning of the Strong sticky notes | — | **They are different exercises.** The user picked the closest Strong exercise and noted the real one. Remap `Lat Pulldown (Machine)` → Bent-over Pulldown and `Lat Pulldown - Underhand (Cable)` → Kelso Shrug for **all** workouts. Remapping all the underhand workouts is an assumption; see G1. |
+| E6 | Apple Health path | iOS Shortcut | **iOS Shortcut** |
+| E7 | Steps from iPhone + watch | Max per day | **The user's rule:** combine by time (15-min buckets: max per bucket, summed over the day), with the daily max as fallback when no time data exists. |
+| E8 | Samsung Health path | — | **Live sync via Health Connect** (forwarder app on the Android phone, chosen in Phase 1) |
+| E9 | Gym extras | — | **Auto-finish workouts + "Start from last …" templates.** KT weight early: no, it stays in Phase 5. |
+| E10 | Strava | OAuth + polling (no public webhook) | Proposed together with the answers; no objection |
 
 ## F. Info needed from the user
 
@@ -125,3 +131,51 @@ These checks back the findings in §C.
 - **F3.** The KalorickéTabulky situation: Premium or not, and whether there's an export (format?) or a GDPR data request.
 - **F4.** Single user only? Assumed yes, so there is no `user_id` anywhere.
 - **F5.** Should progress be committed to git as we go, or left uncommitted?
+
+---
+
+## G. Follow-up: user answers to F1–F5 (2026-10-17)
+
+- **F1:** Strong export received → `data/imports/strong_workouts.csv` (gitignored). Analysis in G1.
+- **F2:** iPhone 16 Pro (main phone, PWA) and Galaxy Watch 6 Classic (non-LTE). Runs go to Strava; Samsung Health has the watch steps, Apple Health has the phone steps. Proposals in G3.
+- **F3:** KalorickéTabulky, non-Premium. Data loads through the **`tomasvotava/kaloricketabulky`** Python SDK. Analysis in G2.
+- **F4:** Single user **for now**, might change later. So no `user_id` yet. Keep data access in service functions so adding a user filter later stays local. `tailscale serve` already sends `Tailscale-User-Login`/`Tailscale-User-Name` headers, so multi-user auth can be added cheaply later.
+- **F5:** Commit as we go. Work happens on the `dev` branch and `master` stays at the initial spec until merged.
+
+### G1. Strong CSV, what the real export shows
+- The format matches the spec header. It is **comma-delimited, UTF-8, no BOM**, 2,361 set rows, 123 workouts (2025-08-07 → 2026-10-17), 42 distinct exercises. A workout is uniquely identified by its `Date`. Timestamps are **naive local time**, so interpret them in `APP_TZ`.
+- Weights are in **kg**. Max: bench 110, squat 110, leg press 180. `0.0` means bodyweight. Pull Up goes up to 25, which is **added** load on bodyweight exercises.
+- `RPE` is empty in every row and `Distance`/`Seconds` are always 0, so the importer stores 0 as null. `Set Order` is numeric 1–5 only, with no warm-up or drop markers.
+- **Durations are unreliable.** 76 of 123 workouts (62 %) run longer than 4 h because they were never finished in Strong; the median is 22 h and the maximum is `2 103h 34m`, written with a **non-breaking space** as the thousands separator. The importer handles this as follows:
+  - It strips spaces and NBSPs before parsing.
+  - For durations over 4 h it sets `ended_at = started_at + sets × 3 min`. Three minutes per set is the empirical average from the user's 46 normal workouts. These workouts are reported in `warnings`.
+- **Sticky exercise notes** appear on set 1 of every occurrence:
+  - "Takovej ten bent over pulldown": on all 41 *Lat Pulldown (Machine)* workouts.
+  - "Kelso shrug": on 29 of 40 *Lat Pulldown - Underhand (Cable)* workouts.
+
+  They may mean the exercise was really a different movement, so they need user input (G4). Either way the note needs a place in the schema.
+- Exercises include customs ("Dragon Fly 🐉", "Chest Fly", "Triceps Extension", "T Bar Row", "Leg Press"). The seed should cover all 42 with muscle groups so the import never creates exercises with an unknown muscle group.
+- Workout names reflect a split (Chest tri, Back biceps, Legs 2 / legs, Shoulders). The spec has no workout templates, which makes "repeat last *Chest tri*" a natural Strong-replacement feature.
+
+### G2. KalorickéTabulky SDK (`kaloricketabulky-sdk` on PyPI, MIT, v0.1.1 alpha, Python ≥ 3.12, httpx + pydantic, async, read-only)
+- `client.login(email, password)` uses session cookies, which can expire, so re-login when that happens. `get_diary(day)` returns meals (`times`) with foodstuffs and activities, plus day totals. `get_snapshot(SnapshotType.WEIGHT, from, to)` returns **weight history**.
+- The SDK has no retry logic, and its author asks for slow, infrequent requests. The import is therefore **throttled** (about 1 request per 2 s), **resumable** (it records the last imported day) and runs as a background job. Credentials come from `.env` (`KALORICKETABULKY_EMAIL` / `_PASSWORD`) and are never stored in the DB.
+- Diary foodstuff fields:
+  - `guidType` is a stable food id → `foods.external_id`.
+  - `title` → `name_cs`; `url` is the food page slug.
+  - `unit` is a free-text amount, e.g. `"2 x kus (90 g)"` or `"0,6 x porce (50 g)"`. Grams are parsed from the parentheses. **Whether that number is per unit or the total for the entry must be verified on real data.**
+  - Nutrient values appear to be **per entry**, so per-100 g = value / grams × 100. This needs the same verification.
+  - KT provides energy, protein, carbs, fat, fiber, sugar, salt, sat/trans/mono/poly fat, cholesterol, **sodium and calcium**, water, alcohol and phe. That is more than macros only.
+- KT meal slots are Snídaně, Dopolední svačina, Oběd, Odpolední svačina, Večeře, **Druhá večeře**. Add `second_dinner` to `meal_type`.
+- Diary `activities` (with steps and energy) are not imported, because Strava and the health sources own activity data.
+- The SDK fixtures are anonymized with random values, so build tests from one real, anonymized diary day.
+
+### G3. Device data ingestion, proposals
+- **Strava (runs):** OAuth app plus **polling**: on app open, every ~30 min, and a "Sync now" button. Strava's push webhooks need a public HTTPS callback (Tailscale Funnel), which a private setup doesn't need. The OAuth redirect happens in the browser, so the tailnet hostname works as the callback domain. A one-time history backfill is paginated. `Activity.external_id = "strava:<id>"`. Strava is the **only** source for activities, so `samsung_health` activities are not ingested and won't duplicate runs.
+- **Apple Health (iPhone steps):** either a free iOS Shortcuts personal automation that runs daily and posts to `POST /api/webhooks/health`, or the paid Health Auto Export app with scheduled REST pushes, more metrics and history backfill. Tailscale must be on (on-demand) on the iPhone.
+- **Samsung Health (watch steps, sleep):** there is no cloud API. Samsung Health syncs to Health Connect on the **Android phone the watch is paired with** (a Galaxy Watch 6 can't pair with an iPhone). A forwarder app on that device posts to the same webhook, and Samsung Health's "Download personal data" CSV export gives a one-off history backfill. The forwarder app is to be chosen at implementation time, depending on that device.
+- **Steps from two sources double count.** Store per source and per day in `daily_source_metrics(date, source, metric, value)`, and use **max across sources** as the day's value: the watch and phone count the same walks, and whichever was carried more is the better number. The same table holds sleep and resting HR.
+- **Generic webhook:** `POST /api/webhooks/health` with `{source, samples: [{metric, date, value}]}`, `X-Webhook-Token`, idempotent upsert per (date, source, metric).
+
+### G4. Questions raised by the findings
+See §E (E5–E8).
