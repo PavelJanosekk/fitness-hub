@@ -1,44 +1,81 @@
-"""Intake routes: quick-add and the day view. The rest of the nutrition module joins in Phase 5."""
+"""Nutrition routes (nutrition spec §5): intake, the food database, barcode lookup, profile, meal drafts.
+
+The nutrition assistant's chat and voice routes are added with the assistant (Phase 5.4b).
+"""
 
 import datetime as dt
 import uuid
+from collections.abc import Iterator
+from typing import Annotated
 
-from fastapi import APIRouter, Response, status
-from sqlmodel import col, select
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
+from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 
 from app.database import SessionDep
-from app.models.nutrition import Food, MealLog, MealLogItem, MealType
-from app.schemas.nutrition import DayIntake, MealItemRead, MealRead, QuickAdd, Totals
-from app.services.nutrition import item_values
+from app.models.nutrition import Food, FoodSource, MealLog, MealLogItem, MealType, NutritionProfile
+from app.schemas.nutrition import (
+    CandidateIn,
+    DayIntake,
+    FoodCreate,
+    FoodRead,
+    FoodUpdate,
+    ItemUpsert,
+    MealItemRead,
+    MealRead,
+    ProfileUpdate,
+    QuickAdd,
+    Totals,
+)
+from app.services.nutrition import off
 from app.services.nutrition import quick_add as quick_add_meal
-from app.timeutils import today
+from app.services.nutrition.foods import create_food, read_food, search_foods, update_food
+from app.services.nutrition.meals import MealEntry, save_meal, upsert_item
+from app.services.nutrition.resolver import Candidate, MealItemInput, confirm_aliases, materialize
+from app.services.nutrition.summary import DaySummary, day_meals, day_summary, read_item
+from app.timeutils import now_utc, today
 
 router = APIRouter(prefix="/api/nutrition", tags=["nutrition"])
 
-MEAL_ORDER = {meal_type.value: index for index, meal_type in enumerate(MealType)}
+
+def get_http() -> Iterator[httpx.Client]:
+    with httpx.Client(timeout=15) as client:
+        yield client
+
+
+HttpDep = Annotated[httpx.Client, Depends(get_http)]
 
 
 @router.post("/quick-add", response_model=MealRead)
 def quick_add(body: QuickAdd, session: SessionDep) -> MealRead:
     """Idempotent: the client UUID identifies both the meal log and its single item."""
     meal, item = quick_add_meal(session, body)
-    return _read_meal(meal, [_read_item(item, None)])
+    items = [read_item(item, None)]
+    return MealRead(id=meal.id, logged_date=meal.logged_date, meal_type=meal.meal_type, notes=meal.notes, items=items)
 
 
 @router.get("/day", response_model=DayIntake)
 def get_day(session: SessionDep, date: dt.date | None = None) -> DayIntake:
     day = date or today()
-    meals = session.exec(select(MealLog).where(MealLog.logged_date == day).order_by(col(MealLog.created_at))).all()
-    rows = session.exec(
-        select(MealLogItem, Food)
-        .outerjoin(Food, col(Food.id) == MealLogItem.food_id)
-        .where(col(MealLogItem.meal_log_id).in_([m.id for m in meals]))
-    ).all()
-    items_by_meal: dict[uuid.UUID, list[MealItemRead]] = {}
-    for item, food in rows:
-        items_by_meal.setdefault(item.meal_log_id, []).append(_read_item(item, food))
-    reads = [_read_meal(m, items_by_meal.get(m.id, [])) for m in sorted(meals, key=lambda m: MEAL_ORDER[m.meal_type])]
-    return DayIntake(date=day, meals=reads, totals=_totals([i for r in reads for i in r.items]))
+    meals = day_meals(session, day)
+    return DayIntake(date=day, meals=meals, totals=_totals([i for m in meals for i in m.items]))
+
+
+@router.get("/summary", response_model=DaySummary)
+def get_summary(session: SessionDep, date: dt.date | None = None) -> DaySummary:
+    """Meals plus every tracked nutrient with its coverage and target (profile, else EU reference)."""
+    return day_summary(session, date or today())
+
+
+@router.put("/items/{item_id}", response_model=MealItemRead)
+def put_item(item_id: uuid.UUID, body: ItemUpsert, session: SessionDep) -> MealItemRead:
+    """Idempotent upsert by the client UUID: add a food with grams, or change an item's food/grams."""
+    food = session.get(Food, body.food_id)
+    if food is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Unknown food")
+    return read_item(upsert_item(session, item_id, body, food), food)
 
 
 @router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -55,22 +92,128 @@ def delete_item(item_id: uuid.UUID, session: SessionDep) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-def _read_item(item: MealLogItem, food: Food | None) -> MealItemRead:
-    values = item_values(item, food)
-    return MealItemRead(
-        id=item.id,
-        label=item.label,
-        food_id=item.food_id,
-        amount_g=item.amount_g,
-        kcal=values["kcal"] or 0.0,
-        protein_g=values["protein_g"],
-        carbs_g=values["carbs_g"],
-        fat_g=values["fat_g"],
-    )
+@router.get("/foods", response_model=list[FoodRead])
+def list_foods(
+    session: SessionDep,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    source: FoodSource | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[FoodRead]:
+    return search_foods(session, q, source.value if source else None, limit, offset)
 
 
-def _read_meal(meal: MealLog, items: list[MealItemRead]) -> MealRead:
-    return MealRead(id=meal.id, logged_date=meal.logged_date, meal_type=meal.meal_type, notes=meal.notes, items=items)
+@router.get("/foods/{food_id}", response_model=FoodRead)
+def get_food(food_id: int, session: SessionDep) -> FoodRead:
+    return read_food(session, _food(session, food_id), with_portions=True)
+
+
+@router.post("/foods", response_model=FoodRead, status_code=status.HTTP_201_CREATED)
+def post_food(body: FoodCreate, session: SessionDep) -> FoodRead:
+    try:
+        food = create_food(session, body)
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "A food with this barcode already exists") from None
+    return read_food(session, food, with_portions=True)
+
+
+@router.patch("/foods/{food_id}", response_model=FoodRead)
+def patch_food(food_id: int, body: FoodUpdate, session: SessionDep) -> FoodRead:
+    return read_food(session, update_food(session, _food(session, food_id), body), with_portions=True)
+
+
+@router.delete("/foods/{food_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_food(food_id: int, session: SessionDep) -> Response:
+    session.delete(_food(session, food_id))
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "The food is used in logged meals") from None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/barcode/{ean}", response_model=FoodRead)
+def barcode(ean: Annotated[str, Path(pattern=r"^[0-9]{6,14}$")], session: SessionDep, http: HttpDep) -> FoodRead:
+    """Local food by EAN, else Open Food Facts (saved locally). 404 unknown; 422 when OFF lacks a required value,
+    so the app can offer to complete it as a custom food."""
+    if (food := session.exec(select(Food).where(Food.ean == ean)).first()) is not None:
+        return read_food(session, food, with_portions=True)
+    try:
+        product = off.lookup_barcode(http, ean)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Open Food Facts unavailable: {exc}") from None
+    if product is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown barcode")
+    if not product.complete:
+        detail = {"message": "Incomplete product", "name": product.name, "brand": product.brand, **product.values}
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail)
+    return read_food(session, off.save_product(session, product), with_portions=True)
+
+
+@router.get("/profile", response_model=ProfileUpdate)
+def get_profile(session: SessionDep) -> ProfileUpdate:
+    profile = session.get(NutritionProfile, 1)
+    return ProfileUpdate.model_validate(profile.model_dump() if profile else {})
+
+
+@router.put("/profile", response_model=ProfileUpdate)
+def put_profile(body: ProfileUpdate, session: SessionDep) -> ProfileUpdate:
+    profile = session.get(NutritionProfile, 1) or NutritionProfile(id=1)
+    for key, value in body.model_dump().items():
+        setattr(profile, key, value)
+    profile.updated_at = now_utc()
+    session.add(profile)
+    session.commit()
+    return body
+
+
+class DraftItem(BaseModel):
+    input: MealItemInput
+    candidate: CandidateIn
+    amount_g: float = Field(gt=0, le=5000)
+
+
+class MealDraftConfirm(BaseModel):
+    """A meal draft the user confirmed, with the food chosen per item. The id is client-generated."""
+
+    id: uuid.UUID
+    date: dt.date | None = None
+    meal_type: MealType = MealType.other
+    raw_input: str | None = Field(default=None, max_length=4000)
+    items: list[DraftItem] = Field(min_length=1, max_length=30)
+
+
+@router.post("/drafts/confirm", response_model=MealRead)
+def confirm_draft(body: MealDraftConfirm, session: SessionDep) -> MealRead:
+    """Saves the meal and learns the mappings: both phrases of every item become confirmed aliases (E4, C6)."""
+    day = body.date or today()
+    if session.get(MealLog, body.id) is None:
+        entries = []
+        for item in body.items:
+            candidate = Candidate(**item.candidate.model_dump())
+            try:
+                food = materialize(session, candidate, item.input)
+            except (LookupError, ValueError) as exc:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT, f"Cannot use {candidate.ref}: {exc}"
+                ) from None
+            confirm_aliases(session, item.input, food)
+            entries.append(MealEntry(item.input.user_phrase, food, item.amount_g))
+        save_meal(
+            session, meal_id=body.id, day=day, meal_type=body.meal_type, entries=entries, raw_input=body.raw_input
+        )
+    meal = session.get(MealLog, body.id)
+    assert meal is not None
+    return next(m for m in day_meals(session, meal.logged_date) if m.id == meal.id)
+
+
+def _food(session: SessionDep, food_id: int) -> Food:
+    food = session.get(Food, food_id)
+    if food is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Food not found")
+    return food
 
 
 def _totals(items: list[MealItemRead]) -> Totals:
