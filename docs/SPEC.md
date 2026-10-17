@@ -46,8 +46,14 @@ Devices (F2): **iPhone 16 Pro** is the main phone and runs the PWA. **Galaxy Wat
   1. `db`: `postgres:16-alpine` with persistent volume
   2. `app`: Multi-stage Docker build (Stage 1 builds React static files via Node, Stage 2 runs Python FastAPI serving `/api/*` and mounting the built React SPA at `/`). Runs `alembic upgrade head` on start.
   3. `backup`: daily `pg_dump` into `./data/backups` with rotation (e.g. 7 daily / 4 weekly / 6 monthly) **[A11]**
-- **Dev loop:** `docker-compose.dev.yml` override — backend with `uvicorn --reload` and a bind mount, frontend with the Vite dev server (`node:22` image, `/api` proxied to the backend). No local Node/Python needed **[A12]**.
-- **HTTPS:** `tailscale serve --bg 8000` → `https://<host>.<tailnet>.ts.net`. Required: microphone (`getUserMedia`), camera (barcode scanning, Phase 5) and service workers (PWA install) only work in a secure context **[A2]**.
+- **Ports:** inside the container the app listens on 8000. On the host it is published **on localhost only**, at `APP_PORT` (default **8010**; host port 8000 is already taken on the server). Postgres is only published in dev (`127.0.0.1:5432`).
+- **Dev loop:** `docker-compose.dev.yml` override **[A12]**:
+  - backend: `uvicorn --reload` with a bind mount, running as the host uid so files it creates stay yours;
+  - frontend (added in Phase 3): Vite dev server in a `node:22` container, with `/api` proxied to the backend.
+
+  No local Node or Python is needed.
+- **HTTPS:** `tailscale serve --bg 8010` (the `APP_PORT`) → `https://<host>.<tailnet>.ts.net`. Microphone (`getUserMedia`), camera (barcode scanning, Phase 5) and service workers (PWA install) only work in a secure context **[A2]**. Because the app is bound to localhost, plain HTTP is never reachable from the LAN.
+- **No CORS:** in prod the SPA and `/api` share one origin, and in dev Vite proxies `/api`.
 
 ---
 
@@ -84,7 +90,7 @@ fitness-hub/
 │   ├── tests/
 │   └── app/
 │       ├── __init__.py
-│       ├── main.py           # FastAPI app init, CORS, static files mount, /api/health
+│       ├── main.py           # FastAPI app init, /api/health, SPA static mount (Phase 4)
 │       ├── config.py         # Settings (DATABASE_URL, GEMINI_API_KEY, model tiers, APP_TZ, WEBHOOK_TOKEN, STRAVA_CLIENT_ID/SECRET)
 │       ├── database.py       # SQLModel engine, session dependency
 │       ├── timeutils.py      # today()/day bounds in APP_TZ
@@ -457,8 +463,8 @@ Execute in order, verifying each before moving on. Track status in `docs/PROGRES
 
 **Phase 0 — Scaffolding & dev loop (new)**
 - Backend skeleton (`config.py`, `database.py`, `timeutils.py`, `main.py` with `/api/health`), `requirements.txt`.
-- Alembic setup + initial migration enabling `pg_trgm` and `unaccent`.
-- `docker-compose.yml` (db) + `docker-compose.dev.yml`; `.env.example`; pytest + ruff wired up.
+- Alembic setup + initial migration enabling `pg_trgm` and `unaccent` (+ `f_unaccent()` immutable wrapper for indexes).
+- `Dockerfile` (`dev` and minimal `prod` stages), `docker-compose.yml` (db + app), `docker-compose.dev.yml` (backend reload); `.env.example`; pytest (dedicated `<db>_test` database, rolled-back transaction per test) + ruff (incl. `DTZ` naive-datetime rules); full dependency freeze in `backend/constraints.txt`.
 
 **Phase 1 — Backend core & database**
 - All models from §5 (incl. minimal meal tables, chat tables, step buckets, daily source metrics, integration tokens) + migrations. The idempotent exercise seed covers all 42 exercises of the real Strong export with muscle groups, plus common extras.
@@ -479,11 +485,12 @@ Execute in order, verifying each before moving on. Track status in `docs/PROGRES
 - `ai_tools.py` (7 coach tools, Pydantic args, hybrid drafts), `gemini_service.py` (shared runner), `routers/ai_coach.py` (text + audio, conversation persistence), `services/audio.py`.
 
 **Phase 3 — React frontend & PWA**
-- Scaffold with Vite, React, TypeScript, Tailwind, lucide-react, TanStack Query (+ persist client), recharts.
+- Scaffold with Vite, React, TypeScript, Tailwind, lucide-react, TanStack Query (+ persist client), recharts. Add the Vite dev service (`node:22`, `/api` proxy) to `docker-compose.dev.yml`.
 - `Layout.tsx`, `RestTimer.tsx`, `VoiceRecorder.tsx`, `DraftCard.tsx` and the 4 pages; `vite-plugin-pwa` manifest.
 
 **Phase 4 — Dockerization & deploy**
-- Multi-stage `Dockerfile` (with ffmpeg), `docker-compose.yml` (db + app on port 8000 + backup), healthcheck on `/api/health`.
+- Multi-stage `Dockerfile` (frontend build stage, ffmpeg), `docker-compose.yml` (db + app on `127.0.0.1:${APP_PORT}` + backup), healthcheck on `/api/health`.
+- Refresh `backend/constraints.txt` if dependencies changed (it has been frozen since Phase 0; see CLAUDE.md "Dependencies").
 - FastAPI serves the built React `dist/` as an SPA fallback so refreshing any route works.
 - `tailscale serve --bg 8000`; verify mic + PWA install on the iPhone over HTTPS.
 - Integration setup with guides in `docs/integrations/`:
@@ -500,9 +507,9 @@ Execute in order, verifying each before moving on. Track status in `docs/PROGRES
 
 ## 10. Commands & Verification
 - Dev stack: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build`
-- Migrations: `docker compose exec app alembic revision --autogenerate -m "<msg>"`, `docker compose exec app alembic upgrade head`
+- Migrations: `docker compose exec app alembic revision --autogenerate --rev-id 0002 -m "<msg>"` (sequential ids), `docker compose exec app alembic upgrade head` (also runs on every app start)
 - Tests / lint: `docker compose exec app pytest`, `docker compose exec app ruff check .`, frontend `npm run typecheck`
 - Production: `docker compose up -d --build`; logs `docker compose logs -f app`
-- Health: `curl -f http://localhost:8000/api/health && curl -f http://localhost:8000/api/exercises`
-- HTTPS over the tailnet: `tailscale serve --bg 8000`
+- Health: `curl -f http://127.0.0.1:8010/api/health && curl -f http://127.0.0.1:8010/api/exercises`
+- HTTPS over the tailnet: `tailscale serve --bg 8010`
 - Always verify container health and fix any startup tracebacks before finishing a phase.

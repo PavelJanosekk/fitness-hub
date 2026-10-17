@@ -1,0 +1,12 @@
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+# DTZ enforces timezone-aware datetimes (docs/SPEC.md §3, "Time")
+select = ["E", "F", "W", "I", "B", "UP", "DTZ", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+cache_dir = "/tmp/pytest-cache"

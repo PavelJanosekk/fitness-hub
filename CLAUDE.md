@@ -30,15 +30,28 @@ Gemini-powered assistants. Single user, accessed over Tailscale (HTTPS via `tail
 
 ## Commands
 - Dev stack: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build`
-- Migrations: `docker compose exec app alembic upgrade head` / `alembic revision --autogenerate -m "<msg>"`
+- Migrations: `docker compose exec app alembic upgrade head` / `alembic revision --autogenerate --rev-id 000N -m "<msg>"` (sequential ids)
 - Tests & lint: `docker compose exec app pytest`, `docker compose exec app ruff check .`, frontend `npm run typecheck`
 - Production: `docker compose up -d --build`; logs: `docker compose logs -f app`
-- Health: `curl -f http://localhost:8000/api/health`
-- HTTPS on the tailnet: `tailscale serve --bg 8000`
+- Health: `curl -f http://127.0.0.1:8010/api/health` (host port = `APP_PORT`, default 8010, localhost only)
+- HTTPS on the tailnet: `tailscale serve --bg 8010`
 - Fix any container startup traceback before finishing a phase.
+
+## Dependencies
+- Direct deps are pinned exactly in `backend/requirements.txt` / `requirements-dev.txt`. The full resolved set is frozen in `backend/constraints.txt`, and the Dockerfile installs with `-c constraints.txt`.
+- Only use releases **at least 14 days old**, including transitive ones.
+- To add or bump a dependency:
+  1. Edit the requirements file.
+  2. Temporarily empty `constraints.txt` and rebuild.
+  3. `pip list --format=freeze --exclude pip` in the container.
+  4. Check release dates on PyPI and cap anything too fresh.
+  5. Write the freeze back to `constraints.txt` (keep its header), rebuild, and re-run tests.
+- Tests use `httpx2` (starlette's TestClient deprecates plain `httpx`). Runtime HTTP calls (Strava, KT SDK) use `httpx`.
 
 ## Local environment notes
 - `.env` exists (POSTGRES_*, DATABASE_URL with host `db`, GEMINI_API_KEY) — never print or commit it; `.env.example` documents the keys.
-- Node is not installed on the host; the frontend runs in a `node:22` container in dev.
+- Node and python3-venv are not installed on the host, so everything runs in containers (frontend in `node:22` from Phase 3).
+- Host port 8000 belongs to **Portainer**. The server also runs Caddy, Home Assistant, Immich and others, so never stop or reconfigure containers outside the `fitness-hub` compose project. The app uses `APP_PORT` (8010).
+- Docker: user `biggys` is in the `docker` group. If a session still gets "permission denied" on the socket (it started before the group change), wrap commands in `sg docker -c "..."`.
 - `data/` is gitignored. It holds import samples (the real Strong export is `data/imports/strong_workouts.csv`) and backups. Test fixtures derived from it must be anonymized slices.
 - Devices: an iPhone (PWA, Apple Health steps via iOS Shortcut), a Galaxy Watch paired with an Android phone (Samsung Health → Health Connect forwarder), and Strava for runs. See `docs/SPEC.md` §6.5.

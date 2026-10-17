@@ -1,7 +1,8 @@
 # Progress
 
-**Current phase:** Phase 0 not started. The specs are final and there is no code yet.
-**Next step:** Phase 0 scaffolding (`docs/SPEC.md` §9).
+**Current phase:** Phase 1 (backend core & database), not started. Phase 0 is done and verified.
+**Next step:** Phase 1 models + migration `0002`, then the exercise seed, routers and Strong import (see the checklist below).
+**Dev stack:** `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build` serves http://127.0.0.1:8010 (containers `fitness-hub-app-1`, `fitness-hub-db-1`).
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
 ## Decisions
@@ -12,7 +13,7 @@
 | E2 | 2026-10-17 | **Two separate assistants** (coach, nutrition) on a shared Gemini runner, with separate prompts, toolsets and conversations. The coach only reads intake totals and has a quick-kcal tool. |
 | E3 | — | *Pending, decide before Phase 5:* bulk-seed USDA locally (recommended) vs. lazy API lookup. |
 | E4 | 2026-10-17 | Hybrid save flow for AI-parsed data: auto-save only on high-confidence or confirmed matches, otherwise a draft card for 1-tap confirmation. Aliases are learned only on confirmation. |
-| E5 | 2026-10-17 | The Strong sticky notes mark different exercises. Remap `Lat Pulldown (Machine)` → Bent-over Pulldown and `Lat Pulldown - Underhand (Cable)` → Kelso Shrug for all workouts. Remapping all the underhand workouts is an *assumption* (see review §G1). |
+| E5 | 2026-10-17 | The Strong sticky notes mark different exercises. Remap `Lat Pulldown (Machine)` → Bent-over Pulldown and `Lat Pulldown - Underhand (Cable)` → Kelso Shrug for all workouts. **Confirmed by the user** (O1): all 40 underhand workouts are Kelso Shrugs, and the March 2026 low-rep sets stay the same movement. |
 | E6 | 2026-10-17 | iPhone steps come via an iOS Shortcut → health webhook. |
 | E7 | 2026-10-17 | Steps merge: 15-min buckets, max per bucket, summed over the day. Fallback: max of the sources' daily totals. |
 | E8 | 2026-10-17 | Samsung Health (watch steps, sleep) via live Health Connect sync. Forwarder app on the Android phone, chosen in Phase 1. |
@@ -29,25 +30,26 @@
 ## Open items
 | Id | Item | When |
 |---|---|---|
-| O1 | Confirm the Kelso Shrug assumption. Also, from 2026-03-24 that exercise drops from ~70×9 to 60×4/3/2: is that yet another movement? | Before running the real Strong import (Phase 1) |
 | O2 | Choose the Health Connect forwarder app (Android phone, background push to a custom URL with a header, over Tailscale) | Phase 1 |
 | O3 | KT `unit` grams: per entry or per unit? Are nutrient values per entry? Verify on one real diary day | Phase 5 |
 | O4 | E3: USDA bulk seed vs. lazy API | Before Phase 5 |
 | O5 | Check the current Gemini model ids against the live model list | Phase 2 |
+| O6 | HTTPS: Caddy is already running on the server. Serve the app through it (with a Tailscale cert) or through `tailscale serve`? | Phase 4 |
 
 ## Phase checklist
 
 ### Phase 0: Scaffolding & dev loop
-- [ ] Backend skeleton: `config.py`, `database.py`, `timeutils.py`, `main.py` + `/api/health`, `requirements.txt`
-- [ ] Alembic + initial migration (`pg_trgm`, `unaccent`)
-- [ ] `docker-compose.yml` (db) + `docker-compose.dev.yml` (reload backend, Vite in `node:22`)
-- [ ] `.env.example`; pytest + ruff wired up
+- [x] Backend skeleton: `config.py`, `database.py`, `timeutils.py`, `main.py` + `/api/health`, pinned requirements
+- [x] Alembic + initial migration `0001` (`pg_trgm`, `unaccent`, `f_unaccent()`)
+- [x] `Dockerfile` (dev/prod), `docker-compose.yml` (db + app on 127.0.0.1:${APP_PORT:-8010}), `docker-compose.dev.yml` (backend reload; Vite comes in Phase 3)
+- [x] `.env.example`; pytest (test DB + rollback fixtures) + ruff (incl. DTZ); full dependency freeze in `constraints.txt` (all releases at least 14 days old)
+- [x] Verified: dev stack healthy, `/api/health` ok, 13 tests pass with no warnings, ruff clean; prod image smoke-tested (non-root uid 10001, migrations on start, health ok)
 
 ### Phase 1: Backend core & database
 - [ ] Models (§5): DailyMetric, Exercise, Workout, WorkoutSet, Activity, TrainingPlanItem, MealLog/MealLogItem (minimal), ChatConversation/ChatMessage, StepBucket, DailySourceMetric, IntegrationToken + migration
 - [ ] Idempotent exercise seed (all 42 exercises from the Strong export + extras, Strong naming)
 - [ ] Routers: metrics (+ steps breakdown), nutrition quick-add, workouts (last-performance, active, templates, UUID upserts), running
-- [ ] Strong CSV importer (NBSP/over-4 h durations, local tz, remap rules); confirm O1, then run the real import
+- [ ] Strong CSV importer (NBSP/over-4 h durations, local tz, remap rules), then run the real import
 - [ ] Health webhook + `health_ingest.py` (15-min buckets, merge, sleep attribution)
 - [ ] Strava OAuth + sync; `scheduler.py` (Strava poll, auto-finish sweep)
 - [ ] Research O2 (Health Connect forwarder)
@@ -85,3 +87,12 @@
   - Reviewed the KT SDK (tomasvotava).
   - Designed device ingestion: Strava polling, iOS Shortcut, Health Connect forwarder, 15-min step merge.
   - Got decisions E5–E10 and updated SPEC, the nutrition amendments and the review §G.
+- **2026-10-17 (3):** O1 confirmed (Kelso Shrug for all underhand workouts; March 2026 sets are the same movement). Started Phase 0 and wrote all scaffolding files.
+  - Port 8000 is taken on the host by an unrelated service, so the app moved to `APP_PORT` (8010) and is bound to localhost.
+  - Decided: no CORS; the Vite dev service waits for Phase 3.
+  - Verification is blocked: no Docker access (not in the `docker` group) and no python3-venv.
+- **2026-10-17 (4):** User joined the `docker` group. Phase 0 verified and committed.
+  - Port 8000 turned out to be Portainer.
+  - Capped 9 fresh transitive deps (e.g. starlette 1.8.0 → 1.7.0, SQLAlchemy 2.0.55 → 2.0.54, pydantic 2.14.1 → 2.13.5) and moved the full freeze into Phase 0.
+  - Switched the test client to httpx2 and silenced Alembic's path_separator warning.
+  - Noticed Caddy running on the server: when Phase 4 comes, ask whether HTTPS should go through it instead of `tailscale serve`.
