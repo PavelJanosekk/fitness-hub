@@ -67,10 +67,12 @@ def run_assistant(
     )
     chat = client.chats.create(model=model, config=config, history=history)
     response = chat.send_message(parts)
-    # History turns are text-only, so every function call in the AFC history belongs to this turn
+    # Chat AFC records each function call in the chat history (not on the response): everything after the
+    # prior turns belongs to this turn
+    this_turn = chat.get_history()[len(history) :]
     tool_calls = [
         {"name": part.function_call.name, "args": dict(part.function_call.args or {})}
-        for content in (response.automatic_function_calling_history or [])
+        for content in this_turn
         for part in (content.parts or [])
         if part.function_call
     ]

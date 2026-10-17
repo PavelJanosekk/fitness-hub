@@ -17,20 +17,30 @@ from app.services.ai_tools import SetInput
 
 
 class FakeChat:
-    def __init__(self, client: "FakeGemini", config: types.GenerateContentConfig):
+    """Mimics google-genai chat AFC: tools run inside send_message and every round lands in the chat history
+    (the response itself carries no function-call history)."""
+
+    def __init__(self, client: "FakeGemini", config: types.GenerateContentConfig, history: list[types.Content]):
         self.client, self.tools = client, {fn.__name__: fn for fn in config.tools or []}
+        self.history = list(history)
+
+    def get_history(self, curated: bool = False) -> list[types.Content]:
+        return self.history
 
     def send_message(self, parts: list[types.Part]) -> SimpleNamespace:
         self.client.sent.append(parts)
         if self.client.error:
             raise self.client.error
-        history = []
+        self.history.append(types.Content(role="user", parts=parts))
         for name, kwargs in self.client.calls:  # what automatic function calling would do
-            self.client.results.append(self.tools[name](**kwargs))
-            history.append(types.Content(role="model", parts=[types.Part.from_function_call(name=name, args={})]))
-        return SimpleNamespace(
-            text=self.client.reply, automatic_function_calling_history=history, model_version="fake-1"
-        )
+            result = self.tools[name](**kwargs)
+            self.client.results.append(result)
+            self.history.append(types.Content(role="model", parts=[types.Part.from_function_call(name=name, args={})]))
+            self.history.append(
+                types.Content(role="user", parts=[types.Part.from_function_response(name=name, response=result)])
+            )
+        self.history.append(types.Content(role="model", parts=[types.Part.from_text(text=self.client.reply)]))
+        return SimpleNamespace(text=self.client.reply, model_version="fake-1")
 
 
 class FakeGemini:
@@ -43,7 +53,7 @@ class FakeGemini:
 
     def _create(self, model: str, config: types.GenerateContentConfig, history: list[types.Content]) -> FakeChat:
         self.created.append({"model": model, "config": config, "history": history})
-        return FakeChat(self, config)
+        return FakeChat(self, config, history)
 
 
 @pytest.fixture(autouse=True)
