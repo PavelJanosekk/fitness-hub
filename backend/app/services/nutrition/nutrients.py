@@ -83,5 +83,6 @@ def from_usda(amounts: dict[int, float]) -> dict[str, float]:
         # A sum with a missing component would understate the total, but those are approximations by design;
         # a nutrient with no component at all stays unknown
         if parts:
-            values[nutrient.key] = round(sum(parts) * nutrient.usda_factor, 4)
+            # Carbs "by difference" can come out slightly negative from lab rounding (e.g. Foundation chicken -0.475)
+            values[nutrient.key] = round(max(0.0, sum(parts) * nutrient.usda_factor), 4)
     return values

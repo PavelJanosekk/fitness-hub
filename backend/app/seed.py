@@ -1,5 +1,8 @@
 """Idempotent default data. Runs on every container start after migrations: `python -m app.seed`.
 
+Also seeds the USDA foods once (E3; a ~10 MB download on the first start). A failed download only logs a warning:
+the app starts anyway and the next start tries again.
+
 Exercise names follow the Strong app convention, so Strong imports match them. The first block
 covers every exercise in the user's real Strong export.
 """
@@ -87,7 +90,18 @@ def seed_exercises(session: Session) -> int:
 
 
 if __name__ == "__main__":
+    import httpx
+
     from app.database import engine
+    from app.services.nutrition.usda import is_seeded, seed_usda
 
     with Session(engine) as session:
         print(f"seed: {seed_exercises(session)} new exercises")
+        if not is_seeded(session):
+            try:
+                with httpx.Client(timeout=60, headers={"User-Agent": "fitness-hub"}) as http:
+                    r = seed_usda(session, http)
+                print(f"seed: {r.foods} USDA foods, {r.portions} portions ({r.skipped} skipped: no required macro)")
+            except Exception as exc:  # foods are optional at startup; the app must come up anyway
+                session.rollback()
+                print(f"seed: WARNING USDA foods not seeded, retried on next start: {exc}")

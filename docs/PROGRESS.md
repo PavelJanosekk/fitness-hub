@@ -5,7 +5,7 @@
 1. ✅ `tailscale serve` switched (2026-10-17): https://biggyserver.tailfff1d3.ts.net → prod 8010, `:8443` → dev Vite 5173. The iPhone's Tailscale was offline (last seen 2 days ago) at that point.
 2. ✅ iPhone: PWA installed, voice works. Keep an eye on the GymLogger in real use.
 3. Integrations: ✅ Strava, ✅ Health Connect. **TODO later:** the iOS Shortcut (the user will do it with guidance).
-4. Phase 5 in progress: 5.1 done, next 5.2 (USDA seed + OFF client). The user still has to put the KT credentials into `.env` before 5.5.
+4. Phase 5 in progress: 5.1–5.2 done, next 5.3 (resolver). The user still has to put the KT credentials into `.env` before 5.5.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -92,7 +92,7 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 ### Phase 5: Nutrition module
 `docs/nutrition-module-spec.md` with its Amendments. E3 decided (bulk seed). Steps, each committed + pushed:
 - [x] 5.1 Schema + migration 0007: `foods` (int PK, name_cs/name_en, category, required kcal/P/C/F, nullable sugar/sat-fat/fiber/salt, `micronutrients` JSONB with known keys only, micros reference, recipe yield, trigram indexes), `food_aliases` (+confirmed), `food_portions`, `recipe_components`, `nutrition_profile`; `meal_log_items` gains `food_id` + `amount_g` and `kcal` becomes nullable (manual quick-add only); intake totals computed live through `foods` (metrics + `/day`); `nutrients.py` (keys, units, Czech labels, RDI)
-- [ ] 5.2 USDA seed (CSV, pinned, idempotent; runs on start when missing) + Open Food Facts client (barcode, search) with fixture tests
+- [x] 5.2 USDA seed (CSV, pinned, idempotent; runs on start when missing) + Open Food Facts client (barcode, search) with fixture tests
 - [ ] 5.3 Resolver (alias → local foods → USDA candidates → Gemini pick; hybrid save, aliases on confirmation) + tests
 - [ ] 5.4 Nutrition assistant (prompt, tools, conversations) + routes (chat, voice, summary with coverage, foods CRUD, draft confirm)
 - [ ] 5.5 KT importer via `kaloricke-tabulky-sdk` (14-day rule; verify O3 on one real day; needs `KALORICKETABULKY_EMAIL/PASSWORD` in `.env`)
@@ -177,3 +177,4 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - **2026-10-17 (17):** Strava connected once the callback domain was fixed. The first sync brought 301 activities (165 runs, 106 rides, 22 swims, 2021-05 → 2026-10) and stream metrics for the 10 newest runs; 105 runs with HR remain, 10 per 30-min sync (~5–6 h). **E12 checked on real data:** decoupling matches the RunningCoach log exactly (LR 13.9. +6.2 %, LR 20.9. −2.4 %, 6.10. 7.9 %). Extreme values on short easy runs (23.9. −33 %, 15.10. −18 %) come from fast or downhill starts while HR lags, as the log itself describes.
 - **2026-10-17 (18):** Life Dashboard Companion installed (1.26.0) with the token header. 125 payloads accepted; daily steps for 18.9.→today; the 365-day backfill is running. The user deferred the iOS Shortcut; next up is Phase 5.
 - **2026-10-17 (19):** E3 decided: bulk seed from USDA's CSV editions. 5.1: models + migration 0007 (round-trip tested; trigram indexes are hand-written and excluded from autogenerate via `include_object`); `services/nutrition/` is now a package with `nutrients.py` (USDA id fallback chains, sums, salt from sodium, EU NRV references); intake totals computed live through `foods` in `/day` and `intake_by_day` (139 tests).
+- **2026-10-17 (20):** 5.2: USDA seed from the CSV editions (8,170 foods + 14,612 portions in 12 s on dev; 92 skipped without a required macro; real data has negative carbs-by-difference, now clamped to 0; the startup seed never blocks the app). Spot checks match USDA (rice 130 kcal, banana 89, egg 143). US portion sizes differ from Czech ones (US medium egg 44 g vs Czech "vejce M" 55 g), so Czech portions/aliases must take precedence in the resolver. OFF client: barcode lookup + search.openfoodfacts.org (noisy, so Gemini picks), kJ fallback, upsert by EAN; response shapes recorded from live calls (155 tests).

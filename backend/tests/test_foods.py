@@ -122,3 +122,7 @@ def test_usda_mapping_uses_fallbacks_sums_and_derives_salt() -> None:
 
 def test_measured_energy_wins_over_atwater() -> None:
     assert from_usda({1008: 100.0, 2047: 120.0, 2048: 110.0})["kcal"] == 100
+
+
+def test_negative_lab_values_are_clamped_to_zero() -> None:
+    assert from_usda({1008: 130.0, 1003: 18.4, 1004: 5.9, 1005: -0.475})["carbs_g"] == 0
