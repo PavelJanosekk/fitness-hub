@@ -53,7 +53,7 @@ export const gymKeys = {
   exercises: ["exercises"] as const,
   // "v2": the persisted cache on phones still holds the old template shape (derived from history)
   templates: ["workouts", "templates", "v2"] as const,
-  history: ["workouts", "history"] as const,
+  history: ["workouts", "history", "v2"] as const, // v2: summaries gained `prs`; older persisted ones lack it
   workout: (id: string) => ["workouts", id] as const,
   last: (exerciseId: number) => ["exercises", exerciseId, "last"] as const,
 };
@@ -63,7 +63,11 @@ export const useExercises = () =>
 export const useTemplates = () =>
   useQuery({ queryKey: gymKeys.templates, queryFn: () => api<Template[]>("/api/workouts/templates") });
 export const useHistory = () =>
-  useQuery({ queryKey: gymKeys.history, queryFn: () => api<WorkoutSummary[]>("/api/workouts?limit=200") });
+  useQuery({
+    queryKey: gymKeys.history,
+    queryFn: () => api<WorkoutSummary[]>("/api/workouts?limit=200"),
+    select: (rows) => rows.map((w) => ({ ...w, prs: w.prs ?? [] })),
+  });
 export function useSaveTemplate() {
   const queryClient = useQueryClient();
   return useMutation({
