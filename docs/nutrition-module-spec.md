@@ -34,7 +34,7 @@ Ids refer to `docs/plan-review-2026-10-17.md`; the verified USDA/OFF facts behin
 - Minerals and vitamins as listed in §3A, except folate: use **DFE `1190`** (DRIs are defined in DFE), fallback `1177`. Vitamin D in µg is `1114` (`1110` is IU — ignore).
 - ω-3 (approx.) = `1404` ALA (fallback `1270` 18:3 undifferentiated) + `1278` EPA + `1272` DHA + `1280` DPA. ω-6 (approx.) = `1316` LA (fallback `1269` 18:2 undifferentiated) + `1271` 20:4.
 - Candidate selection: Gemini picks the best of ~10 candidates with a structured output incl. a confidence score; low confidence → draft card. (Foundation-only search ranks poorly, e.g. "potatoes boiled" → kale + potato flour; always include SR Legacy.)
-- **Strategy E3 — still to decide (before Phase 5):** bulk-seed SR Legacy + Foundation locally (~8k foods, public domain, only mapped nutrients; local `pg_trgm` search on `name_en`; no rate limits) vs. the lazy API lookup in §3A. With the lazy API, get a real `USDA_API_KEY` (`DEMO_KEY` is heavily rate-limited).
+- **Strategy E3 — decided 2026-10-17: bulk seed.** SR Legacy (2018-04) + Foundation (`foundation_food` rows) are imported from USDA's **CSV** downloads (pinned URL + sha256; streamed, no 210 MB JSON in memory) into `foods` (`source = usda`, `external_id = usda:<fdc_id>`) with their portions. The resolver searches them locally (`pg_trgm` on `name_en`); there is no USDA API client and no `USDA_API_KEY`. §3A's endpoint/`DEMO_KEY` text is superseded; its nutrient mapping (as corrected above) applies to the CSV `nutrient_id`s.
 
 **Open Food Facts [C4]**
 - **Barcode first:** EAN scanning in the PWA (`BarcodeDetector` on Android Chrome, `@zxing/browser` fallback; needs HTTPS) → `GET /api/v2/product/{ean}.json` (reliable).

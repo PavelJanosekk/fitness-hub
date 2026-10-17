@@ -6,10 +6,11 @@ from sqlmodel import Session, col, select
 
 from app.models.body import DailyMetric, DailyMetricKind, DailySourceMetric, HealthSource
 from app.models.gym import Exercise, Workout, WorkoutSet
-from app.models.nutrition import MealLog, MealLogItem
+from app.models.nutrition import Food, MealLog, MealLogItem
 from app.models.running import Activity
 from app.schemas.body import MetricDay, MetricUpsert, WeekStats
 from app.services.health_ingest import recompute_day
+from app.services.nutrition import ITEM_MACROS, item_value_sql
 from app.services.run_analysis import RUN_TYPES
 from app.timeutils import day_bounds, local_date, today
 
@@ -76,14 +77,9 @@ def weekly_stats(session: Session, weeks: int) -> list[WeekStats]:
 def intake_by_day(session: Session, start: dt.date, end: dt.date) -> dict[dt.date, tuple[float, ...]]:
     """(kcal, protein, carbs, fat) per day that has meal logs. Days without logs are absent, not zero."""
     rows = session.exec(
-        select(
-            MealLog.logged_date,
-            func.sum(MealLogItem.kcal),
-            func.sum(MealLogItem.protein_g),
-            func.sum(MealLogItem.carbs_g),
-            func.sum(MealLogItem.fat_g),
-        )
+        select(MealLog.logged_date, *(func.sum(item_value_sql(column)) for column in ITEM_MACROS))
         .join(MealLogItem, col(MealLogItem.meal_log_id) == MealLog.id)
+        .outerjoin(Food, col(Food.id) == MealLogItem.food_id)
         .where(col(MealLog.logged_date).between(start, end))
         .group_by(col(MealLog.logged_date))
     ).all()

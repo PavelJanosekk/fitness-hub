@@ -1,7 +1,7 @@
 import datetime as dt
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from app.models.nutrition import MealType
 
@@ -18,10 +18,12 @@ class QuickAdd(BaseModel):
 
 
 class MealItemRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    """Food items carry food_id + amount_g and nutrients computed from the food; quick-add items their own."""
 
     id: uuid.UUID
     label: str
+    food_id: int | None = None
+    amount_g: float | None = None
     kcal: float
     protein_g: float | None
     carbs_g: float | None

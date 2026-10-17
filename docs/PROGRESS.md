@@ -5,7 +5,7 @@
 1. ✅ `tailscale serve` switched (2026-10-17): https://biggyserver.tailfff1d3.ts.net → prod 8010, `:8443` → dev Vite 5173. The iPhone's Tailscale was offline (last seen 2 days ago) at that point.
 2. ✅ iPhone: PWA installed, voice works. Keep an eye on the GymLogger in real use.
 3. Integrations: ✅ Strava, ✅ Health Connect. **TODO later:** the iOS Shortcut (the user will do it with guidance).
-4. Phase 5: decide E3 (USDA bulk seed vs lazy API), then verify O3 on a real KT diary day.
+4. Phase 5 in progress: 5.1 done, next 5.2 (USDA seed + OFF client). The user still has to put the KT credentials into `.env` before 5.5.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -15,7 +15,7 @@
 | E0 | 2026-10-17 | Apply all core fixes A1–A13 from the review. Docs are split into CLAUDE.md / docs/SPEC.md / docs/PROGRESS.md. |
 | E1 | 2026-10-17 | Intake lives only in `meal_logs`/`meal_log_items`. `DailyMetric` has no calories_in or macros, and the dashboard's "kcal" input is a quick-add meal item. Minimal meal tables ship in Phase 1. |
 | E2 | 2026-10-17 | **Two separate assistants** (coach, nutrition) on a shared Gemini runner, with separate prompts, toolsets and conversations. The coach only reads intake totals and has a quick-kcal tool. |
-| E3 | — | *Pending, decide before Phase 5:* bulk-seed USDA locally (recommended) vs. lazy API lookup. |
+| E3 | 2026-10-17 | **USDA is bulk-seeded locally**: SR Legacy (7,793 foods) + Foundation (`foundation_food` rows only), from USDA's CSV editions (streamed; the SR JSON is 210 MB unzipped) with pinned URLs + sha256. Only mapped nutrients and portions are stored; search runs locally with `pg_trgm` on `name_en`. No USDA API key, no rate limits. |
 | E4 | 2026-10-17 | Hybrid save flow for AI-parsed data: auto-save only on high-confidence or confirmed matches, otherwise a draft card for 1-tap confirmation. Aliases are learned only on confirmation. |
 | E5 | 2026-10-17 | The Strong sticky notes mark different exercises. Remap `Lat Pulldown (Machine)` → Bent-over Pulldown and `Lat Pulldown - Underhand (Cable)` → Kelso Shrug for all workouts. **Confirmed by the user** (O1): all 40 underhand workouts are Kelso Shrugs, and the March 2026 low-rep sets stay the same movement. |
 | E6 | 2026-10-17 | iPhone steps come via an iOS Shortcut → health webhook. Re-checked 2026-10-17: Life Dashboard Companion's iOS app speaks the same format and `/api/webhooks/health-connect` already accepts it, but it has no App Store or TestFlight build. It needs a Mac with Xcode 26 and a free account (re-sign every 7 days) or a paid one ($99/yr), so the Shortcut stays. Switching later needs no backend change. |
@@ -39,7 +39,7 @@
 | Id | Item | When |
 |---|---|---|
 | O3 | KT `unit` grams: per entry or per unit? Are nutrient values per entry? Verify on one real diary day | Phase 5 |
-| O4 | E3: USDA bulk seed vs. lazy API | Before Phase 5 |
+| O4 | ✅ E3: bulk seed | Before Phase 5 |
 | O5 | ✅ Live list checked: fast = `gemini-3.7-flash` (works with tool calls + typed args; served as 3.8-flash). **The key is on the free tier: Pro = 0 quota.** Smart tier = same Flash with high thinking until billing is enabled. Free-tier data may be used by Google; paid tier not. User: no paid calls for now | Phase 2 |
 | O6 | ✅ `tailscale serve` (E13) | Phase 4 |
 
@@ -90,7 +90,13 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [ ] **TODO (user, later):** iOS Shortcut for iPhone steps + automations (`docs/integrations/ios-shortcut.md`)
 
 ### Phase 5: Nutrition module
-- [ ] Decide E3, verify O3, then steps 1–6 of `docs/nutrition-module-spec.md` with its Amendments (KT via SDK)
+`docs/nutrition-module-spec.md` with its Amendments. E3 decided (bulk seed). Steps, each committed + pushed:
+- [x] 5.1 Schema + migration 0007: `foods` (int PK, name_cs/name_en, category, required kcal/P/C/F, nullable sugar/sat-fat/fiber/salt, `micronutrients` JSONB with known keys only, micros reference, recipe yield, trigram indexes), `food_aliases` (+confirmed), `food_portions`, `recipe_components`, `nutrition_profile`; `meal_log_items` gains `food_id` + `amount_g` and `kcal` becomes nullable (manual quick-add only); intake totals computed live through `foods` (metrics + `/day`); `nutrients.py` (keys, units, Czech labels, RDI)
+- [ ] 5.2 USDA seed (CSV, pinned, idempotent; runs on start when missing) + Open Food Facts client (barcode, search) with fixture tests
+- [ ] 5.3 Resolver (alias → local foods → USDA candidates → Gemini pick; hybrid save, aliases on confirmation) + tests
+- [ ] 5.4 Nutrition assistant (prompt, tools, conversations) + routes (chat, voice, summary with coverage, foods CRUD, draft confirm)
+- [ ] 5.5 KT importer via `kaloricke-tabulky-sdk` (14-day rule; verify O3 on one real day; needs `KALORICKETABULKY_EMAIL/PASSWORD` in `.env`)
+- [ ] 5.6 Frontend: "Jídlo" tab (chat + voice logger, draft cards, daily macros/micros with coverage, meal timeline editing, barcode scan) + food database page
 
 ## Backlog (ideas, not accepted)
 - D1 `Exercise.secondary_muscles` for better volume analysis
@@ -170,3 +176,4 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - **2026-10-17 (16):** The tailnet URL failed at first because neither the iPhone nor the PC was connected to Tailscale: outside the tailnet the ts.net name resolves to Tailscale's public servers, which close the connection. With Tailscale on both, the PWA is installed and voice works on the iPhone. The user deleted the empty "Chest tri" workout, which came from the server's localhost, not the phone. Strava connect gave `redirect_uri invalid`: the app sends the right callback, and Strava accepts the client id with localhost, so the Strava app's *Authorization Callback Domain* has to be set to `biggyserver.tailfff1d3.ts.net`; the user is fixing that.
 - **2026-10-17 (17):** Strava connected once the callback domain was fixed. The first sync brought 301 activities (165 runs, 106 rides, 22 swims, 2021-05 → 2026-10) and stream metrics for the 10 newest runs; 105 runs with HR remain, 10 per 30-min sync (~5–6 h). **E12 checked on real data:** decoupling matches the RunningCoach log exactly (LR 13.9. +6.2 %, LR 20.9. −2.4 %, 6.10. 7.9 %). Extreme values on short easy runs (23.9. −33 %, 15.10. −18 %) come from fast or downhill starts while HR lags, as the log itself describes.
 - **2026-10-17 (18):** Life Dashboard Companion installed (1.26.0) with the token header. 125 payloads accepted; daily steps for 18.9.→today; the 365-day backfill is running. The user deferred the iOS Shortcut; next up is Phase 5.
+- **2026-10-17 (19):** E3 decided: bulk seed from USDA's CSV editions. 5.1: models + migration 0007 (round-trip tested; trigram indexes are hand-written and excluded from autogenerate via `include_object`); `services/nutrition/` is now a package with `nutrients.py` (USDA id fallback chains, sums, salt from sodium, EU NRV references); intake totals computed live through `foods` in `/day` and `intake_by_day` (139 tests).

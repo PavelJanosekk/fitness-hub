@@ -19,6 +19,12 @@ if not config.get_main_option("sqlalchemy.url"):
 target_metadata = SQLModel.metadata
 
 
+def include_object(obj, name, type_, reflected, compare_to) -> bool:
+    # Trigram expression indexes (f_unaccent(lower(col)) gin_trgm_ops) are hand-written in migrations and
+    # not modelled, so autogenerate must not offer to drop them
+    return not (type_ == "index" and reflected and name is not None and name.endswith("_trgm"))
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
@@ -37,7 +43,9 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(
+            connection=connection, target_metadata=target_metadata, compare_type=True, include_object=include_object
+        )
         with context.begin_transaction():
             context.run_migrations()
 

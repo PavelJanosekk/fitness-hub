@@ -25,7 +25,15 @@ from app.models.chat import ChatConversation, ChatMessage  # noqa: E402
 from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingWeek  # noqa: E402
 from app.models.gym import Exercise, Workout, WorkoutSet  # noqa: E402
 from app.models.integrations import IntegrationToken  # noqa: E402
-from app.models.nutrition import MealLog, MealLogItem  # noqa: E402
+from app.models.nutrition import (  # noqa: E402
+    Food,
+    FoodAlias,
+    FoodPortion,
+    MealLog,
+    MealLogItem,
+    NutritionProfile,
+    RecipeComponent,
+)
 from app.models.running import Activity, ActivityMetrics, ActivityStream, TrainingPlanItem  # noqa: E402
 
 __all__ = [
@@ -39,12 +47,17 @@ __all__ = [
     "DailyMetric",
     "DailySourceMetric",
     "Exercise",
+    "Food",
+    "FoodAlias",
+    "FoodPortion",
     "HealthRecord",
     "HealthSourceStatus",
     "IntegrationToken",
     "MealLog",
     "MealLogItem",
+    "NutritionProfile",
     "Race",
+    "RecipeComponent",
     "StepBucket",
     "TrainingPlanItem",
     "TrainingWeek",
