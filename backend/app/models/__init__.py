@@ -14,7 +14,13 @@ SQLModel.metadata.naming_convention = {
     "pk": "pk_%(table_name)s",
 }
 
-from app.models.body import DailyMetric, DailySourceMetric, HealthSourceStatus, StepBucket  # noqa: E402
+from app.models.body import (  # noqa: E402
+    DailyMetric,
+    DailySourceMetric,
+    HealthRecord,
+    HealthSourceStatus,
+    StepBucket,
+)
 from app.models.chat import ChatConversation, ChatMessage  # noqa: E402
 from app.models.gym import Exercise, Workout, WorkoutSet  # noqa: E402
 from app.models.integrations import IntegrationToken  # noqa: E402
@@ -28,6 +34,7 @@ __all__ = [
     "DailyMetric",
     "DailySourceMetric",
     "Exercise",
+    "HealthRecord",
     "HealthSourceStatus",
     "IntegrationToken",
     "MealLog",

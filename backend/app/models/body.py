@@ -1,6 +1,7 @@
 import datetime as dt
 from enum import StrEnum
 
+from sqlalchemy import Index
 from sqlmodel import Field, SQLModel
 
 from app.models.common import AwareDateTime, one_of
@@ -11,6 +12,11 @@ class HealthSource(StrEnum):
     apple_health = "apple_health"
     samsung_health = "samsung_health"
     manual = "manual"
+
+
+class HealthRecordKind(StrEnum):
+    steps = "steps"
+    sleep = "sleep"
 
 
 class DailyMetricKind(StrEnum):
@@ -66,4 +72,26 @@ class DailySourceMetric(SQLModel, table=True):
     source: str = Field(primary_key=True)
     metric: str = Field(primary_key=True)
     value: float
+    # Ordering of incremental senders (Health Connect forwarder): the highest sequence wins per date
+    sequence: int | None = None
+    received_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
+
+
+class HealthRecord(SQLModel, table=True):
+    """Raw records from incremental senders, keyed by their stable id; buckets are rebuilt from these."""
+
+    __tablename__ = "health_records"
+    __table_args__ = (
+        one_of("source", HealthSource),
+        one_of("kind", HealthRecordKind),
+        Index("ix_health_records_source_kind_start", "source", "kind", "start"),
+    )
+
+    kind: str = Field(primary_key=True)
+    uuid: str = Field(primary_key=True)  # Health Connect record id, or "bucket:<start>" for complete buckets
+    source: str
+    origin: str | None = None  # package name of the app that wrote the record (e.g. Samsung Health)
+    start: dt.datetime = Field(sa_type=AwareDateTime)
+    end: dt.datetime = Field(sa_type=AwareDateTime)
+    value: float  # steps: count; sleep: seconds
     received_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)

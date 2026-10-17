@@ -1,7 +1,7 @@
 # Progress
 
-**Current phase:** Phase 1 (backend core & database), not started. Phase 0 is done and verified.
-**Next step:** Phase 1 models + migration `0002`, then the exercise seed, routers and Strong import (see the checklist below).
+**Current phase:** Phase 1 done and verified (backend core, 88 tests). Phase 2 (Gemini coach) not started.
+**Next step:** Phase 2. First O5: check the live Gemini model ids with the user's key.
 **Dev stack:** `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build` serves http://127.0.0.1:8010 (containers `fitness-hub-app-1`, `fitness-hub-db-1`).
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -30,7 +30,6 @@
 ## Open items
 | Id | Item | When |
 |---|---|---|
-| O2 | Choose the Health Connect forwarder app (Android phone, background push to a custom URL with a header, over Tailscale) | Phase 1 |
 | O3 | KT `unit` grams: per entry or per unit? Are nutrient values per entry? Verify on one real diary day | Phase 5 |
 | O4 | E3: USDA bulk seed vs. lazy API | Before Phase 5 |
 | O5 | Check the current Gemini model ids against the live model list | Phase 2 |
@@ -52,8 +51,8 @@
 - [x] Strong CSV importer (NBSP/over-4 h durations, local tz, remap rules, lbs, `;` exports) + real import into the dev DB: 123 workouts, 2,361 sets, 0 new exercises, 76 estimated durations; re-import skips all 123
 - [x] Health webhook `POST /api/webhooks/health` (X-Webhook-Token, replace-per-day) + `health_ingest.py` (15-min buckets, max per bucket summed, daily-max fallback, manual wins; sleep by wake-up day, overlaps counted once, Samsung > Apple) + `GET /api/metrics/steps-breakdown`
 - [x] Strava OAuth (connect/callback with CSRF state) + incremental sync (7-day overlap, cursor only advances on complete syncs, calories via detail for runs ≤14 days, max 20/sync) + `/api/integrations/status`; `scheduler.py` asyncio loops (auto-finish every 10 min, Strava every 30 min); migration `0003` (health_source_status)
-- [ ] Research O2 (Health Connect forwarder)
-- [ ] Tests (see SPEC §9, Phase 1)
+- [x] O2: Health Connect forwarder = **Life Dashboard Companion** (MIT, per-record steps + sleep, custom header/HMAC, offline outbox, 365-day backfill). Receiver `POST /api/webhooks/health-connect` (records by uuid, deletions, per-day rebuild, origin allowlist, sequence-ordered daily totals) + migration `0004`
+- [x] Tests: 88 passing (upserts, last-performance, templates, auto-finish, metrics/intake, Strong import, step merge, sleep, Health Connect receiver, Strava with a fake API, auth)
 
 ### Phase 2: Gemini service & coach tools
 - [ ] O5: verify the current Gemini model ids; configure tiers
@@ -96,3 +95,8 @@
   - Capped 9 fresh transitive deps (e.g. starlette 1.8.0 → 1.7.0, SQLAlchemy 2.0.55 → 2.0.54, pydantic 2.14.1 → 2.13.5) and moved the full freeze into Phase 0.
   - Switched the test client to httpx2 and silenced Alembic's path_separator warning.
   - Noticed Caddy running on the server: when Phase 4 comes, ask whether HTTPS should go through it instead of `tailscale serve`.
+- **2026-10-17 (5):** Phase 1 completed and committed in steps (6375663, 0bf91cb, 2a0a9ce, 7facb33, + Health Connect).
+  - Real Strong history is imported into the dev DB.
+  - Spec deviations recorded in SPEC: `exercise_order` column, float step buckets, the remap rule format, asyncio jobs instead of APScheduler, and the `health_source_status` / `health_records` tables.
+  - O2 resolved: Life Dashboard Companion, with its own receiver endpoint.
+  - Its iOS app could replace the iOS Shortcut (E6). Mentioned to the user as an option; no decision yet.

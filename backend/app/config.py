@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # Public HTTPS origin (e.g. https://host.tailnet.ts.net) for OAuth redirects; falls back to the request URL
     public_base_url: str | None = None
     scheduler_enabled: bool = True
+    # Life Dashboard Companion (Health Connect forwarder): optional HMAC secret instead of the token header,
+    # and the apps whose records count (comma-separated package names; "*" accepts every app)
+    health_connect_secret: str | None = None
+    health_connect_origins: str = "com.sec.android.app.shealth"
 
     @field_validator("database_url")
     @classmethod

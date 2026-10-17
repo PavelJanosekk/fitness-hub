@@ -14,11 +14,13 @@ from app.models.body import (
     DailyMetric,
     DailyMetricKind,
     DailySourceMetric,
+    HealthRecord,
+    HealthRecordKind,
     HealthSource,
     HealthSourceStatus,
     StepBucket,
 )
-from app.schemas.health import BucketRow, DayMerge, HealthPush, SleepSession, StepsBreakdown
+from app.schemas.health import BucketRow, DayMerge, HealthPush, StepsBreakdown
 from app.timeutils import day_bounds, local_date, now_utc
 
 BUCKET = dt.timedelta(minutes=15)
@@ -48,16 +50,16 @@ def distribute(
     return buckets
 
 
-def _merged_minutes(sessions: list[SleepSession]) -> float:
-    """Total minutes covered by the sessions; overlapping duplicates (e.g. two apps) count once."""
+def _merged_minutes(sessions: list[tuple[dt.datetime, dt.datetime]]) -> float:
+    """Total minutes covered by (start, end) sessions; overlapping duplicates (e.g. two apps) count once."""
     total, current_start, current_end = 0.0, None, None
-    for s in sorted(sessions, key=lambda s: s.start):
-        if current_end is None or s.start > current_end:
+    for start, end in sorted(sessions):
+        if current_end is None or start > current_end:
             if current_end is not None:
                 total += (current_end - current_start).total_seconds()
-            current_start, current_end = s.start, s.end
+            current_start, current_end = start, end
         else:
-            current_end = max(current_end, s.end)
+            current_end = max(current_end, end)
     if current_end is not None:
         total += (current_end - current_start).total_seconds()
     return total / 60
@@ -93,7 +95,7 @@ def ingest(session: Session, push: HealthPush) -> list[DayMerge]:
                     date=day,
                     source=push.source,
                     metric=DailyMetricKind.sleep_minutes,
-                    value=round(_merged_minutes(night), 1),
+                    value=round(_merged_minutes([(n.start, n.end) for n in night]), 1),
                 )
             )
     session.merge(HealthSourceStatus(source=push.source, last_received_at=now_utc(), last_day=days[-1]))
@@ -101,6 +103,53 @@ def ingest(session: Session, push: HealthPush) -> list[DayMerge]:
     results = [recompute_day(session, day) for day in days]
     session.commit()
     return results
+
+
+def rebuild_day_from_records(session: Session, source: str, day: dt.date, origins: set[str] | None) -> None:
+    """Recreate a source's step buckets and sleep minutes for a day from its stored raw records.
+
+    `origins` limits which writing apps count (None = all); records without an origin (buckets) always count.
+    """
+    lo, hi = day_bounds(day)
+
+    def counts(record: HealthRecord) -> bool:
+        return origins is None or record.origin is None or record.origin in origins
+
+    session.exec(
+        delete(StepBucket).where(
+            StepBucket.source == source, col(StepBucket.bucket_start) >= lo, col(StepBucket.bucket_start) < hi
+        )
+    )
+    step_records = session.exec(
+        select(HealthRecord).where(
+            HealthRecord.source == source,
+            HealthRecord.kind == HealthRecordKind.steps,
+            col(HealthRecord.start) < hi,
+            col(HealthRecord.end) >= lo,
+        )
+    ).all()
+    buckets: dict[dt.datetime, float] = defaultdict(float)
+    for record in filter(counts, step_records):
+        for start, steps in distribute(record.start, record.end, record.value, lo, hi).items():
+            buckets[start] += steps
+    session.add_all(StepBucket(source=source, bucket_start=b, steps=v) for b, v in buckets.items())
+
+    nights = session.exec(
+        select(HealthRecord).where(
+            HealthRecord.source == source,
+            HealthRecord.kind == HealthRecordKind.sleep,
+            col(HealthRecord.end) >= lo,
+            col(HealthRecord.end) < hi,
+        )
+    ).all()
+    sleep_key = (day, source, DailyMetricKind.sleep_minutes)
+    intervals = [(r.start, r.end) for r in nights if counts(r)]
+    if intervals:
+        minutes = round(_merged_minutes(intervals), 1)
+        session.merge(DailySourceMetric(date=day, source=source, metric=DailyMetricKind.sleep_minutes, value=minutes))
+    elif (stale := session.get(DailySourceMetric, sleep_key)) is not None:
+        session.delete(stale)
+    session.flush()
 
 
 def _day_inputs(

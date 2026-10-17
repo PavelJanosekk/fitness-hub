@@ -302,7 +302,7 @@ Per-source daily values. Used when a source sends totals instead of intervals, a
 |---|---|---|
 | Runs (+ HR, calories) | Strava | OAuth app + **polling**, no public webhook **[E10]** |
 | iPhone steps | Apple Health | **iOS Shortcuts** personal automation → `POST /api/webhooks/health` **[E6]** |
-| Watch steps, sleep, resting HR | Samsung Health → Health Connect (on the Android phone paired with the watch) | Forwarder app on that phone → `POST /api/webhooks/health` **[E8]** |
+| Watch steps, sleep | Samsung Health → Health Connect (on the Android phone paired with the watch) | **Life Dashboard Companion** app on that phone → `POST /api/webhooks/health-connect` **[E8, O2]** |
 
 **Strava [E10]**
 - `GET /api/integrations/strava/connect` redirects to Strava authorize (scope `activity:read_all`). `GET /api/integrations/strava/callback` exchanges the code and stores it in `integration_tokens`. The redirect runs in the browser, so the tailnet hostname works as the callback domain and nothing is exposed publicly.
@@ -339,7 +339,24 @@ Per-source daily values. Used when a source sends totals instead of intervals, a
   - It uses `Find Health Samples` for Steps with Start Date today/yesterday and Source = this iPhone, so it doesn't re-send other apps' data.
   - It builds the JSON with each sample's start, end and count and runs `Get Contents of URL` (POST plus the token header).
   - Tailscale on-demand must be enabled on the iPhone.
-- **Health Connect forwarder [E8]:** an app on the Android phone the watch is paired with. It must read Health Connect `StepsRecord` (with start/end) and `SleepSessionRecord` (resting HR optional), push them on a schedule in the background to a custom URL with a custom header, and work over Tailscale. **The app is chosen in Phase 1** (research task). Tailscale runs on that phone, and Samsung Health → Health Connect sync must be enabled.
+- **Health Connect forwarder [E8, O2]:** [Life Dashboard Companion](https://github.com/owen282000/life-dashboard-companion-app). It's MIT-licensed, with a signed APK on GitHub Releases or Obtainium (F-Droid is in review). It runs on the Android phone the watch is paired with. It was chosen because:
+  - it sends **per-record steps with start/end** (needed for the bucket merge) and sleep sessions;
+  - it supports custom headers and an HMAC signature;
+  - it keeps an offline outbox for a week;
+  - it can backfill 30, 90 or 365 days, which replaces the one-off Samsung CSV import.
+
+  Setup on the phone:
+  - Enable Samsung Health → Health Connect sync. Install Tailscale.
+  - In the app, enable only *Steps* and *Sleep*, and keep the steps resolution at "every record".
+  - Webhook URL `https://<host>.ts.net/api/webhooks/health-connect`, with either the custom header `X-Webhook-Token: <WEBHOOK_TOKEN>` or an HMAC secret (= `HEALTH_CONNECT_SECRET`).
+  - Run a 365-day backfill once.
+- **`POST /api/webhooks/health-connect`** is the receiver for that app's documented payload (`docs/webhook.md` in its repo):
+  - Syncs are **incremental**, so raw step and sleep records are stored by their stable `uuid` (table `health_records`), deletions in `deleted_records` are applied, and each touched day is rebuilt from all stored records into `step_buckets` and sleep minutes. That makes repeated, edited and late payloads harmless.
+  - Only records written by `HEALTH_CONNECT_ORIGINS` count (default Samsung Health, `com.sec.android.app.shealth`; `*` = all), so a second app writing the same steps can't double-count.
+  - `daily_totals` are stored as the source's daily total, and the highest `sequence` per date wins.
+  - Complete steps buckets are stored, incomplete ones are skipped. Test pings and Screen Time payloads return 200 and are ignored.
+  - Its iOS app sends the same format with `source: healthkit_ios`, which maps to `apple_health`. That is a possible later replacement for the iOS Shortcut.
+  - Known limit: a backfill window's "complete" marker isn't used to infer deletions. Only explicit `deleted_records` remove data.
 
 ### 6.6 AI Coach & Voice Dictation (`/api/ai`)
 The coach is one of **two separate assistants** (the nutrition assistant arrives in Phase 5) **[E2]**. Both use the shared runner in `gemini_service.py` with their own system prompt and toolset.
