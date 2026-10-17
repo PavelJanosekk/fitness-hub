@@ -1,7 +1,7 @@
 """Coach chat and voice routes against a fake Gemini client that runs the real tools (no network)."""
 
-import subprocess
 from collections.abc import Callable
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -14,6 +14,9 @@ from app.config import settings
 from app.main import app
 from app.routers.ai_coach import gemini_client
 from app.services.ai_tools import SetInput
+
+# 1 s synthetic tones in the formats phones record: Chrome webm/Opus, Safari fragmented mp4/AAC
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class FakeChat:
@@ -127,29 +130,16 @@ def test_drafts_and_saved_sets_are_returned(client: TestClient, fake) -> None:
     assert result["drafts"][0]["candidates"][0]["name"] == "Kelso Shrug"
 
 
-def test_voice_recording_is_transcoded_for_gemini(client: TestClient, fake) -> None:
+@pytest.mark.parametrize(
+    ("fixture", "mime_type"),
+    [("recording-chrome.webm", "audio/webm;codecs=opus"), ("recording-safari.mp4", "audio/mp4")],
+)
+def test_voice_recording_is_transcoded_for_gemini(client: TestClient, fake, fixture: str, mime_type: str) -> None:
     gemini = fake()
-    webm = subprocess.run(
-        [
-            "ffmpeg",
-            "-loglevel",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            "sine=frequency=440:duration=1",
-            "-c:a",
-            "libopus",
-            "-f",
-            "webm",
-            "pipe:1",
-        ],
-        capture_output=True,
-        check=True,
-    ).stdout
+    recording = (FIXTURES / fixture).read_bytes()
 
     response = client.post(
-        "/api/ai/voice-workout", files={"audio": ("rec.webm", webm, "audio/webm;codecs=opus")}, data={"text": "bench"}
+        "/api/ai/voice-workout", files={"audio": (fixture, recording, mime_type)}, data={"text": "bench"}
     )
 
     assert response.status_code == 200, response.text
