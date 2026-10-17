@@ -201,3 +201,12 @@ def test_a_draft_with_an_unknown_food_is_rejected(client: TestClient) -> None:
     }
 
     assert client.post("/api/nutrition/drafts/confirm", json=body).status_code == 422
+
+
+def test_food_search_puts_names_starting_with_the_query_first(client: TestClient, session: Session) -> None:
+    for name in ("Pepper, banana, raw", "Snacks, banana chips", "Bananas, raw"):
+        food(session, name_en=name)
+
+    names = [f["name"] for f in client.get("/api/nutrition/foods", params={"q": "banana"}).json()]
+
+    assert names[0] == "Bananas, raw"

@@ -50,7 +50,11 @@ def search_foods(
             func.word_similarity(query, _normalized(func.concat_ws(" ", Food.name_cs, Food.brand))),
             func.word_similarity(query, _normalized(Food.name_en)),
         )
-        statement = statement.where(score >= 0.4).order_by(score.desc(), func.length(Food.name_en))
+        # A name that starts with the query is what the user means ("banana" → "Bananas, raw", not "Pepper, banana")
+        prefix = func.greatest(
+            _normalized(Food.name_cs).startswith(query), _normalized(Food.name_en).startswith(query)
+        ).is_(True)
+        statement = statement.where(score >= 0.4).order_by(prefix.desc(), score.desc(), func.length(Food.name_en))
     else:
         eaten = select(func.count()).where(MealLogItem.food_id == Food.id).correlate(Food).scalar_subquery()
         statement = statement.order_by(eaten.desc(), col(Food.name_cs).nulls_last(), col(Food.name_en))
