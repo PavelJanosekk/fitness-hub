@@ -179,3 +179,20 @@ def test_missing_model_config_is_503(client: TestClient, fake, monkeypatch: pyte
     monkeypatch.setattr(settings, "gemini_model_fast", None)
 
     assert client.post("/api/ai/chat", json={"message": "x"}).status_code == 503
+
+
+def test_confirming_a_draft_saves_the_sets_with_the_chosen_exercise(
+    client: TestClient, exercises: dict[str, int]
+) -> None:
+    body = {
+        "exercise_id": exercises["Kelso Shrug"],
+        "sets": [{"weight_kg": 60, "reps": 10}, {"weight_kg": 60, "reps": 8}],
+    }
+
+    first = client.post("/api/ai/drafts/confirm", json=body).json()
+    second = client.post("/api/ai/drafts/confirm", json=body).json()
+
+    assert first["sets_saved"] == 2 and first["exercise"] == "Kelso Shrug"
+    assert second["workout_id"] == first["workout_id"]  # appended to the same open workout
+    workout = client.get(f"/api/workouts/{first['workout_id']}").json()
+    assert [(s["exercise_order"], s["set_order"]) for s in workout["sets"]] == [(1, 1), (1, 2), (1, 3), (1, 4)]

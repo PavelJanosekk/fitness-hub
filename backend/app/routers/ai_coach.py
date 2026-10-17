@@ -11,10 +11,13 @@ from sqlmodel import col, select
 
 from app.database import SessionDep
 from app.models.chat import ChatConversation, ChatMessage
+from app.models.gym import Exercise
 from app.services import gemini_service
+from app.services.ai_tools import SetInput, save_sets, target_workout
 from app.services.audio import AudioError, prepare_audio
 from app.services.coach import CoachTurn, coach_turn
 from app.services.gemini_service import AINotConfiguredError, Tier
+from app.timeutils import now_utc
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -129,6 +132,24 @@ def voice_workout(
             tier=model,
         )
     )
+
+
+class DraftConfirm(BaseModel):
+    """A dictated-sets draft the user confirmed in the app, with the exercise they picked."""
+
+    exercise_id: int
+    sets: list[SetInput] = Field(min_length=1, max_length=20)
+    workout_id: uuid.UUID | None = None
+
+
+@router.post("/drafts/confirm")
+def confirm_draft(body: DraftConfirm, session: SessionDep) -> dict[str, Any]:
+    exercise = session.get(Exercise, body.exercise_id)
+    if exercise is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Unknown exercise")
+    now = now_utc()
+    target = target_workout(session, now, str(body.workout_id) if body.workout_id else None)
+    return save_sets(session, exercise, body.sets, target, now)
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationRead)

@@ -415,30 +415,8 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
                 "message": "Not saved; the user confirms it in the app.",
             }
 
-        assert exercise is not None and exercise.id is not None
-        if target is None:
-            target = Workout(name="Trénink", started_at=ctx.now, source=WorkoutSource.ai)
-            session.add(target)
-            session.flush()
-        order, next_set = _position(session, target.id, exercise.id)
-        for offset, s in enumerate(sets):
-            session.add(
-                WorkoutSet(
-                    workout_id=target.id,
-                    exercise_id=exercise.id,
-                    exercise_order=order,
-                    set_order=next_set + offset,
-                    set_type=s.set_type,
-                    weight_kg=s.weight_kg,
-                    reps=s.reps,
-                    rpe=s.rpe,
-                    duration_s=s.duration_s,
-                    completed=True,
-                    completed_at=ctx.now,
-                )
-            )
-        session.commit()
-        saved = {"workout_id": str(target.id), "exercise": exercise.name, "sets_saved": len(sets)}
+        assert exercise is not None
+        saved = save_sets(session, exercise, sets, target, ctx.now)
         ctx.saved_sets.append(saved)
         return {"status": "saved", **saved}
 
@@ -513,6 +491,41 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
         log_daily_metric_from_ai,
         log_quick_intake_from_ai,
     ]
+
+
+def save_sets(
+    session: Session, exercise: Exercise, sets: list[SetInput], target: Workout | None, now: dt.datetime
+) -> dict[str, Any]:
+    """Append completed sets of one exercise to a workout (a new "Trénink" when none is given)."""
+    assert exercise.id is not None
+    if target is None:
+        target = Workout(name="Trénink", started_at=now, source=WorkoutSource.ai)
+        session.add(target)
+        session.flush()
+    order, next_set = _position(session, target.id, exercise.id)
+    for offset, s in enumerate(sets):
+        session.add(
+            WorkoutSet(
+                workout_id=target.id,
+                exercise_id=exercise.id,
+                exercise_order=order,
+                set_order=next_set + offset,
+                set_type=s.set_type,
+                weight_kg=s.weight_kg,
+                reps=s.reps,
+                rpe=s.rpe,
+                duration_s=s.duration_s,
+                completed=True,
+                completed_at=now,
+            )
+        )
+    session.commit()
+    return {"workout_id": str(target.id), "exercise": exercise.name, "sets_saved": len(sets)}
+
+
+def target_workout(session: Session, now: dt.datetime, workout_id: str | None) -> Workout | None:
+    """The named workout, else today's open workout, else None."""
+    return _target_workout(session, ToolContext(session=session, now=now), workout_id)
 
 
 def _last_weights(session: Session, exercise_id: int | None) -> list[float]:
