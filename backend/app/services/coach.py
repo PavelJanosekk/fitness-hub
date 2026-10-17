@@ -7,15 +7,14 @@ from typing import Any
 
 from google import genai
 from google.genai import types
-from sqlmodel import Session, col, select
+from sqlmodel import Session
 
-from app.models.chat import Assistant, ChatConversation, ChatMessage, ChatRole
+from app.models.chat import Assistant
 from app.services.ai_tools import CZECH_WEEKDAYS, ToolContext, build_coach_tools, exercise_catalog
 from app.services.coach_kb import core_context
-from app.services.gemini_service import Tier, history_content, run_assistant
+from app.services.conversations import get_conversation, load_history, store_turn
+from app.services.gemini_service import Tier, run_assistant
 from app.timeutils import local_date, now_utc
-
-HISTORY_MESSAGES = 30
 
 COACH_ROLE = """Jsi osobní běžecký (maratonský) a silový trenér a analytik uživatele. Odpovídáš česky,
 stručně, přímo a věcně, s vysvětlením "proč", bez přikrášlování.
@@ -63,28 +62,6 @@ class CoachTurn:
     model: str | None = None
 
 
-def get_conversation(session: Session, conversation_id: uuid.UUID | None) -> ChatConversation:
-    """Existing coach conversation, or a new one (with the client's id when given)."""
-    if conversation_id is not None and (existing := session.get(ChatConversation, conversation_id)) is not None:
-        if existing.assistant != Assistant.coach:
-            raise ValueError("Conversation belongs to another assistant")
-        return existing
-    conversation = ChatConversation(id=conversation_id or uuid.uuid4(), assistant=Assistant.coach)
-    session.add(conversation)
-    session.flush()
-    return conversation
-
-
-def load_history(session: Session, conversation: ChatConversation) -> list[types.Content]:
-    messages = session.exec(
-        select(ChatMessage)
-        .where(ChatMessage.conversation_id == conversation.id)
-        .order_by(col(ChatMessage.id).desc())
-        .limit(HISTORY_MESSAGES)
-    ).all()
-    return [history_content(m.role, m.content) for m in reversed(messages)]
-
-
 def coach_turn(
     session: Session,
     client: genai.Client,
@@ -97,7 +74,7 @@ def coach_turn(
     tier: Tier = "fast",
 ) -> CoachTurn:
     """One chat turn: history from the DB, tools bound to the session, both messages stored afterwards."""
-    conversation = get_conversation(session, conversation_id)
+    conversation = get_conversation(session, conversation_id, Assistant.coach)
     history = load_history(session, conversation)
     now = now_utc()
     ctx = ToolContext(session=session, workout_id=workout_id, now=now)
@@ -109,15 +86,7 @@ def coach_turn(
         parts=[*(extra_parts or []), types.Part.from_text(text=user_text)],
         tier=tier,
     )
-    session.add(ChatMessage(conversation_id=conversation.id, role=ChatRole.user, content=stored_text or user_text))
-    session.add(
-        ChatMessage(
-            conversation_id=conversation.id, role=ChatRole.model, content=result.reply, tool_calls=result.tool_calls
-        )
-    )
-    conversation.updated_at = now_utc()
-    session.add(conversation)
-    session.commit()
+    store_turn(session, conversation, stored_text or user_text, result)
     return CoachTurn(
         reply=result.reply,
         conversation_id=conversation.id,

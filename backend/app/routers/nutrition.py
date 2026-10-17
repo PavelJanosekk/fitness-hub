@@ -1,21 +1,20 @@
-"""Nutrition routes (nutrition spec §5): intake, the food database, barcode lookup, profile, meal drafts.
-
-The nutrition assistant's chat and voice routes are added with the assistant (Phase 5.4b).
-"""
+"""Nutrition routes (nutrition spec §5): the assistant (chat, voice), intake, the food database, barcode lookup,
+profile and meal drafts."""
 
 import datetime as dt
 import uuid
 from collections.abc import Iterator
-from typing import Annotated
+from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from app.database import SessionDep
 from app.models.nutrition import Food, FoodSource, MealLog, MealLogItem, MealType, NutritionProfile
+from app.routers.ai_coach import ChatRequest, GeminiDep, audio_part, run_gemini
 from app.schemas.nutrition import (
     CandidateIn,
     DayIntake,
@@ -29,8 +28,10 @@ from app.schemas.nutrition import (
     QuickAdd,
     Totals,
 )
+from app.services.gemini_service import Tier
 from app.services.nutrition import off
 from app.services.nutrition import quick_add as quick_add_meal
+from app.services.nutrition.assistant import NutritionTurn, nutrition_turn
 from app.services.nutrition.foods import create_food, read_food, search_foods, update_food
 from app.services.nutrition.meals import MealEntry, save_meal, upsert_item
 from app.services.nutrition.resolver import Candidate, MealItemInput, confirm_aliases, materialize
@@ -46,6 +47,71 @@ def get_http() -> Iterator[httpx.Client]:
 
 
 HttpDep = Annotated[httpx.Client, Depends(get_http)]
+
+
+VOICE_INSTRUCTION = "Zpracuj tuto hlasovou nahrávku: zapiš snědené jídlo nástrojem a stručně potvrď, co je uložené."
+
+
+class NutritionChatResponse(BaseModel):
+    reply: str
+    conversation_id: uuid.UUID
+    tool_calls_made: list[str]
+    drafts: list[dict[str, Any]]  # meal drafts for 1-tap confirmation (POST /drafts/confirm)
+    saved_meals: list[dict[str, Any]]
+    model: str | None
+
+
+def _chat_response(turn: NutritionTurn) -> NutritionChatResponse:
+    return NutritionChatResponse(
+        reply=turn.reply,
+        conversation_id=turn.conversation_id,
+        tool_calls_made=turn.tool_calls_made,
+        drafts=turn.drafts,
+        saved_meals=turn.saved_meals,
+        model=turn.model,
+    )
+
+
+@router.post("/chat", response_model=NutritionChatResponse)
+def chat(body: ChatRequest, session: SessionDep, client: GeminiDep, http: HttpDep) -> NutritionChatResponse:
+    """The nutrition assistant: log meals in Czech, ask about intake. Its own conversations (E2)."""
+    turn = run_gemini(
+        lambda: nutrition_turn(
+            session, client, http, user_text=body.message, conversation_id=body.conversation_id, tier=body.model
+        )
+    )
+    return _chat_response(turn)
+
+
+@router.post("/voice", response_model=NutritionChatResponse)
+def voice(
+    session: SessionDep,
+    client: GeminiDep,
+    http: HttpDep,
+    audio: Annotated[UploadFile | None, File(description="Recording from MediaRecorder")] = None,
+    text: Annotated[str | None, Form(max_length=4000)] = None,
+    conversation_id: Annotated[uuid.UUID | None, Form()] = None,
+    model: Annotated[Tier, Form()] = "fast",
+) -> NutritionChatResponse:
+    """A dictated meal as audio or text; saved or returned as a draft (hybrid flow)."""
+    if audio is None and not text:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Send audio or text")
+    extra_parts = [audio_part(audio)] if audio is not None else []
+    user_text = f"{VOICE_INSTRUCTION}\n{text}" if text and audio is not None else (text or VOICE_INSTRUCTION)
+    stored = f"🎤 [hlasová nahrávka]{' ' + text if text else ''}" if audio is not None else text
+    turn = run_gemini(
+        lambda: nutrition_turn(
+            session,
+            client,
+            http,
+            user_text=user_text,
+            stored_text=stored,
+            extra_parts=extra_parts,
+            conversation_id=conversation_id,
+            tier=model,
+        )
+    )
+    return _chat_response(turn)
 
 
 @router.post("/quick-add", response_model=MealRead)

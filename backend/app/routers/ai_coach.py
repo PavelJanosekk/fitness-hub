@@ -1,5 +1,6 @@
 import datetime as dt
 import uuid
+from collections.abc import Callable
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -65,10 +66,10 @@ class ConversationRead(BaseModel):
     messages: list[MessageRead]
 
 
-def _respond(run) -> ChatResponse:
-    """Run a coach turn, mapping configuration and Gemini errors to HTTP statuses."""
+def run_gemini[T](run: Callable[[], T]) -> T:
+    """Run an assistant turn, mapping configuration and Gemini errors to HTTP statuses (shared by both assistants)."""
     try:
-        turn: CoachTurn = run()
+        return run()
     except AINotConfiguredError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from None
     except ValueError as exc:
@@ -79,6 +80,19 @@ def _respond(run) -> ChatResponse:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Gemini rejected the request: {exc.message}") from None
     except genai_errors.APIError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Gemini error: {exc.message}") from None
+
+
+def audio_part(audio: UploadFile) -> types.Part:
+    """A browser recording as a Gemini part (transcoded when Gemini can't read the format)."""
+    try:
+        data, mime_type = prepare_audio(audio.file.read(), audio.content_type)
+    except AudioError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
+    return types.Part.from_bytes(data=data, mime_type=mime_type)
+
+
+def _respond(run: Callable[[], CoachTurn]) -> ChatResponse:
+    turn = run_gemini(run)
     return ChatResponse(
         reply=turn.reply,
         conversation_id=turn.conversation_id,
@@ -111,13 +125,7 @@ def voice_workout(
     """Dictated sets as audio (Czech/English) or text; sets are saved or returned as drafts (hybrid flow)."""
     if audio is None and not text:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Send audio or text")
-    extra_parts: list[types.Part] = []
-    if audio is not None:
-        try:
-            data, mime_type = prepare_audio(audio.file.read(), audio.content_type)
-        except AudioError as exc:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
-        extra_parts.append(types.Part.from_bytes(data=data, mime_type=mime_type))
+    extra_parts = [audio_part(audio)] if audio is not None else []
     user_text = f"{VOICE_INSTRUCTION}\n{text}" if text and audio is not None else (text or VOICE_INSTRUCTION)
     stored = f"🎤 [hlasová nahrávka]{' ' + text if text else ''}" if audio is not None else text
     return _respond(

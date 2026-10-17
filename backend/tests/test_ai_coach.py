@@ -2,13 +2,11 @@
 
 from collections.abc import Callable
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any
 
 import pytest
+from fakes import FakeGemini
 from fastapi.testclient import TestClient
 from google.genai import errors as genai_errors
-from google.genai import types
 
 from app.config import settings
 from app.main import app
@@ -17,46 +15,6 @@ from app.services.ai_tools import SetInput
 
 # 1 s synthetic tones in the formats phones record: Chrome webm/Opus, Safari fragmented mp4/AAC
 FIXTURES = Path(__file__).parent / "fixtures"
-
-
-class FakeChat:
-    """Mimics google-genai chat AFC: tools run inside send_message and every round lands in the chat history
-    (the response itself carries no function-call history)."""
-
-    def __init__(self, client: "FakeGemini", config: types.GenerateContentConfig, history: list[types.Content]):
-        self.client, self.tools = client, {fn.__name__: fn for fn in config.tools or []}
-        self.history = list(history)
-
-    def get_history(self, curated: bool = False) -> list[types.Content]:
-        return self.history
-
-    def send_message(self, parts: list[types.Part]) -> SimpleNamespace:
-        self.client.sent.append(parts)
-        if self.client.error:
-            raise self.client.error
-        self.history.append(types.Content(role="user", parts=parts))
-        for name, kwargs in self.client.calls:  # what automatic function calling would do
-            result = self.tools[name](**kwargs)
-            self.client.results.append(result)
-            self.history.append(types.Content(role="model", parts=[types.Part.from_function_call(name=name, args={})]))
-            self.history.append(
-                types.Content(role="user", parts=[types.Part.from_function_response(name=name, response=result)])
-            )
-        self.history.append(types.Content(role="model", parts=[types.Part.from_text(text=self.client.reply)]))
-        return SimpleNamespace(text=self.client.reply, model_version="fake-1")
-
-
-class FakeGemini:
-    def __init__(self, reply: str = "Hotovo.", calls: list[tuple[str, dict[str, Any]]] | None = None):
-        self.reply, self.calls, self.error = reply, calls or [], None
-        self.created: list[dict[str, Any]] = []
-        self.sent: list[list[types.Part]] = []
-        self.results: list[Any] = []
-        self.chats = SimpleNamespace(create=self._create)
-
-    def _create(self, model: str, config: types.GenerateContentConfig, history: list[types.Content]) -> FakeChat:
-        self.created.append({"model": model, "config": config, "history": history})
-        return FakeChat(self, config, history)
 
 
 @pytest.fixture(autouse=True)

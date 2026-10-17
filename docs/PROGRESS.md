@@ -5,7 +5,7 @@
 1. ✅ `tailscale serve` switched (2026-10-17): https://biggyserver.tailfff1d3.ts.net → prod 8010, `:8443` → dev Vite 5173. The iPhone's Tailscale was offline (last seen 2 days ago) at that point.
 2. ✅ iPhone: PWA installed, voice works. Keep an eye on the GymLogger in real use.
 3. Integrations: ✅ Strava, ✅ Health Connect. **TODO later:** the iOS Shortcut (the user will do it with guidance).
-4. Phase 5 in progress: 5.1–5.4a done, next 5.4b (the nutrition assistant). The user still has to put the KT credentials into `.env` before 5.5.
+4. Phase 5 in progress: 5.1–5.4 done (live check on dev next), then 5.5 KT import (needs credentials) and 5.6 frontend. The user still has to put the KT credentials into `.env` before 5.5.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -95,7 +95,7 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [x] 5.2 USDA seed (CSV, pinned, idempotent; runs on start when missing) + Open Food Facts client (barcode, search) with fixture tests
 - [x] 5.3 Resolver (alias → local foods → USDA candidates → Gemini pick; hybrid save, aliases on confirmation) + tests
 - [x] 5.4a Routes without AI: `/summary` (every nutrient with coverage + profile/EU target, training-day kcal), food items PUT (client UUID), foods search/CRUD (delete guarded), `/barcode/{ean}` (local → OFF), `/profile`, `/drafts/confirm` (idempotent, learns aliases)
-- [ ] 5.4b Nutrition assistant: prompt (known foods C7, portions), tools `log_meal_from_items` + `get_daily_nutrition_summary`, Gemini chooser + web estimate, `/chat` + `/voice`
+- [x] 5.4b Nutrition assistant: prompt (known foods C7, portions), tools `log_meal_from_items` + `get_daily_nutrition_summary`, Gemini chooser + web estimate, `/chat` + `/voice`
 - [ ] 5.5 KT importer via `kaloricke-tabulky-sdk` (14-day rule; verify O3 on one real day; needs `KALORICKETABULKY_EMAIL/PASSWORD` in `.env`)
 - [ ] 5.6 Frontend: "Jídlo" tab (chat + voice logger, draft cards, daily macros/micros with coverage, meal timeline editing, barcode scan) + food database page
 
@@ -181,3 +181,4 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - **2026-10-17 (20):** 5.2: USDA seed from the CSV editions (8,170 foods + 14,612 portions in 12 s on dev; 92 skipped without a required macro; real data has negative carbs-by-difference, now clamped to 0; the startup seed never blocks the app). Spot checks match USDA (rice 130 kcal, banana 89, egg 143). US portion sizes differ from Czech ones (US medium egg 44 g vs Czech "vejce M" 55 g), so Czech portions/aliases must take precedence in the resolver. OFF client: barcode lookup + search.openfoodfacts.org (noisy, so Gemini picks), kJ fallback, upsert by EAN; response shapes recorded from live calls (150 tests).
 - **2026-10-17 (21):** 5.2 deployed to prod (backup `manual-pre-0007-…dump` first; 0007 migrated, 8,170 USDA foods seeded). 5.3 resolver: confirmed = confirmed alias, a known food already eaten, or an exact Czech name on a user/KT food; otherwise candidates (local by Czech name, OFF for branded, USDA by a trigram + full-text pool re-ranked by query-word coverage with a head-word bonus and same-name dedupe), a Chooser picks (Gemini in 5.4), web estimate when nothing is found. Aliases and a USDA food's Czech name are written only on confirmation. Search checked on 18 typical queries against the real seed (161 tests).
 - **2026-10-17 (22):** 5.4a: summary, items, foods, barcode, profile and draft-confirm routes. A test caught a KeyError when a quick-add item met the micronutrient summary (fixed) (168 tests).
+- **2026-10-17 (23):** 5.4b: nutrition assistant (Czech prompt with the 150 most-eaten foods + typical portions, local time; tools `log_meal_from_items` and `get_daily_nutrition_summary`), GeminiChooser (one structured call per meal, falls back to top score on any error), web estimate as a separate Google-Search-grounded call, `/api/nutrition/chat` + `/voice`. Shared `services/conversations.py`, `run_gemini` and `audio_part`; the Gemini fake moved to `tests/fakes.py` (180 tests).
