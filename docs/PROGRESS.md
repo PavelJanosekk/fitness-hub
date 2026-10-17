@@ -96,6 +96,7 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - NutriDatabáze.cz as a Czech food source (licensing unverified)
 - KT weight history import earlier than Phase 5 (declined for now in E9)
 - Switch iPhone steps from the iOS Shortcut to the Life Dashboard Companion iOS app once it reaches TestFlight or the App Store (receiver already supports `healthkit_ios`)
+- D4 Frontend test runner (vitest) with the offline-sync cases from the 2026-10-17 harness (outage, 502, 4xx, reopen mid-retry)
 
 ## Session log
 - **2026-10-17 (1):** Reviewed the original spec and the user's nutrition spec; live-checked the USDA FDC and Open Food Facts APIs. Saved the nutrition spec and the review, got decisions E0/E1/E2/E4, and restructured the docs. Commit `959fa75` on `dev`.
@@ -160,3 +161,5 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
   - Integrations: guides for Strava, the iOS Shortcut and Health Connect. Set `PUBLIC_BASE_URL` and a random `WEBHOOK_TOKEN` in `.env` (values never printed). Prod rejects wrong tokens (401); full pushes tested on dev (Shortcut payload shape, the documented Life Dashboard ping).
     - The Shortcut design accounts for iOS locking Health data while the phone is locked: a guard (0 samples → stop) protects the replace-per-day rule, and an "app opened" trigger runs while the phone is in use.
     - `/api/webhooks/health` now parses the raw body (Shortcuts may label JSON as octet-stream). Both webhooks drop pydantic's `ctx` from 422 details: a validator's ValueError there made the old 422 path crash with a 500 (132 tests).
+  - **Gym sync data-loss bug fixed** (found while checking the outage's effect): with the server unreachable but the phone online, a set PUT gave up after ~30 s, TanStack persisted only paused mutations, and `finish()` cleared the local workout, so the set was gone. Now gym writes retry while the server is unreachable (network/408/429/502–504, backoff capped at 30 s), in-flight writes are persisted and resumed on reopen, and finish re-sends all completed sets. Checked with a throwaway harness on the real `gym.ts` (scratchpad, not committed: no frontend test runner yet). Deployed to prod.
+  - At the end of the session: the "Chest tri" workout is open on the server with 0 synced sets. If sets were completed during the outage, they come back when the user taps **Dokončit** in the reloaded app; otherwise auto-finish closes it after 2 h.
