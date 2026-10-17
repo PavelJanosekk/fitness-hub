@@ -32,6 +32,14 @@ class ActivityRead(BaseModel):
     notes: str | None
     pace_sec_per_km: int | None = None
     pace: str | None = None  # "5:12" min/km
+    rpe: int | None = None
+    heat: bool = False
+    # Stream metrics (null until the streams are fetched; see docs/SPEC.md §6.8)
+    gap_sec_per_km: float | None = None
+    ef_gap: float | None = None
+    decoupling_pct: float | None = None
+    pct_above_easy: float | None = None
+    z4_minutes: float | None = None
 
 
 class PlanWeekRead(BaseModel):

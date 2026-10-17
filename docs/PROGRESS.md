@@ -1,7 +1,7 @@
 # Progress
 
 **Current phase:** Phases 0–2 done and verified (backend + AI coach, 122 tests, live free-tier check passed). Phase 3 (React frontend & PWA) not started.
-**Next step:** Phase 3, step 3.4 Run page. GymLogger still needs a check in a real phone browser (no visual check yet). Dev UI: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` → http://127.0.0.1:5173. Each step is committed and pushed to `origin/dev` as soon as it's verified.
+**Next step:** Phase 3, step 3.5 AI Coach page. GymLogger still needs a check in a real phone browser (no visual check yet). Dev UI: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` → http://127.0.0.1:5173. Each step is committed and pushed to `origin/dev` as soon as it's verified.
 **Dev stack:** `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build` serves http://127.0.0.1:8010 (containers `fitness-hub-app-1`, `fitness-hub-db-1`).
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -68,7 +68,7 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [x] 3.1 Scaffold `frontend/` (Vite, React, TS, Tailwind v4, react-router, TanStack Query + persist, lucide, recharts, vite-plugin-pwa); `frontend` service in `docker-compose.dev.yml` (node:22, Vite :5173, `/api` → app:8000); `npm run build` + `tsc` pass
 - [x] 3.2 Layout (bottom nav on phone, sidebar on desktop, safe-area insets), API client, Dashboard (weight + kcal quick input, weight 7d chart + kcal bars, steps/sleep tile)
 - [x] 3.3 GymLogger: start from template / empty, active workout with ghost values, ±steppers, 1-tap complete + RestTimer, client UUIDs + persisted offline mutation queue, finish
-- [ ] 3.4 Run page: races countdown, plan vs actual weeks, activities with stream metrics
+- [x] 3.4 Run page: races countdown, plan vs actual weeks, activities with stream metrics
 - [ ] 3.5 AI Coach: chat, tier toggle, quick prompts, VoiceRecorder (MediaRecorder), DraftCard confirm
 - [ ] 3.6 Settings: integrations + KB status/sync, Strong import; PWA manifest/icons; FastAPI serves built SPA (prep for Phase 4)
 
@@ -133,3 +133,4 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - **2026-10-17 (11):** 3.3 GymLogger.
   - Local-first active workout in localStorage; only completed sets sync, as idempotent PUT/DELETE through persisted TanStack mutations; `registerGymMutations` with one shared scope keeps them in order.
   - Templates pre-fill sets from the last session (ghost values); two-line set rows with big steppers; rest timer stored as an end time; resume of a server-side open workout; the auto-finish on the server clears the local workout.
+- **2026-10-17 (12):** 3.4 Run page: race countdowns, this week vs plan, the weekly plan list with progress, LTHR zones, runs with stream-metric chips. `/api/running/activities` now returns metrics, RPE and the heat flag (124 tests). Headless-Chromium screenshots hung (chromedp image), so the visual check is left to the user's phone.

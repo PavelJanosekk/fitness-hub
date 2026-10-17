@@ -49,3 +49,32 @@ def test_plan_link_to_unknown_activity_is_rejected(client: TestClient) -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_activity_list_includes_stream_metrics_and_heat(client: TestClient, session) -> None:
+    from app.models.running import Activity
+    from app.services.run_analysis import store_streams
+
+    created = client.post(
+        "/api/running/activities", json={**RUN, "external_id": "strava:9", "notes": "Easy heat"}
+    ).json()
+    seconds = 2400
+    store_streams(
+        session,
+        session.get(Activity, created["id"]),
+        {
+            "time": {"data": list(range(seconds))},
+            "velocity_smooth": {"data": [3.0] * seconds},
+            "heartrate": {"data": [146] * seconds},
+            "moving": {"data": [True] * seconds},
+            "grade_smooth": {"data": [0.0] * seconds},
+        },
+        172,
+    )
+    session.commit()
+
+    listed = client.get("/api/running/activities").json()[0]
+
+    assert listed["heat"] is True
+    assert listed["gap_sec_per_km"] == 333.3
+    assert listed["pct_above_easy"] == 0 and listed["z4_minutes"] == 0

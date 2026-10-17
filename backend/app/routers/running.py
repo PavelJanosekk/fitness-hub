@@ -6,20 +6,28 @@ from sqlmodel import col, select
 
 from app.database import SessionDep
 from app.models.coach import TrainingWeek
-from app.models.running import Activity, TrainingPlanItem
+from app.models.running import Activity, ActivityMetrics, TrainingPlanItem
 from app.schemas.running import ActivityCreate, ActivityRead, PlanItemIn, PlanItemRead, PlanWeekRead
-from app.services.run_analysis import RUN_TYPES
+from app.services.run_analysis import RUN_TYPES, is_heat
 from app.timeutils import day_bounds, today
 
 router = APIRouter(prefix="/api/running", tags=["running"])
 
 
-def read_activity(activity: Activity) -> ActivityRead:
+def read_activity(activity: Activity, metrics: ActivityMetrics | None = None) -> ActivityRead:
     read = ActivityRead.model_validate(activity)
+    read.heat = is_heat(activity)
     if activity.distance_meters > 0:
         pace = round(activity.duration_seconds / (activity.distance_meters / 1000))
         read.pace_sec_per_km = pace
         read.pace = f"{pace // 60}:{pace % 60:02d}"
+    if metrics is not None:
+        zones = metrics.zone_seconds or {}
+        read.gap_sec_per_km = metrics.gap_s_per_km
+        read.ef_gap = metrics.ef_gap
+        read.decoupling_pct = metrics.decoupling_pct
+        read.pct_above_easy = metrics.pct_above_easy
+        read.z4_minutes = round(zones["z4"] / 60, 1) if "z4" in zones else None
     return read
 
 
@@ -27,10 +35,15 @@ def read_activity(activity: Activity) -> ActivityRead:
 def list_activities(
     session: SessionDep, limit: int = Query(50, ge=1, le=500), activity_type: str | None = None
 ) -> list[ActivityRead]:
-    query = select(Activity).order_by(col(Activity.start_time).desc()).limit(limit)
+    query = (
+        select(Activity, ActivityMetrics)
+        .outerjoin(ActivityMetrics, col(ActivityMetrics.activity_id) == Activity.id)
+        .order_by(col(Activity.start_time).desc())
+        .limit(limit)
+    )
     if activity_type:
         query = query.where(Activity.activity_type == activity_type)
-    return [read_activity(a) for a in session.exec(query).all()]
+    return [read_activity(a, m) for a, m in session.exec(query).all()]
 
 
 @router.post("/activities", response_model=ActivityRead, status_code=status.HTTP_201_CREATED)
