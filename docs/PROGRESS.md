@@ -1,7 +1,12 @@
 # Progress
 
 **Current phase:** Phases 0–2 done and verified (backend + AI coach, 122 tests, live free-tier check passed). Phase 3 (React frontend & PWA) not started.
-**Next step:** Phase 3, step 3.6 Settings page, FastAPI serving the built SPA, route code-splitting. GymLogger still needs a check in a real phone browser (no visual check yet). Dev UI: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` → http://127.0.0.1:5173. Each step is committed and pushed to `origin/dev` as soon as it's verified.
+**Next step:** Phase 3 is code-complete but **not yet checked in a real phone browser** (headless screenshots hung). Then Phase 4:
+- build and smoke-test the prod image (frontend stage added but never built);
+- `tailscale serve`, or Caddy (O6);
+- backups;
+- integration setup (Strava app, WEBHOOK_TOKEN, iOS Shortcut, Life Dashboard Companion);
+- slim the ffmpeg image. GymLogger still needs a check in a real phone browser (no visual check yet). Dev UI: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` → http://127.0.0.1:5173. Each step is committed and pushed to `origin/dev` as soon as it's verified.
 **Dev stack:** `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build` serves http://127.0.0.1:8010 (containers `fitness-hub-app-1`, `fitness-hub-db-1`).
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -70,7 +75,7 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [x] 3.3 GymLogger: start from template / empty, active workout with ghost values, ±steppers, 1-tap complete + RestTimer, client UUIDs + persisted offline mutation queue, finish
 - [x] 3.4 Run page: races countdown, plan vs actual weeks, activities with stream metrics
 - [x] 3.5 AI Coach: chat, tier toggle, quick prompts, VoiceRecorder (MediaRecorder), DraftCard confirm
-- [ ] 3.6 Settings: integrations + KB status/sync, Strong import; PWA manifest/icons; FastAPI serves built SPA (prep for Phase 4)
+- [x] 3.6 Settings: integrations + KB status/sync, Strong import; PWA manifest/icons; FastAPI serves built SPA (prep for Phase 4)
 
 ### Phase 4: Docker & deploy
 - [ ] Multi-stage Dockerfile (ffmpeg), compose (db, app, backup), healthcheck, SPA fallback
@@ -138,3 +143,6 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
   - Chat with the Rychlý/Hloubkový tier, quick prompts, the conversation id kept in localStorage, a minimal Markdown renderer (no HTML).
   - VoiceRecorder (tap to record, webm or mp4 depending on the phone; needs HTTPS) on the coach page and as a floating mic in the active workout; AI-saved sets are merged into the local workout.
   - DraftCard confirms through the new `POST /api/ai/drafts/confirm` (shared `save_sets`, 125 tests).
+- **2026-10-17 (14):** 3.6 Settings page (Strava connect/sync, webhook sources, KB status/sync, Strong import, pending changes), route code-splitting (core 305 kB, Dashboard + recharts 384 kB), FastAPI `mount_spa` (`STATIC_DIR`, no-cache index/sw, API 404s win, traversal-safe, 129 tests), and a Dockerfile frontend build stage.
+  - **The prod image has not been built or tested yet.**
+  - Session ended at the usage limit.

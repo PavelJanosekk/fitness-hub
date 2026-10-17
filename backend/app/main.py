@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -10,6 +11,7 @@ from app.config import settings
 from app.database import SessionDep
 from app.routers import ai_coach, coach_kb, integrations, metrics, nutrition, running, webhooks, workouts
 from app.services import scheduler
+from app.spa import mount_spa
 
 
 @asynccontextmanager
@@ -31,3 +33,8 @@ def health(session: SessionDep) -> JSONResponse:
     except SQLAlchemyError:
         return JSONResponse({"status": "error", "database": "unreachable"}, status_code=503)
     return JSONResponse({"status": "ok"})
+
+
+# Last, so the catch-all for client-side routes never shadows an API route
+if settings.static_dir and Path(settings.static_dir).is_dir():
+    mount_spa(app, Path(settings.static_dir))

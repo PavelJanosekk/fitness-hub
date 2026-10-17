@@ -24,10 +24,20 @@ ENV HOME=/tmp \
 EXPOSE 8000
 CMD ["sh", "-c", "alembic upgrade head && python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
 
-# ---- Prod: Phase 4 adds the frontend build stage and copies its dist/ here ----
+# ---- Frontend build (React + Vite) ----
+FROM node:22-bookworm-slim AS frontend
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
+
+# ---- Prod: API + built SPA in one image ----
 FROM base AS prod
 RUN useradd --system --uid 10001 --no-create-home app
 COPY backend/ ./
+COPY --from=frontend /frontend/dist /app/static
+ENV STATIC_DIR=/app/static
 USER app
 EXPOSE 8000
 CMD ["sh", "-c", "alembic upgrade head && python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]

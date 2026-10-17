@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     # The user's running knowledge base on GitHub ("owner/repo"); read-only source for the coach (E11)
     coach_kb_repo: str | None = None
     coach_kb_branch: str = "master"
+    # Built frontend (the prod image sets /app/static); unset in dev, where Vite serves the UI
+    static_dir: str | None = None
 
     @field_validator("database_url")
     @classmethod
