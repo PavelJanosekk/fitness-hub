@@ -59,3 +59,32 @@ export function useActiveWorkout(): ActiveWorkout | null {
     () => null,
   );
 }
+
+/** Add sets the server has but the phone doesn't (e.g. saved by the AI coach) to the local workout. */
+export function mergeServerSets(
+  server: { id: string; sets: { id: string; exercise_id: number; set_type: SetType; weight_kg: number | null; reps: number | null; completed: boolean; completed_at: string | null }[] },
+  names: Map<number, { name: string; muscle_group: string }>,
+) {
+  const local = read();
+  if (!local || local.id !== server.id) return;
+  const known = new Set(local.exercises.flatMap((e) => e.sets.map((s) => s.id)));
+  const exercises = local.exercises.map((e) => ({ ...e, sets: [...e.sets] }));
+  for (const s of server.sets) {
+    if (known.has(s.id) || !s.completed) continue;
+    const set: LocalSet = {
+      id: s.id,
+      set_type: s.set_type,
+      weight: s.weight_kg !== null ? String(s.weight_kg).replace(".", ",") : "",
+      reps: s.reps !== null ? String(s.reps) : "",
+      completed: true,
+      completed_at: s.completed_at,
+    };
+    const target = exercises.find((e) => e.exercise_id === s.exercise_id);
+    if (target) target.sets.push(set);
+    else {
+      const info = names.get(s.exercise_id);
+      exercises.push({ exercise_id: s.exercise_id, name: info?.name ?? `#${s.exercise_id}`, muscle_group: info?.muscle_group ?? "", sets: [set], last: null });
+    }
+  }
+  saveActiveWorkout({ ...local, exercises });
+}

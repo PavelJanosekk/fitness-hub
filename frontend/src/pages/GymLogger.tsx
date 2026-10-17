@@ -14,9 +14,15 @@ import {
   type ServerWorkout,
   useActiveServerWorkout,
   useTemplates,
+  pullServerSets,
   useWorkout,
 } from "../api/gym";
+import { type ChatResponse, sendVoice } from "../api/coach";
+import { DraftCard } from "../components/DraftCard";
 import { Card, PageHeader } from "../components/Layout";
+import { Markdown } from "../components/Markdown";
+import { VoiceRecorder } from "../components/VoiceRecorder";
+import { errorText } from "./AiCoach";
 import { RestTimer, PRESETS, restPreset, setRestPreset, startRest } from "../components/RestTimer";
 import { Button, Segmented, Sheet, parseDecimal } from "../components/ui";
 import { type ActiveWorkout, type LocalExercise, type LocalSet, saveActiveWorkout, useActiveWorkout } from "../lib/activeWorkout";
@@ -204,7 +210,19 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   const server = useWorkout(workout.id);
   const [picking, setPicking] = useState(false);
   const [confirmFinish, setConfirmFinish] = useState(false);
+  const [voice, setVoice] = useState<{ busy: boolean; response?: ChatResponse; error?: string } | null>(null);
   const elapsed = useElapsed(workout.started_at);
+
+  const dictate = async (audio: Blob) => {
+    setVoice({ busy: true });
+    try {
+      const response = await sendVoice(audio, { workoutId: workout.id, model: "fast" });
+      if (response.saved_sets.length) await pullServerSets(queryClient, workout.id);
+      setVoice({ busy: false, response });
+    } catch (error) {
+      setVoice({ busy: false, error: errorText(error) });
+    }
+  };
 
   // The server may have closed it (2 h idle auto-finish) or another device may have finished it
   useEffect(() => {
@@ -328,6 +346,23 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
         <RestPresetPicker />
       </div>
 
+      <div className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+9.5rem)] z-20 md:bottom-24">
+        <VoiceRecorder onRecorded={dictate} disabled={voice?.busy} className="size-14 bg-emerald-600 text-zinc-950 shadow-lg" />
+      </div>
+      {voice && (
+        <Sheet title="Diktování" onClose={() => setVoice(null)}>
+          {voice.busy && <p className="animate-pulse text-zinc-400">Zpracovávám nahrávku…</p>}
+          {voice.error && <p className="text-amber-300">{voice.error}</p>}
+          {voice.response && (
+            <>
+              <Markdown text={voice.response.reply} />
+              {voice.response.drafts.map((d, i) => (
+                <DraftCard key={i} draft={d} onSaved={(id) => void pullServerSets(queryClient, id)} />
+              ))}
+            </>
+          )}
+        </Sheet>
+      )}
       {picking && <ExercisePicker onPick={addExercise} onClose={() => setPicking(false)} />}
       {confirmFinish && (
         <Sheet title="Dokončit trénink?" onClose={() => setConfirmFinish(false)}>

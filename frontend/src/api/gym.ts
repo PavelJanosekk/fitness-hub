@@ -101,3 +101,13 @@ export function registerGymMutations(queryClient: QueryClient) {
     retry: 5,
   });
 }
+
+/** After the AI coach saved sets into the open workout, pull them into the phone's local copy. */
+export async function pullServerSets(queryClient: QueryClient, workoutId: string) {
+  const { mergeServerSets } = await import("../lib/activeWorkout");
+  const [server, exercises] = await Promise.all([
+    api<ServerWorkout>(`/api/workouts/${workoutId}`),
+    queryClient.fetchQuery({ queryKey: gymKeys.exercises, queryFn: () => api<Exercise[]>("/api/exercises"), staleTime: 10 * 60_000 }),
+  ]);
+  mergeServerSets(server, new Map(exercises.map((e) => [e.id, { name: e.name, muscle_group: e.muscle_group }])));
+}

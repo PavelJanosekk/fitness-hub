@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router";
 import { Layout } from "./components/Layout";
+import { AiCoach } from "./pages/AiCoach";
 import { Dashboard } from "./pages/Dashboard";
 import { GymLogger } from "./pages/GymLogger";
 import { Placeholder } from "./pages/Placeholder";
@@ -12,7 +13,7 @@ export function App() {
         <Route index element={<Dashboard />} />
         <Route path="gym" element={<GymLogger />} />
         <Route path="run" element={<RunningPlan />} />
-        <Route path="coach" element={<Placeholder title="Kouč" />} />
+        <Route path="coach" element={<AiCoach />} />
         <Route path="settings" element={<Placeholder title="Nastavení" />} />
       </Route>
     </Routes>
