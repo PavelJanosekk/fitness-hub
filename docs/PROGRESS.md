@@ -5,7 +5,7 @@
 1. ✅ `tailscale serve` switched (2026-10-17): https://biggyserver.tailfff1d3.ts.net → prod 8010, `:8443` → dev Vite 5173. The iPhone's Tailscale was offline (last seen 2 days ago) at that point.
 2. ✅ iPhone: PWA installed, voice works. Keep an eye on the GymLogger in real use.
 3. Integrations: ✅ Strava, ✅ Health Connect. **TODO later:** the iOS Shortcut (the user will do it with guidance).
-4. Phase 5 in progress: 5.1–5.4 done and live-checked; next 5.6 frontend (the "Jídlo" tab), and 5.5 KT import once the user adds KT credentials to `.env`. The user still has to put the KT credentials into `.env` before 5.5.
+4. Phase 5 in progress: 5.1–5.4 + 5.6a done (Jídlo tab live on prod). Next 5.6b barcode scanning, and 5.5 KT import once the user adds KT credentials to `.env`. The user still has to put the KT credentials into `.env` before 5.5.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -98,7 +98,8 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [x] 5.4a Routes without AI: `/summary` (every nutrient with coverage + profile/EU target, training-day kcal), food items PUT (client UUID), foods search/CRUD (delete guarded), `/barcode/{ean}` (local → OFF), `/profile`, `/drafts/confirm` (idempotent, learns aliases)
 - [x] 5.4b Nutrition assistant: prompt (known foods C7, portions), tools `log_meal_from_items` + `get_daily_nutrition_summary`, Gemini chooser + web estimate, `/chat` + `/voice`
 - [ ] 5.5 KT importer via `kaloricke-tabulky-sdk` (14-day rule; verify O3 on one real day; needs `KALORICKETABULKY_EMAIL/PASSWORD` in `.env`)
-- [ ] 5.6 Frontend: "Jídlo" tab (chat + voice logger, draft cards, daily macros/micros with coverage, meal timeline editing, barcode scan) + food database page
+- [x] 5.6a Frontend: "Jídlo" tab (5th nav item; day switcher, kcal/macro bars vs targets, assistant text + voice with meal draft cards, meals with inline grams + delete, manual add from the food DB, micros grid dimmed under 70 % coverage, targets sheet) + `/nutrition/foods` database page (search, source filter, edit/create/delete)
+- [ ] 5.6b Barcode scanning (BarcodeDetector + `@zxing/browser` fallback for iOS Safari; 14-day rule)
 
 ## Backlog (ideas, not accepted)
 - D1 `Exercise.secondary_muscles` for better volume analysis
@@ -188,3 +189,4 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
   - The spec example "200g kuřecích stehen bez kůže na lžíci sádla a 300g vařených brambor" gave the correct canonical names and grams, and Flash-Lite picked the right USDA foods (conf 0.95–0.99; it rejected "Potatoes … in skin, skin", the top keyword hit).
   - Confirm learned the aliases. A repeat meal auto-saved with 2 requests (no picker). The summary question answered correctly with coverage.
   - Google Search grounding returns 429 on the free tier, hence the ungrounded fallback. The prompt now asks for `user_phrase` without the amount. 183 tests. Backend deployed to prod.
+- **2026-10-17 (25):** 5.6a frontend. Headless screenshots now work (zenika/alpine-chrome:124 with `--virtual-time-budget=30000` against the dev Vite server); they led to two fixes: food names wrap instead of truncating, and the food list without a query shows the user's foods instead of 8k USDA rows (185 tests). Deployed to prod.

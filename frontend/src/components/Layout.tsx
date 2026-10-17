@@ -1,10 +1,11 @@
-import { Bot, Dumbbell, Footprints, LayoutDashboard, Settings } from "lucide-react";
+import { Bot, Dumbbell, Footprints, LayoutDashboard, Settings, Utensils } from "lucide-react";
 import { NavLink, Outlet } from "react-router";
 
 const NAV = [
   { to: "/", label: "Přehled", icon: LayoutDashboard },
   { to: "/gym", label: "Gym", icon: Dumbbell },
   { to: "/run", label: "Běh", icon: Footprints },
+  { to: "/nutrition", label: "Jídlo", icon: Utensils },
   { to: "/coach", label: "Kouč", icon: Bot },
 ] as const;
 
@@ -33,7 +34,7 @@ export function Layout() {
       </main>
 
       <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur md:hidden">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-5">
           {NAV.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}

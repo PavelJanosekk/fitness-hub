@@ -210,3 +210,16 @@ def test_food_search_puts_names_starting_with_the_query_first(client: TestClient
     names = [f["name"] for f in client.get("/api/nutrition/foods", params={"q": "banana"}).json()]
 
     assert names[0] == "Bananas, raw"
+
+
+def test_without_a_query_the_list_shows_my_foods_not_the_usda_seed(client: TestClient, session: Session) -> None:
+    eaten = food(session, name_en="Rice, cooked")
+    food(session, name_en="APPLEBEE'S, chili")  # seeded, never eaten
+    mine = food(session, FoodSource.custom, name_cs="Rohlík")
+    put_item(client, eaten.id, 100)
+
+    names = [f["name"] for f in client.get("/api/nutrition/foods").json()]
+    usda = [f["name"] for f in client.get("/api/nutrition/foods", params={"source": "usda"}).json()]
+
+    assert names == ["Rice, cooked", mine.name]
+    assert set(usda) == {"Rice, cooked", "APPLEBEE'S, chili"}

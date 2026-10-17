@@ -1,6 +1,6 @@
 """The local food database: search for the food manager and the barcode path, create/edit custom foods."""
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import Session, col, select
 
 from app.models.nutrition import Food, FoodPortion, FoodSource, MealLogItem
@@ -40,7 +40,8 @@ def read_food(session: Session, food: Food, use_count: int | None = None, with_p
 def search_foods(
     session: Session, q: str | None, source: str | None = None, limit: int = 50, offset: int = 0
 ) -> list[FoodRead]:
-    """With a query: best name matches (Czech or English, accents ignored). Without: most eaten first."""
+    """With a query: best name matches (Czech or English, accents ignored). Without: the user's foods (eaten,
+    custom, imported), most eaten first; a source filter lists that whole source."""
     statement = select(Food)
     if source:
         statement = statement.where(Food.source == source)
@@ -57,6 +58,9 @@ def search_foods(
         statement = statement.where(score >= 0.4).order_by(prefix.desc(), score.desc(), func.length(Food.name_en))
     else:
         eaten = select(func.count()).where(MealLogItem.food_id == Food.id).correlate(Food).scalar_subquery()
+        if not source:
+            # "My foods": eaten or user-made/imported, not the whole USDA seed
+            statement = statement.where(or_(eaten > 0, Food.source != FoodSource.usda))
         statement = statement.order_by(eaten.desc(), col(Food.name_cs).nulls_last(), col(Food.name_en))
     foods = session.exec(statement.offset(offset).limit(limit)).all()
     counts = use_counts(session, [f.id for f in foods if f.id is not None])

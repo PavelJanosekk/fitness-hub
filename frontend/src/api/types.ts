@@ -30,7 +30,19 @@ export type StepsBreakdown = {
   buckets: { start: string; merged: number; per_source: Record<string, number> }[];
 };
 
-export type MealItem = { id: string; label: string; kcal: number; protein_g: number | null; carbs_g: number | null; fat_g: number | null };
+export type MealItem = {
+  id: string;
+  label: string;
+  /** Food items: nutrients are computed from the food (amount_g); quick-add items carry manual values */
+  food_id?: number | null;
+  food_name?: string | null;
+  food_source?: string | null;
+  amount_g?: number | null;
+  kcal: number;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+};
 export type Meal = { id: string; logged_date: string; meal_type: string; notes: string | null; items: MealItem[] };
 export type DayIntake = {
   date: string;
