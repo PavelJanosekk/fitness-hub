@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { App } from "./App";
+import { registerGymMutations } from "./api/gym";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -14,6 +15,9 @@ const queryClient = new QueryClient({
     mutations: { networkMode: "offlineFirst", retry: 3 },
   },
 });
+
+// Registered before the cache is restored, so persisted gym writes can resume after a reload
+registerGymMutations(queryClient);
 
 // The cache (incl. paused mutations) survives reloads and app restarts: nothing typed in the gym is lost
 const persister = createSyncStoragePersister({ storage: window.localStorage, key: "fitness-hub-cache" });
