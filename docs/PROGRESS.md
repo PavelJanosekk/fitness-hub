@@ -2,7 +2,7 @@
 
 **Current phase:** Phases 0–3 code-complete. Phase 4 in progress: the prod stack is **live** on the real data (project `fitness-hub`, daily backups), and the dev stack is separate (`./dev`, E14).
 **Next step:**
-1. The user runs the `tailscale serve` switch (needs sudo, see the 2026-10-17 (15) session log). Until then prod is published on host port **5173** as a stopgap and the dev Vite server is down. After the switch: `docker compose up -d app` (back to 8010) and `./dev up -d`.
+1. ✅ `tailscale serve` switched (2026-10-17): https://biggyserver.tailfff1d3.ts.net → prod 8010, `:8443` → dev Vite 5173. The iPhone's Tailscale was offline (last seen 2 days ago) at that point.
 2. Check on the iPhone: PWA install, mic/voice, GymLogger (no visual check has been done yet).
 3. Integrations, following `docs/integrations/`: Strava keys into `.env` + connect, the iOS Shortcut, Life Dashboard Companion on the Android phone. `WEBHOOK_TOKEN` and `PUBLIC_BASE_URL` are already set.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
@@ -81,7 +81,8 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [x] Multi-stage Dockerfile (minimal static ffmpeg 8.1.3), compose (db, app, backup), healthchecks, SPA fallback; prod image smoke-tested on a fresh DB (363 MB, was 1.04 GB with Debian's ffmpeg)
 - [x] Backups: daily `pg_dump`, 7/4/6 rotation, restore verified; `docs/operations.md`
 - [x] E14 split: prod live on the existing volume, dev project with its own DB + `scripts/seed-dev-db.sh`, `./dev` wrapper; CLAUDE.md/SPEC commands updated
-- [ ] `tailscale serve` → :443 prod (8010), :8443 dev (5173): **waiting on the user's sudo**; verify mic + PWA install on the iPhone
+- [x] `tailscale serve` → :443 prod (8010), :8443 dev (5173); both answer over the tailnet
+- [ ] Verify mic + PWA install on the iPhone (Tailscale on the phone must be connected first)
 - [x] Integration guides `docs/integrations/` (strava, ios-shortcut, health-connect); `.env` has `PUBLIC_BASE_URL` + a generated `WEBHOOK_TOKEN`; webhooks verified end to end on dev; `/api/webhooks/health` reads JSON whatever the Content-Type (Shortcuts)
 - [ ] User: Strava keys into `.env` + connect; build the Shortcut + automations; install and configure Life Dashboard Companion + 365-day backfill; check that each source shows up in Nastavení
 
