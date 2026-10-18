@@ -7,8 +7,17 @@ from sqlmodel import col, select
 from app.database import SessionDep
 from app.models.coach import TrainingDay, TrainingWeek
 from app.models.running import Activity, ActivityMetrics, TrainingPlanItem
-from app.schemas.running import ActivityCreate, ActivityRead, PlanDayRead, PlanItemIn, PlanItemRead, PlanWeekRead
+from app.schemas.running import (
+    ActivityCreate,
+    ActivityRead,
+    PlanDayRead,
+    PlanItemIn,
+    PlanItemRead,
+    PlanWeekRead,
+    RunStats,
+)
 from app.services.run_analysis import RUN_TYPES, is_heat
+from app.services.run_stats import run_stats
 from app.timeutils import day_bounds, today
 
 router = APIRouter(prefix="/api/running", tags=["running"])
@@ -57,6 +66,12 @@ def create_activity(body: ActivityCreate, session: SessionDep) -> ActivityRead:
         raise HTTPException(status.HTTP_409_CONFLICT, "Activity with this external_id already exists") from None
     session.refresh(activity)
     return read_activity(activity)
+
+
+@router.get("/stats", response_model=RunStats)
+def running_stats(session: SessionDep) -> RunStats:
+    """Every run with its stream metrics, for the Běh → Grafy charts (E24)."""
+    return run_stats(session)
 
 
 @router.get("/weeks", response_model=list[PlanWeekRead])

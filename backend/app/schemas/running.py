@@ -97,3 +97,27 @@ class PlanItemRead(BaseModel):
     description: str | None
     completed_activity_id: int | None
     completed_activity: ActivityRead | None = None
+
+
+class RunStat(BaseModel):
+    """One run for the Běh → Grafy tab (E24): summary values plus its stream metrics when they exist."""
+
+    id: int
+    date: dt.date  # local day
+    distance_km: float
+    moving_s: int
+    avg_hr: int | None
+    heat: bool
+    vdot: float | None  # Daniels estimate from distance and moving time; meaningful only for hard efforts
+    pace_s_per_km: float | None
+    gap_s_per_km: float | None
+    hr_avg_steady: float | None
+    ef_gap: float | None
+    gap_at_easy_band_s_per_km: float | None
+    pct_above_easy: float | None
+    zone_seconds: dict[str, float] | None
+
+
+class RunStats(BaseModel):
+    lthr: int | None
+    runs: list[RunStat]  # oldest first
