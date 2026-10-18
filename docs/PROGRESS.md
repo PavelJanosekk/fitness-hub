@@ -127,7 +127,7 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - [x] 7.1a Backend: live XP ledger (`services/rpg.py`), pauses (migration 0013), forgiven/paused days in habit streaks + board, `/api/rpg` (character, history, pauses), tests
 - [x] 7.1b Frontend: character card on Přehled, Hrdina page (XP history with reasons, pauses), Rutina shows forgiven/paused days; deploy
 - [x] 7.2a Backend: skill attribution of every ledger entry, skill levels, rusting with XP / level loss, skills in `/api/rpg/character`
-- [ ] 7.2b Frontend: skills card with radar chart and rust badges on Hrdina; deploy
+- [x] 7.2b Frontend: skills card with radar chart and rust badges on Hrdina; deploy
 - [ ] 7.3 Bosses: marathon 2. 5. 2027 + half marathon 3. 4. 2027 (HP from the plan, heals on skipped runs)
 - [ ] 7.4 Weekly quests (from real plans) + badges
 - [ ] 7.5 Debuffs (tired, cursed habit), coach game-master summary, level-up / boss animations
@@ -244,3 +244,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-18 (12):** 7.1a backend: live XP ledger with gains, multiplier, day/week penalties, forgiven day per month, pauses, level up/down entries; habit streaks/rates/week % step over paused and forgiven days; `/api/rpg/character|history|pauses`; migration 0013. 269 tests. On a copy of the real data: level 11 Vytrvalec, 15 738 XP, 14. 10. forgiven.
 - **2026-10-18 (13):** 7.1b frontend: character card (level, title, XP bar, today's XP, multiplier / pause chip) on top of Přehled, `/hero` "Hrdina" page (stats, forgiven-day status, pause on/off with dates and note, XP history by day with reasons, older history paging), level chip in the Rutina header, Rutina day banner for paused / forgiven days, ticks and habit edits refresh the ledger. Deployed (backup `manual-pre-0013-2026-10-18-1634.dump`, 0013 migrated): prod level 12 Vytrvalec, 18 254 XP. Next: 7.2 skills.
 - **2026-10-18 (14):** 7.2a backend: skills (Síla, Výdrž, Výživa, Disciplína, Mysl, Domov) with attribution rules, `50 × level^1.5` curve, rusting. First try rusted the whole pre-app history (Síla idle since July cut the total from 15.7k to 6.1k XP), so rust counts idle days only from the routine's first day, like every penalty. Real-data copy: level 11, Síla 12, Výdrž 10.
+- **2026-10-18 (15):** 7.2b skills card (radar of skill levels, per-skill bar, rust / losing badges) on Hrdina. Deployed (no migration): prod level 12 Vytrvalec, Síla 12, Výdrž 10, Výživa 7, Disciplína 2, Mysl 2, Domov 1. Next: 7.3 bosses.
