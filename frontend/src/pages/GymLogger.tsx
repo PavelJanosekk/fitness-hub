@@ -1,5 +1,5 @@
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, CloudOff, GripVertical, Minus, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronRight, CloudOff, GripVertical, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   type Exercise,
@@ -8,6 +8,7 @@ import {
   type LastPerformance,
   SYNC_SCOPE,
   type SetBody,
+  type SetType,
   type Template,
   type TemplateSet,
   type WorkoutSummary,
@@ -26,7 +27,8 @@ import { Markdown } from "../components/Markdown";
 import { VoiceRecorder } from "../components/VoiceRecorder";
 import { errorText } from "./AiCoach";
 import { RestTimer, PRESETS, restPreset, setRestPreset, startRest } from "../components/RestTimer";
-import { ExercisePicker, GROUP_LABELS } from "../components/gym/ExercisePicker";
+import { ExercisePicker } from "../components/gym/ExercisePicker";
+import { AddSetButton, SetLabel, TableHeader, cellInput } from "../components/gym/SetTable";
 import { PrBadges } from "../components/gym/PersonalRecords";
 import { TemplateEditor } from "../components/gym/TemplateEditor";
 import { WorkoutDetail } from "../components/gym/WorkoutDetail";
@@ -189,23 +191,26 @@ function StartView() {
         )}
 
         <Card>
-          <h2 className="mb-3 font-semibold">Začít trénink</h2>
-          <div className="space-y-2">
+          <h2 className="mb-2 font-semibold">Začít trénink</h2>
+          <div className="space-y-1.5">
             {templates.data?.map((t) => (
               <div key={t.id} className="flex items-stretch gap-1 rounded-xl bg-zinc-800/70">
-                <button disabled={starting} onClick={() => start(t.name, t)} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-3 text-left active:bg-zinc-700">
+                <button disabled={starting} onClick={() => start(t.name, t)} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left active:bg-zinc-700">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{t.name}</div>
-                    <div className="text-xs text-zinc-400">
-                      {t.exercises.length} cviků · {t.exercises.reduce((n, e) => n + e.sets.length, 0)} sérií
+                    <div className="flex items-baseline gap-2">
+                      <span className="truncate font-medium">{t.name}</span>
+                      <span className="shrink-0 text-xs text-zinc-500">
+                        {t.exercises.length} cviků · {t.exercises.reduce((n, e) => n + e.sets.length, 0)} sérií
+                      </span>
                     </div>
+                    <div className="truncate text-xs text-zinc-400">{t.exercises.map((e) => e.name).join(", ")}</div>
                   </div>
                   <ChevronRight size={18} className="shrink-0 text-zinc-500" />
                 </button>
                 <button
                   aria-label={`Upravit šablonu ${t.name}`}
                   onClick={() => setEditing(t)}
-                  className="flex w-12 shrink-0 items-center justify-center rounded-xl text-zinc-400 active:bg-zinc-700"
+                  className="flex w-11 shrink-0 items-center justify-center rounded-xl text-zinc-400 active:bg-zinc-700"
                 >
                   <Pencil size={16} />
                 </button>
@@ -216,7 +221,7 @@ function StartView() {
             <Button variant="ghost" disabled={starting} onClick={() => start("Trénink")}>
               Prázdný trénink
             </Button>
-            <Button variant="ghost" onClick={() => setEditing("new")}>
+            <Button variant="ghost" className="px-2 whitespace-nowrap" onClick={() => setEditing("new")}>
               + Nová šablona
             </Button>
           </div>
@@ -407,34 +412,36 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
         </div>
       </header>
 
-      <div className="space-y-3">
+      <div className="space-y-2">
         {workout.exercises.map((exercise, exerciseIndex) => (
           <div key={`${exercise.exercise_id}-${exerciseIndex}`} {...reorder.itemProps(exerciseIndex)} className="rounded-2xl data-dragging:bg-zinc-950 data-dragging:shadow-2xl">
-            <Card className="p-3">
-              <div className="mb-2 flex items-center gap-1">
-                <button type="button" aria-label="Přetáhnout cvik" {...reorder.handleProps(exerciseIndex)} className="-ml-2 flex size-11 shrink-0 items-center justify-center rounded-lg text-zinc-500 select-none active:bg-zinc-700">
-                  <GripVertical size={18} />
+            <Card className="px-2 py-1.5">
+              <div className="flex items-center gap-1">
+                <button type="button" aria-label="Přetáhnout cvik" {...reorder.handleProps(exerciseIndex)} className="flex size-9 shrink-0 items-center justify-center rounded-lg text-zinc-500 select-none active:bg-zinc-700">
+                  <GripVertical size={16} />
                 </button>
-                <h2 className="min-w-0 flex-1 font-semibold">{exercise.name}</h2>
-                <span className="shrink-0 pr-1 text-xs text-zinc-500">{GROUP_LABELS[exercise.muscle_group] ?? ""}</span>
+                <h2 className="min-w-0 flex-1 truncate font-semibold">{exercise.name}</h2>
+                <span className="shrink-0 pr-2 text-xs tabular-nums text-zinc-500">
+                  {exercise.sets.filter((x) => x.completed).length}/{exercise.sets.length}
+                </span>
               </div>
-              <div className="space-y-2">
+              <TableHeader columns={["Série", "Minule", "kg", "Opak.", ""]} className={ACTIVE_COLS} />
+              <div className="space-y-1">
                 {exercise.sets.map((set, setIndex) => (
                   <SetRow
                     key={set.id}
                     index={setIndex}
                     set={set}
+                    types={exercise.sets.map((x) => x.set_type)}
                     ghost={exercise.last?.sets[setIndex]}
                     onChange={(patch) => changeSet(exerciseIndex, setIndex, patch)}
-                    onCommit={() => syncSet(exerciseIndex, setIndex)}
+                    onCommit={(patch) => changeSet(exerciseIndex, setIndex, patch ?? {}, true)}
                     onToggle={() => toggleComplete(exerciseIndex, setIndex)}
                     onRemove={() => removeSet(exerciseIndex, setIndex)}
                   />
                 ))}
               </div>
-              <button onClick={() => addSet(exerciseIndex)} className="mt-2 w-full rounded-xl py-2.5 text-sm text-emerald-400 active:bg-zinc-800">
-                + Přidat sérii
-              </button>
+              <AddSetButton onClick={() => addSet(exerciseIndex)} />
             </Card>
           </div>
         ))}
@@ -488,9 +495,12 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   );
 }
 
+const ACTIVE_COLS = "grid-cols-[2rem_minmax(0,1fr)_4.25rem_3.5rem_2.25rem]";
+
 function SetRow({
   index,
   set,
+  types,
   ghost,
   onChange,
   onCommit,
@@ -499,81 +509,53 @@ function SetRow({
 }: {
   index: number;
   set: LocalSet;
+  types: SetType[];
   ghost?: LastPerformance["sets"][number];
   onChange: (patch: Partial<LocalSet>) => void;
-  onCommit: () => void;
+  onCommit: (patch?: Partial<LocalSet>) => void;
   onToggle: () => void;
   onRemove: () => void;
 }) {
-  const step = (field: "weight" | "reps", delta: number) => {
-    const current = parseDecimal(set[field]) ?? 0;
-    const next = Math.max(0, Math.round((current + delta) * 10) / 10);
-    onChange({ [field]: formatNumber(next, next % 1 ? 1 : 0) });
-  };
+  const ghostWeight = ghost?.weight_kg != null ? formatNumber(ghost.weight_kg, ghost.weight_kg % 1 ? 1 : 0) : null;
   return (
-    <div className={`rounded-xl p-2 ${set.completed ? "bg-emerald-500/10" : "bg-zinc-800/50"}`}>
-      <div className="mb-1.5 flex items-center justify-between px-1 text-xs text-zinc-400">
-        <span>
-          Série {index + 1}
-          {set.set_type !== "normal" && ` · ${{ warmup: "zahřívací", drop: "drop", failure: "do selhání" }[set.set_type]}`}
-        </span>
-        <span className="flex items-center gap-2">
-          {ghost && (
-            <span>
-              minule {ghost.weight_kg !== null ? formatNumber(ghost.weight_kg, 1) : "–"} × {ghost.reps ?? "–"}
-            </span>
-          )}
-          <button aria-label="Smazat sérii" onClick={onRemove} className="p-1 text-zinc-500 active:text-red-300">
-            <Trash2 size={14} />
-          </button>
-        </span>
-      </div>
-      <div className="flex items-center gap-2">
-        <Stepper label="kg" value={set.weight} onChange={(v) => onChange({ weight: v })} onStep={(d) => step("weight", d * 2.5)} onBlur={onCommit} />
-        <Stepper label="opak." value={set.reps} onChange={(v) => onChange({ reps: v })} onStep={(d) => step("reps", d)} onBlur={onCommit} numeric />
+    <div className={`grid items-center gap-1.5 rounded-lg px-1 py-0.5 ${ACTIVE_COLS} ${set.completed ? "bg-emerald-500/15" : ""}`}>
+      <SetLabel types={types} index={index} onType={(set_type) => onCommit({ set_type })} onRemove={onRemove} />
+      {ghost ? (
         <button
-          aria-label={set.completed ? "Zrušit odškrtnutí" : "Série hotová"}
-          onClick={onToggle}
-          className={`flex size-12 shrink-0 items-center justify-center rounded-xl ${set.completed ? "bg-emerald-500 text-zinc-950" : "bg-zinc-700 text-zinc-300 active:bg-zinc-600"}`}
+          type="button"
+          aria-label="Použít hodnoty z minula"
+          onClick={() => onCommit({ weight: ghostWeight ?? "", reps: ghost.reps !== null ? String(ghost.reps) : "" })}
+          className="h-9 truncate rounded-lg text-center text-sm tabular-nums text-zinc-500 active:bg-zinc-800"
         >
-          <Check size={24} strokeWidth={3} />
+          {ghostWeight ?? "–"} × {ghost.reps ?? "–"}
         </button>
-      </div>
-    </div>
-  );
-}
-
-function Stepper({
-  label,
-  value,
-  onChange,
-  onStep,
-  onBlur,
-  numeric = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  onStep: (direction: 1 | -1) => void;
-  onBlur: () => void;
-  numeric?: boolean;
-}) {
-  return (
-    <div className="flex min-w-0 flex-1 items-center rounded-xl bg-zinc-950">
-      <button aria-label={`Méně ${label}`} onClick={() => (onStep(-1), onBlur())} className="flex h-12 w-10 shrink-0 items-center justify-center text-zinc-400 active:text-white">
-        <Minus size={18} />
-      </button>
+      ) : (
+        <span className="text-center text-sm text-zinc-700">–</span>
+      )}
       <input
-        aria-label={label}
-        inputMode={numeric ? "numeric" : "decimal"}
-        value={value}
-        onChange={(e) => onChange(e.target.value.replace(numeric ? /\D/g : /[^\d.,]/g, ""))}
-        onBlur={onBlur}
-        placeholder={label}
-        className="h-12 w-full min-w-0 bg-transparent text-center text-lg font-semibold tabular-nums outline-none placeholder:text-sm placeholder:font-normal placeholder:text-zinc-600"
+        aria-label={`kg, série ${index + 1}`}
+        inputMode="decimal"
+        placeholder="kg"
+        value={set.weight}
+        onChange={(e) => onChange({ weight: e.target.value.replace(/[^\d.,]/g, "") })}
+        onBlur={() => onCommit()}
+        className={cellInput(set.completed)}
       />
-      <button aria-label={`Více ${label}`} onClick={() => (onStep(1), onBlur())} className="flex h-12 w-10 shrink-0 items-center justify-center text-zinc-400 active:text-white">
-        <Plus size={18} />
+      <input
+        aria-label={`opakování, série ${index + 1}`}
+        inputMode="numeric"
+        placeholder="opak."
+        value={set.reps}
+        onChange={(e) => onChange({ reps: e.target.value.replace(/\D/g, "") })}
+        onBlur={() => onCommit()}
+        className={cellInput(set.completed)}
+      />
+      <button
+        aria-label={set.completed ? "Zrušit odškrtnutí" : "Série hotová"}
+        onClick={onToggle}
+        className={`flex size-9 items-center justify-center rounded-lg ${set.completed ? "bg-emerald-500 text-zinc-950" : "bg-zinc-800 text-zinc-400 active:bg-zinc-700"}`}
+      >
+        <Check size={18} strokeWidth={3} />
       </button>
     </div>
   );

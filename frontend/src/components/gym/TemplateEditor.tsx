@@ -5,14 +5,15 @@ import { formatNumber } from "../../lib/format";
 import { moveItem, useDragReorder } from "../../lib/useDragReorder";
 import { uuid } from "../../lib/uuid";
 import { Card } from "../Layout";
-import { Button, DecimalInput, Sheet, parseDecimal } from "../ui";
+import { Button, Sheet, parseDecimal } from "../ui";
 import { ExercisePicker, GROUP_LABELS } from "./ExercisePicker";
+import { AddSetButton, SetLabel, TableHeader, cellInput } from "./SetTable";
 
 type DraftSet = { set_type: SetType; weight: string; reps: string };
 type DraftExercise = { exercise_id: number; name: string; muscle_group: string; sets: DraftSet[] };
 
 const fmt = (value: number | null) => (value === null ? "" : formatNumber(value, value % 1 ? 1 : 0));
-const SET_TYPE_LABEL = { normal: "", warmup: "zahřívací", drop: "drop", failure: "do selhání" } as const;
+const EDITOR_COLS = "grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_2.25rem]";
 
 /** Create or edit a template: name, exercises (order, add, remove) and the planned sets with kg × reps. */
 export function TemplateEditor({ template, exercises, onClose }: { template: Template | null; exercises: Exercise[]; onClose: () => void }) {
@@ -31,6 +32,8 @@ export function TemplateEditor({ template, exercises, onClose }: { template: Tem
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const patchExercise = (index: number, patch: (e: DraftExercise) => DraftExercise) => setItems((prev) => prev.map((e, i) => (i === index ? patch(e) : e)));
+  const patchSet = (index: number, setIndex: number, patch: Partial<DraftSet>) =>
+    patchExercise(index, (e) => ({ ...e, sets: e.sets.map((s, j) => (j === setIndex ? { ...s, ...patch } : s)) }));
   const reorder = useDragReorder((from, to) => setItems((prev) => moveItem(prev, from, to)));
 
   const canSave = name.trim() !== "" && items.length > 0 && items.every((e) => e.sets.length > 0) && !save.isPending;
@@ -63,7 +66,7 @@ export function TemplateEditor({ template, exercises, onClose }: { template: Tem
         </div>
       </header>
 
-      <div className="space-y-3">
+      <div className="space-y-2">
         {save.isError && <p className="px-1 text-sm text-amber-300">Uložení se nepovedlo, zkus to znovu.</p>}
         <input
           aria-label="Název šablony"
@@ -71,67 +74,67 @@ export function TemplateEditor({ template, exercises, onClose }: { template: Tem
           onChange={(e) => setName(e.target.value)}
           placeholder="Název (např. Chest tri)"
           maxLength={80}
-          className="min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-lg outline-none focus:border-emerald-500"
+          className="h-10 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-base outline-none focus:border-emerald-500"
         />
 
         {items.map((item, index) => (
           <div key={`${item.exercise_id}-${index}`} {...reorder.itemProps(index)} className="rounded-2xl data-dragging:bg-zinc-950 data-dragging:shadow-2xl">
-            <Card className="p-3">
-              <div className="mb-2 flex items-center justify-between gap-1">
-                <button type="button" aria-label="Přetáhnout cvik" {...reorder.handleProps(index)} className="-ml-2 flex size-11 shrink-0 items-center justify-center rounded-lg text-zinc-500 select-none active:bg-zinc-700">
-                  <GripVertical size={18} />
+            <Card className="px-2 py-1.5">
+              <div className="flex items-center gap-1">
+                <button type="button" aria-label="Přetáhnout cvik" {...reorder.handleProps(index)} className="flex size-9 shrink-0 items-center justify-center rounded-lg text-zinc-500 select-none active:bg-zinc-700">
+                  <GripVertical size={16} />
                 </button>
-                <div className="min-w-0 flex-1">
-                  <h2 className="truncate font-semibold">{item.name}</h2>
-                  <span className="text-xs text-zinc-500">{GROUP_LABELS[item.muscle_group] ?? ""}</span>
-                </div>
-                <div className="flex shrink-0 text-zinc-400">
-                  <IconButton label="Odebrat cvik" onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}>
-                    <Trash2 size={16} />
-                  </IconButton>
-                </div>
+                <h2 className="min-w-0 flex-1 truncate font-semibold">{item.name}</h2>
+                <span className="shrink-0 text-xs text-zinc-500">{GROUP_LABELS[item.muscle_group] ?? ""}</span>
+                <button
+                  type="button"
+                  aria-label="Odebrat cvik"
+                  onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
+                  className="flex size-9 shrink-0 items-center justify-center rounded-lg text-zinc-500 active:bg-zinc-700 active:text-red-300"
+                >
+                  <Trash2 size={15} />
+                </button>
               </div>
-              <div className="space-y-2">
+              <TableHeader columns={["Série", "kg", "Opak.", ""]} className={EDITOR_COLS} />
+              <div className="space-y-1">
                 {item.sets.map((set, setIndex) => (
-                  <div key={setIndex} className="flex items-center gap-2 rounded-xl bg-zinc-800/50 p-2">
-                    <span className="w-14 shrink-0 text-xs text-zinc-400">
-                      Série {setIndex + 1}
-                      {SET_TYPE_LABEL[set.set_type] && <span className="block text-[10px] text-zinc-500">{SET_TYPE_LABEL[set.set_type]}</span>}
-                    </span>
-                    <DecimalInput
-                      ariaLabel={`kg, série ${setIndex + 1}`}
+                  <div key={setIndex} className={`grid items-center gap-1.5 px-1 ${EDITOR_COLS}`}>
+                    <SetLabel
+                      types={item.sets.map((x) => x.set_type)}
+                      index={setIndex}
+                      canRemove={item.sets.length > 1}
+                      onType={(set_type) => patchSet(index, setIndex, { set_type })}
+                      onRemove={() => patchExercise(index, (e) => ({ ...e, sets: e.sets.filter((_, j) => j !== setIndex) }))}
+                    />
+                    <input
+                      aria-label={`kg, série ${setIndex + 1}`}
+                      inputMode="decimal"
                       placeholder="kg"
                       value={set.weight}
-                      onChange={(weight) => patchExercise(index, (e) => ({ ...e, sets: e.sets.map((s, j) => (j === setIndex ? { ...s, weight } : s)) }))}
-                      className="text-center"
+                      onChange={(e) => patchSet(index, setIndex, { weight: e.target.value.replace(/[^\d.,]/g, "") })}
+                      className={cellInput()}
                     />
                     <input
                       aria-label={`opakování, série ${setIndex + 1}`}
                       inputMode="numeric"
                       placeholder="opak."
                       value={set.reps}
-                      onChange={(e) => {
-                        const reps = e.target.value.replace(/\D/g, "");
-                        patchExercise(index, (x) => ({ ...x, sets: x.sets.map((s, j) => (j === setIndex ? { ...s, reps } : s)) }));
-                      }}
-                      className="min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-center text-lg tabular-nums outline-none focus:border-emerald-500"
+                      onChange={(e) => patchSet(index, setIndex, { reps: e.target.value.replace(/\D/g, "") })}
+                      className={cellInput()}
                     />
-                    <IconButton
-                      label="Odebrat sérii"
+                    <button
+                      type="button"
+                      aria-label="Odebrat sérii"
                       disabled={item.sets.length === 1}
                       onClick={() => patchExercise(index, (e) => ({ ...e, sets: e.sets.filter((_, j) => j !== setIndex) }))}
+                      className="flex size-9 items-center justify-center rounded-lg text-zinc-500 active:bg-zinc-700 disabled:text-zinc-800"
                     >
                       <X size={16} />
-                    </IconButton>
+                    </button>
                   </div>
                 ))}
               </div>
-              <button
-                onClick={() => patchExercise(index, (e) => ({ ...e, sets: [...e.sets, { ...(e.sets.at(-1) ?? { weight: "", reps: "" }), set_type: "normal" }] }))}
-                className="mt-2 w-full rounded-xl py-2.5 text-sm text-emerald-400 active:bg-zinc-800"
-              >
-                + Přidat sérii
-              </button>
+              <AddSetButton onClick={() => patchExercise(index, (e) => ({ ...e, sets: [...e.sets, { ...(e.sets.at(-1) ?? { weight: "", reps: "" }), set_type: "normal" }] }))} />
             </Card>
           </div>
         ))}
@@ -173,19 +176,5 @@ export function TemplateEditor({ template, exercises, onClose }: { template: Tem
         </Sheet>
       )}
     </>
-  );
-}
-
-function IconButton({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="flex size-11 shrink-0 items-center justify-center rounded-lg text-zinc-400 active:bg-zinc-700 disabled:text-zinc-700"
-    >
-      {children}
-    </button>
   );
 }
