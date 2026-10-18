@@ -270,3 +270,11 @@ def test_nutrients_lists_labels_in_order(client: TestClient) -> None:
 
     assert nutrients[0] == {"key": "kcal", "label": "Energie", "unit": "kcal", "micro": False}
     assert {"key": "iron_mg", "label": "Železo", "unit": "mg", "micro": True} in nutrients
+
+
+@pytest.mark.parametrize("schema", [list[FoodComponents], AutofillAnswer], ids=["mapper", "autofill"])
+def test_response_schemas_convert_for_gemini(schema) -> None:
+    """google-genai rejects some JSON-schema keywords (e.g. exclusiveMinimum from gt=) before sending anything."""
+    from google.genai import _transformers, client
+
+    _transformers.t_schema(client.Client(api_key="test")._api_client, schema)
