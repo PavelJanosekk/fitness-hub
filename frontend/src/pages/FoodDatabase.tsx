@@ -55,7 +55,7 @@ export function FoodDatabase() {
           <Search size={18} className="text-zinc-500" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Hledat" className="min-h-11 flex-1 bg-transparent outline-none" />
         </label>
-        <button onClick={() => setEditing("new")} aria-label="Nová potravina" className="flex size-11 items-center justify-center rounded-xl bg-emerald-500 text-zinc-950">
+        <button onClick={() => setEditing("new")} aria-label="Nová potravina" className="flex size-11 items-center justify-center rounded-xl bg-emerald-500 text-on-accent">
           <Plus size={20} />
         </button>
       </div>

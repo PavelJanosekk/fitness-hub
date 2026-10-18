@@ -44,7 +44,7 @@ export function DraftCard({ draft, onSaved }: { draft: Draft; onSaved?: (workout
           <button
             key={c.exercise_id}
             onClick={() => setChoice(c.exercise_id)}
-            className={`min-h-10 rounded-lg px-3 ${choice === c.exercise_id ? "bg-emerald-500 text-zinc-950" : "bg-zinc-800 text-zinc-200"}`}
+            className={`min-h-10 rounded-lg px-3 ${choice === c.exercise_id ? "bg-emerald-500 text-on-accent" : "bg-zinc-800 text-zinc-200"}`}
           >
             {c.name}
           </button>

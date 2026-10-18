@@ -69,7 +69,7 @@ export function SetLabel({
               <button
                 key={t}
                 onClick={() => (onType(t), setOpen(false))}
-                className={`min-h-11 rounded-xl px-3 text-left text-sm ${t === type ? "bg-zinc-700 text-white" : "bg-zinc-800 text-zinc-300 active:bg-zinc-700"}`}
+                className={`min-h-11 rounded-xl px-3 text-left text-sm ${t === type ? "bg-zinc-700 text-zinc-50" : "bg-zinc-800 text-zinc-300 active:bg-zinc-700"}`}
               >
                 <span className={`mr-2 inline-block w-4 font-semibold ${SET_TYPES[t].color}`}>{SET_TYPES[t].short || "1"}</span>
                 {SET_TYPES[t].label}

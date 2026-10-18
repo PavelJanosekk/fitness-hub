@@ -114,7 +114,7 @@ export function AiCoach() {
         )}
         {messages.map((m, i) => (
           <div key={i} className={m.role === "user" ? "flex justify-end" : ""}>
-            <div className={m.role === "user" ? "max-w-[85%] rounded-2xl rounded-br-md bg-emerald-600/90 px-3.5 py-2 text-zinc-950" : "w-full"}>
+            <div className={m.role === "user" ? "max-w-[85%] rounded-2xl rounded-br-md bg-emerald-600/90 px-3.5 py-2 text-on-accent" : "w-full"}>
               {m.role === "user" ? m.content : <Markdown text={m.content} />}
               {m.drafts?.map((d, j) => <DraftCard key={j} draft={d} onSaved={(id) => void pullServerSets(queryClient, id)} />)}
               {m.tools && m.tools.length > 0 && <p className="mt-1 text-xs text-zinc-600">nástroje: {m.tools.join(", ")}</p>}
@@ -127,7 +127,7 @@ export function AiCoach() {
 
       <form
         onSubmit={(e) => (e.preventDefault(), send(input))}
-        className="sticky bottom-[calc(env(safe-area-inset-bottom)+4.25rem)] mt-3 flex items-end gap-2 bg-zinc-950 py-2 md:bottom-0"
+        className="sticky bottom-[calc(env(safe-area-inset-bottom)+4.25rem)] mt-3 flex items-end gap-2 bg-zinc-950 py-2 backdrop-blur-xl md:bottom-0"
       >
         <textarea
           value={input}
@@ -138,7 +138,7 @@ export function AiCoach() {
           className="max-h-32 min-h-12 flex-1 resize-none rounded-2xl border border-zinc-700 bg-zinc-900 px-3.5 py-3 outline-none focus:border-emerald-500"
         />
         {input.trim() ? (
-          <button type="submit" disabled={busy} aria-label="Odeslat" className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 disabled:opacity-40">
+          <button type="submit" disabled={busy} aria-label="Odeslat" className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-on-accent disabled:opacity-40">
             <SendHorizontal size={20} />
           </button>
         ) : (

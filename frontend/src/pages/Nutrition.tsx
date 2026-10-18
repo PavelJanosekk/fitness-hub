@@ -146,7 +146,7 @@ function Assistant({ date, today }: { date: string; today: string }) {
         <div className="mb-3 max-h-[60dvh] space-y-3 overflow-y-auto">
           {messages.map((m, i) => (
             <div key={i} className={m.role === "user" ? "flex justify-end" : ""}>
-              <div className={m.role === "user" ? "max-w-[85%] rounded-2xl rounded-br-md bg-emerald-600/90 px-3.5 py-2 text-zinc-950" : "w-full text-sm"}>
+              <div className={m.role === "user" ? "max-w-[85%] rounded-2xl rounded-br-md bg-emerald-600/90 px-3.5 py-2 text-on-accent" : "w-full text-sm"}>
                 {m.role === "user" ? m.content : <Markdown text={m.content} />}
                 {m.drafts?.map((d, j) => <MealDraftCard key={j} draft={d} />)}
               </div>
@@ -166,7 +166,7 @@ function Assistant({ date, today }: { date: string; today: string }) {
           className="max-h-32 min-h-12 flex-1 resize-none rounded-2xl border border-zinc-700 bg-zinc-950 px-3.5 py-3 outline-none focus:border-emerald-500"
         />
         {input.trim() ? (
-          <button type="submit" disabled={busy} aria-label="Odeslat" className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 disabled:opacity-40">
+          <button type="submit" disabled={busy} aria-label="Odeslat" className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-on-accent disabled:opacity-40">
             <SendHorizontal size={20} />
           </button>
         ) : (
@@ -246,7 +246,7 @@ function ItemRow({ item, mealType, date }: { item: MealItem; mealType: MealType;
         )
       ) : null}
       {editing !== null ? (
-        <button onClick={commit} className="rounded-lg bg-emerald-500 px-2 py-1 text-sm text-zinc-950">
+        <button onClick={commit} className="rounded-lg bg-emerald-500 px-2 py-1 text-sm text-on-accent">
           OK
         </button>
       ) : (

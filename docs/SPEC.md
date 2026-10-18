@@ -414,6 +414,8 @@ The coach is one of **two separate assistants** (the nutrition assistant arrives
 ## 8. Frontend Requirements (Mobile-First PWA)
 Clean, dark-mode default UI (Tailwind slate-900 / zinc-900 background) optimized for one-handed operation in the gym. Requires the HTTPS origin from `tailscale serve` for microphone and PWA install **[A2]**.
 
+**Themes [E19]:** three switchable looks in Nastavení → Vzhled, stored per device: *Minimalistický* (the default dark zinc/emerald UI), *Moderní* (dark glass over an aurora, violet accent, rounded type) and *Zen* (light washi paper, sumi ink, matcha accent, serif headings). Themes remap the palette names the pages use (`src/index.css`); charts take a validated color set per theme.
+
 **Bottom Navigation Bar:** Dashboard (Home / Trends), Gym (Active Workout & History), Run (Activities & Marathon Plan), AI Coach (Chat & Voice Dictation). Phase 5 adds a 5th tab "Jídlo".
 
 **Gym Logger Page (`GymLogger.tsx`) — key UX features:**

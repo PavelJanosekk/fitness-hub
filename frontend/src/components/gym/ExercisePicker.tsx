@@ -27,7 +27,7 @@ export function ExercisePicker({ onPick, onClose }: { onPick: (exercise: Exercis
   }, [exercises.data, query, group]);
   return (
     <Sheet title="Přidat cvik" onClose={onClose} tall>
-      <div className="sticky top-0 z-10 -mx-4 -mt-1 bg-zinc-900 px-4 pb-2">
+      <div className="sticky top-0 z-10 -mx-4 -mt-1 bg-zinc-900 px-4 pb-2 backdrop-blur-xl">
         <label className="mb-2 flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950 px-3">
           <Search size={18} className="text-zinc-500" />
           <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Hledat" className="min-h-11 w-full bg-transparent outline-none" />
@@ -38,7 +38,7 @@ export function ExercisePicker({ onPick, onClose }: { onPick: (exercise: Exercis
               key={g ?? "all"}
               aria-pressed={group === g}
               onClick={() => setGroup(g)}
-              className={`min-h-9 shrink-0 rounded-full px-3 text-sm ${group === g ? "bg-emerald-500 font-medium text-zinc-950" : "bg-zinc-800 text-zinc-300 active:bg-zinc-700"}`}
+              className={`min-h-9 shrink-0 rounded-full px-3 text-sm ${group === g ? "bg-emerald-500 font-medium text-on-accent" : "bg-zinc-800 text-zinc-300 active:bg-zinc-700"}`}
             >
               {g === null ? "Vše" : GROUP_LABELS[g]}
             </button>

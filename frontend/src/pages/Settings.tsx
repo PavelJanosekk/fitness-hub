@@ -1,5 +1,5 @@
 import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BookOpen, CheckCircle2, Dumbbell, RefreshCw, Webhook } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, Dumbbell, Palette, RefreshCw, Webhook } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api/client";
 import { useKb } from "../api/running";
@@ -7,6 +7,7 @@ import { Card, PageHeader } from "../components/Layout";
 import { KTImportCard } from "../components/nutrition/KTImportCard";
 import { Button } from "../components/ui";
 import { formatDay, formatTime } from "../lib/format";
+import { setTheme, THEMES, useTheme } from "../lib/theme";
 import { errorText } from "./AiCoach";
 
 type IntegrationsStatus = {
@@ -46,6 +47,8 @@ export function Settings() {
       <PageHeader title="Nastavení" />
       <div className="space-y-3">
         {message && <p className="rounded-xl bg-zinc-800 p-3 text-sm">{message}</p>}
+
+        <AppearanceCard />
 
         <Card>
           <h2 className="mb-2 flex items-center gap-2 font-semibold">
@@ -173,5 +176,40 @@ export function Settings() {
         </Card>
       </div>
     </>
+  );
+}
+
+/** Theme switcher: each option is a small mock of its own look (page, card, text lines, accent). */
+function AppearanceCard() {
+  const theme = useTheme();
+  return (
+    <Card>
+      <h2 className="mb-3 flex items-center gap-2 font-semibold">
+        <Palette size={18} /> Vzhled
+      </h2>
+      <div className="grid grid-cols-3 gap-2">
+        {THEMES.map(({ id, label, description, preview: p }) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={theme === id}
+            onClick={() => setTheme(id)}
+            className={`rounded-xl p-1.5 text-left ring-2 transition-colors ${theme === id ? "ring-emerald-500" : "ring-transparent active:bg-zinc-800"}`}
+          >
+            <div className="flex h-20 flex-col justify-between overflow-hidden rounded-lg p-2" style={{ background: p.page, border: `1px solid ${p.line}` }}>
+              <div className="rounded-md p-1.5" style={{ background: p.card, border: `1px solid ${p.line}` }}>
+                <div className="h-1.5 w-8 rounded-full" style={{ background: p.ink }} />
+                <div className="mt-1 h-1 w-12 max-w-full rounded-full" style={{ background: p.muted }} />
+              </div>
+              <div className="h-3.5 w-10 rounded-full" style={{ background: p.accent }} />
+            </div>
+            <div className="mt-1.5 truncate text-sm font-medium" style={{ fontFamily: p.font }}>
+              {label}
+            </div>
+            <div className="text-[11px] leading-tight text-zinc-500">{description}</div>
+          </button>
+        ))}
+      </div>
+    </Card>
   );
 }

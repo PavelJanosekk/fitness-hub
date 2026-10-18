@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 export function Button({
   children,
@@ -8,12 +9,12 @@ export function Button({
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" }) {
   const styles = {
-    primary: "bg-emerald-500 text-zinc-950 active:bg-emerald-400 disabled:bg-zinc-700 disabled:text-zinc-400",
+    primary: "bg-emerald-500 text-on-accent active:bg-emerald-400 disabled:bg-zinc-700 disabled:text-zinc-400",
     ghost: "bg-zinc-800 text-zinc-100 active:bg-zinc-700",
     danger: "bg-red-500/15 text-red-300 active:bg-red-500/25",
   }[variant];
   return (
-    <button className={`min-h-11 rounded-xl px-4 font-medium transition-colors ${styles} ${className}`} {...props}>
+    <button className={`ui-btn ui-btn-${variant} min-h-11 rounded-xl px-4 font-medium transition-colors ${styles} ${className}`} {...props}>
       {children}
     </button>
   );
@@ -72,6 +73,7 @@ function useVisibleArea(): { top: number; height: number } | null {
 /**
  * Bottom sheet on phones, centered dialog on desktop. It is sized to the area above the keyboard, so a search field
  * inside it never pushes the content under the keyboard. `tall` keeps a steady height (e.g. a filtered list).
+ * Portaled to <body>: a glass card (backdrop-filter) would otherwise become the containing block of `fixed`.
  */
 export function Sheet({ title, onClose, children, tall = false }: { title: string; onClose: () => void; children: React.ReactNode; tall?: boolean }) {
   const area = useVisibleArea();
@@ -80,16 +82,16 @@ export function Sheet({ title, onClose, children, tall = false }: { title: strin
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  return createPortal(
     <div
-      className="fixed inset-x-0 top-0 bottom-0 z-40 flex items-end justify-center bg-black/60 md:items-center"
+      className="ui-scrim fixed inset-x-0 top-0 bottom-0 z-40 flex items-end justify-center md:items-center"
       style={area ? { top: area.top, bottom: "auto", height: area.height } : undefined}
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-label={title}
-        className="pb-safe max-h-[85dvh] w-full overflow-y-auto rounded-t-3xl border border-zinc-800 bg-zinc-900 p-4 md:max-w-lg md:rounded-3xl"
+        className="ui-sheet pb-safe max-h-[85dvh] w-full overflow-y-auto rounded-t-3xl border border-zinc-800 bg-zinc-900 p-4 md:max-w-lg md:rounded-3xl"
         style={area ? { maxHeight: area.height * 0.92, height: tall ? area.height * 0.92 : undefined } : undefined}
         onClick={(e) => e.stopPropagation()}
       >
@@ -101,7 +103,8 @@ export function Sheet({ title, onClose, children, tall = false }: { title: strin
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -115,13 +118,9 @@ export function Segmented<T extends string | number>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div className="inline-flex rounded-xl bg-zinc-800 p-1 text-sm">
+    <div className="ui-seg inline-flex rounded-xl p-1 text-sm">
       {options.map(([key, label]) => (
-        <button
-          key={String(key)}
-          onClick={() => onChange(key)}
-          className={`min-h-9 rounded-lg px-3 ${value === key ? "bg-zinc-950 text-white" : "text-zinc-400"}`}
-        >
+        <button key={String(key)} aria-pressed={value === key} onClick={() => onChange(key)} className="ui-seg-item min-h-9 rounded-lg px-3">
           {label}
         </button>
       ))}

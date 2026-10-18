@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="cs" class="dark">
+<html lang="cs" data-theme="minimal">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -10,6 +10,17 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Fitness Hub</title>
+    <script>
+      // The saved theme (src/lib/theme.ts) before the first paint, so the app never flashes the default one
+      try {
+        var theme = localStorage.getItem("fitness-hub-theme");
+        var colors = { minimal: "#09090b", modern: "#06070f", zen: "#efe9dd" };
+        if (colors[theme]) {
+          document.documentElement.dataset.theme = theme;
+          document.querySelector('meta[name="theme-color"]').setAttribute("content", colors[theme]);
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

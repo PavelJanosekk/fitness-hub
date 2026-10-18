@@ -51,7 +51,7 @@ export function RestTimer() {
   }
   return (
     <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] z-30 md:bottom-4 md:left-auto md:right-6 md:w-80">
-      <div className={`overflow-hidden rounded-2xl border shadow-xl ${done ? "border-emerald-500 bg-emerald-950" : "border-zinc-700 bg-zinc-900"}`}>
+      <div className={`overflow-hidden rounded-2xl border shadow-xl backdrop-blur-xl ${done ? "border-emerald-500 bg-emerald-950" : "border-zinc-700 bg-zinc-900"}`}>
         <div className="flex items-center gap-2 p-2">
           <Timer size={18} className={done ? "text-emerald-400" : "text-zinc-400"} />
           <span className="flex-1 text-xl font-semibold tabular-nums">

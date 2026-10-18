@@ -1,19 +1,168 @@
 @import "tailwindcss";
 
+/*
+ * Themes (Nastavení → Vzhled, lib/theme.ts): minimal (default), modern, zen. `<html data-theme>` picks one.
+ * Pages keep using one fixed set of palette names and each theme remaps them, so any new code is themed for free:
+ *   zinc     the neutral ramp by role: 950 page, 900 raised surface (sheet, popover), 800 tile / line,
+ *            700 strong line / pressed, 600 dim, 500 muted text, 400 secondary text, 300–50 text → strongest ink.
+ *            Light themes invert the lightness, the roles stay.
+ *   emerald  the accent (fills 500/600, text 300/400, borders 700, tint 950); `text-on-accent` goes on accent fills.
+ *   amber / red / sky / violet   warning / danger / info / drop sets.
+ * Stick to these names (no `bg-black` or raw hex; `text-white` only on red or brand fills) or a theme will miss them.
+ * Components that change shape per theme carry a `ui-*` class (below). Chart colors: components/charts/palette.ts.
+ */
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-on-accent: #09090b;
 }
 
 :root {
   color-scheme: dark;
+  --app-bg: var(--color-zinc-950);
+  --font-display: var(--font-sans);
+  --radius-card: 1rem;
+  --scrim: rgb(0 0 0 / 0.6);
+  --scrim-filter: none;
 }
 
-html,
-body {
-  background: var(--color-zinc-950);
+/* Modern: midnight glass over an aurora, violet accent, rounded type */
+:root[data-theme="modern"] {
+  color-scheme: dark;
+  --app-bg: #06070f;
+  --font-sans: ui-rounded, "SF Pro Rounded", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-sans);
+  --radius-card: 1.5rem;
+  --scrim: rgb(3 4 12 / 0.5);
+  --scrim-filter: blur(6px);
+  --color-on-accent: #ffffff;
+
+  --color-zinc-50: #fafbff;
+  --color-zinc-100: #eef0fa;
+  --color-zinc-200: #dfe2f1;
+  --color-zinc-300: #c9cce0;
+  --color-zinc-400: #a3a7c2;
+  --color-zinc-500: #7f84a3;
+  --color-zinc-600: #5e6385;
+  --color-zinc-700: rgb(196 204 255 / 0.17);
+  --color-zinc-800: rgb(196 204 255 / 0.09);
+  --color-zinc-900: rgb(20 22 42 / 0.8);
+  --color-zinc-950: rgb(9 10 22 / 0.62);
+
+  --color-emerald-50: #f5f3ff;
+  --color-emerald-100: #ede9fe;
+  --color-emerald-200: #ddd6fe;
+  --color-emerald-300: #c4b5fd;
+  --color-emerald-400: #a78bfa;
+  --color-emerald-500: #7c5cf2;
+  --color-emerald-600: #7c3aed;
+  --color-emerald-700: #6d28d9;
+  --color-emerald-800: #5b21b6;
+  --color-emerald-900: #4c1d95;
+  --color-emerald-950: #2a1060;
+
+  --color-red-200: #fecdd3;
+  --color-red-300: #fda4af;
+  --color-red-400: #fb7185;
+  --color-red-500: #f43f5e;
+  --color-red-600: #e11d48;
+  --color-red-700: #be123c;
+
+  --color-sky-200: #a5f3fc;
+  --color-sky-300: #67e8f9;
+  --color-sky-400: #22d3ee;
+  --color-sky-500: #06b6d4;
+  --color-sky-600: #0891b2;
+  --color-sky-700: #0e7490;
+
+  --color-violet-200: #f5d0fe;
+  --color-violet-300: #f0abfc;
+  --color-violet-400: #e879f9;
+  --color-violet-500: #d946ef;
+  --color-violet-600: #c026d3;
+  --color-violet-700: #a21caf;
+}
+
+/* Zen: washi paper, sumi ink, matcha accent, wood and earth tones; the only light theme */
+:root[data-theme="zen"] {
+  color-scheme: light;
+  --app-bg: #efe9dd;
+  background-image: url("./assets/washi.svg");
+  --font-display: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --radius-card: 1.125rem;
+  --scrim: rgb(46 40 35 / 0.3);
+  --scrim-filter: blur(3px);
+  --color-on-accent: #fbf8f1;
+
+  --color-zinc-50: #1f1b17;
+  --color-zinc-100: #2e2823;
+  --color-zinc-200: #433b31;
+  --color-zinc-300: #544b3f;
+  --color-zinc-400: #6b6152;
+  --color-zinc-500: #786d5c;
+  --color-zinc-600: #a89c87;
+  --color-zinc-700: #d9cebb;
+  --color-zinc-800: #e8e0d0;
+  --color-zinc-900: #fbf8f1;
+  --color-zinc-950: #efe9dd;
+
+  --color-emerald-50: #1f2a19;
+  --color-emerald-100: #283621;
+  --color-emerald-200: #34462a;
+  --color-emerald-300: #3f5434;
+  --color-emerald-400: #4b653c;
+  --color-emerald-500: #58744a;
+  --color-emerald-600: #4f6a41;
+  --color-emerald-700: #a3b48f;
+  --color-emerald-800: #c3cfb3;
+  --color-emerald-900: #d9e1cc;
+  --color-emerald-950: #e6ebdb;
+
+  --color-amber-200: #6a4914;
+  --color-amber-300: #80561a;
+  --color-amber-400: #9a6b1f;
+  --color-amber-500: #94691f;
+  --color-amber-600: #c4a06a;
+  --color-amber-700: #dcc49c;
+
+  --color-red-200: #7a2c1c;
+  --color-red-300: #9e3d28;
+  --color-red-400: #a9452f;
+  --color-red-500: #b14f37;
+  --color-red-600: #96402c;
+  --color-red-700: #d9a497;
+
+  --color-sky-200: #2c4a63;
+  --color-sky-300: #375a77;
+  --color-sky-400: #426985;
+  --color-sky-500: #557b98;
+  --color-sky-600: #4a6d88;
+  --color-sky-700: #a7bccc;
+
+  --color-violet-200: #4d3c6e;
+  --color-violet-300: #5f4d85;
+  --color-violet-400: #6e5c94;
+  --color-violet-500: #7f6da5;
+  --color-violet-600: #6a5891;
+  --color-violet-700: #b9add0;
+}
+
+html {
+  background: var(--app-bg);
   color: var(--color-zinc-100);
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
+}
+/* Transparent so the fixed theme decorations (body::before, z-index -1) show between the page and the content */
+body {
+  overscroll-behavior-y: none;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+  }
 }
 
 /* Numeric inputs: no spinners, the app has its own +/- steppers */
@@ -31,4 +180,210 @@ input[type="number"] {
 }
 @utility pb-safe {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Themed components: the base rule is the minimal look, utilities passed in className still win (same as before) */
+@layer components {
+  .ui-title {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+
+  .ui-card {
+    border-radius: var(--radius-card);
+    border: 1px solid var(--color-zinc-800);
+    background-color: color-mix(in oklab, var(--color-zinc-900) 60%, transparent);
+  }
+
+  .ui-scrim {
+    background: var(--scrim);
+    backdrop-filter: var(--scrim-filter);
+    -webkit-backdrop-filter: var(--scrim-filter);
+  }
+
+  .ui-tabbar {
+    inset-inline: 0;
+    bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid var(--color-zinc-800);
+    background-color: color-mix(in oklab, var(--color-zinc-950) 95%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .ui-tab {
+    position: relative;
+    color: var(--color-zinc-500);
+  }
+  .ui-tab[aria-current="page"] {
+    color: var(--color-emerald-400);
+  }
+
+  .ui-seg {
+    background-color: var(--color-zinc-800);
+  }
+  .ui-seg-item {
+    color: var(--color-zinc-400);
+  }
+  .ui-seg-item[aria-pressed="true"] {
+    background-color: var(--color-zinc-950);
+    color: var(--color-zinc-50);
+  }
+
+  /* ---- Modern ---- */
+  [data-theme="modern"] body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(75vmax 50vmax at 0% -10%, rgb(124 58 237 / 0.5), transparent 62%),
+      radial-gradient(60vmax 45vmax at 108% 22%, rgb(6 182 212 / 0.3), transparent 60%),
+      radial-gradient(70vmax 50vmax at 35% 118%, rgb(219 39 119 / 0.26), transparent 62%);
+  }
+  [data-theme="modern"] .ui-title {
+    font-size: 2rem;
+    line-height: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    background: linear-gradient(100deg, #ffffff 10%, #c4b5fd 55%, #67e8f9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  [data-theme="modern"] .ui-card {
+    border-color: rgb(255 255 255 / 0.1);
+    background: linear-gradient(160deg, rgb(255 255 255 / 0.09), rgb(255 255 255 / 0.03));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.09),
+      0 14px 34px -18px rgb(0 0 0 / 0.75);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+  }
+  [data-theme="modern"] .ui-sheet {
+    border-color: rgb(255 255 255 / 0.12);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1);
+    backdrop-filter: blur(30px) saturate(170%);
+    -webkit-backdrop-filter: blur(30px) saturate(170%);
+  }
+  [data-theme="modern"] .ui-btn-primary:not(:disabled) {
+    background-image: linear-gradient(135deg, var(--color-emerald-500), #4f6ef7);
+    box-shadow: 0 8px 22px -10px rgb(124 92 242 / 0.9);
+  }
+  [data-theme="modern"] .ui-btn-primary:not(:disabled):active {
+    filter: brightness(1.15);
+  }
+  /* A floating glass pill above the home indicator */
+  [data-theme="modern"] .ui-tabbar {
+    inset-inline: 0.75rem;
+    bottom: max(calc(env(safe-area-inset-bottom) - 0.75rem), 0.75rem);
+    padding-bottom: 0;
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 1.75rem;
+    background: rgb(16 18 36 / 0.62);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.08),
+      0 16px 40px -14px rgb(0 0 0 / 0.8);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+  }
+  [data-theme="modern"] .ui-tab[aria-current="page"] {
+    color: var(--color-emerald-300);
+  }
+  [data-theme="modern"] .ui-tab[aria-current="page"] svg {
+    filter: drop-shadow(0 0 7px rgb(167 139 250 / 0.9));
+  }
+  [data-theme="modern"] .ui-seg {
+    background-color: rgb(255 255 255 / 0.07);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  }
+  [data-theme="modern"] .ui-seg-item[aria-pressed="true"] {
+    background: linear-gradient(135deg, var(--color-emerald-500), #4f6ef7);
+    color: #ffffff;
+    box-shadow: 0 6px 16px -8px rgb(124 92 242 / 0.9);
+  }
+
+  /* ---- Zen ---- */
+  /* An ensō brushed faintly behind the page header, soft daylight from the top, a moss-green glow from below */
+  [data-theme="zen"] body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      url("./assets/enso.svg") right -3.5rem top calc(env(safe-area-inset-top) - 2.5rem) / 15rem 15rem no-repeat,
+      radial-gradient(70vmax 45vmax at 0% 0%, rgb(255 251 242 / 0.65), transparent 65%),
+      radial-gradient(85vmax 55vmax at -5% 112%, rgb(110 138 92 / 0.2), transparent 62%),
+      radial-gradient(60vmax 40vmax at 110% 85%, rgb(150 165 120 / 0.12), transparent 60%);
+  }
+  /* The iOS status bar text stays white (black-translucent): a dark wooden lintel keeps it readable on paper */
+  [data-theme="zen"] body::after {
+    content: "";
+    position: fixed;
+    inset-inline: 0;
+    top: 0;
+    z-index: 50;
+    height: env(safe-area-inset-top);
+    pointer-events: none;
+    background: linear-gradient(180deg, #2b241f, #3d3229);
+    box-shadow: inset 0 -1px 0 #6b5a47;
+  }
+  [data-theme="zen"] .ui-title {
+    font-size: 1.75rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  /* A small vermilion seal (hanko) after the page title */
+  [data-theme="zen"] .ui-title::after {
+    content: "";
+    display: inline-block;
+    width: 0.42em;
+    height: 0.42em;
+    margin-left: 0.4em;
+    border-radius: 0.08em;
+    background: #b14f37;
+    opacity: 0.85;
+    vertical-align: 0.12em;
+    rotate: 6deg;
+  }
+  [data-theme="zen"] .ui-card {
+    border-color: #e3dac9;
+    background: var(--color-zinc-900);
+    box-shadow:
+      0 1px 1px rgb(92 72 44 / 0.04),
+      0 8px 22px -14px rgb(92 72 44 / 0.22);
+  }
+  [data-theme="zen"] .ui-sheet {
+    border-color: #e3dac9;
+    box-shadow: 0 -10px 30px -18px rgb(92 72 44 / 0.35);
+  }
+  [data-theme="zen"] .ui-btn-primary:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.14),
+      0 4px 12px -8px rgb(63 84 52 / 0.7);
+  }
+  [data-theme="zen"] .ui-tabbar {
+    border-top-color: #d8d6c3;
+    background-color: rgb(236 237 223 / 0.94);
+  }
+  /* The active tab gets a short matcha rail on the bar's top edge, like a shoji frame */
+  [data-theme="zen"] .ui-tab[aria-current="page"]::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 50%;
+    width: 1.75rem;
+    height: 2px;
+    border-radius: 2px;
+    translate: -50% 0;
+    background: var(--color-emerald-500);
+  }
+  [data-theme="zen"] .ui-seg-item[aria-pressed="true"] {
+    background-color: var(--color-zinc-900);
+    color: var(--color-zinc-100);
+    box-shadow: 0 1px 3px rgb(92 72 44 / 0.18);
+  }
 }

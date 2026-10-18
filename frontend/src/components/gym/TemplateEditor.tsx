@@ -78,7 +78,7 @@ export function TemplateEditor({ template, exercises, onClose }: { template: Tem
         />
 
         {items.map((item, index) => (
-          <div key={`${item.exercise_id}-${index}`} {...reorder.itemProps(index)} className="rounded-2xl data-dragging:bg-zinc-950 data-dragging:shadow-2xl">
+          <div key={`${item.exercise_id}-${index}`} {...reorder.itemProps(index)} className="rounded-(--radius-card) data-dragging:bg-zinc-950 data-dragging:shadow-2xl">
             <Card className="px-2 py-1.5">
               <div className="flex items-center gap-1">
                 <button type="button" aria-label="Přetáhnout cvik" {...reorder.handleProps(index)} className="flex size-9 shrink-0 items-center justify-center rounded-lg text-zinc-500 select-none active:bg-zinc-700">

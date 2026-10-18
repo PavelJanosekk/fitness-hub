@@ -414,7 +414,7 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
 
       <div className="space-y-2">
         {workout.exercises.map((exercise, exerciseIndex) => (
-          <div key={`${exercise.exercise_id}-${exerciseIndex}`} {...reorder.itemProps(exerciseIndex)} className="rounded-2xl data-dragging:bg-zinc-950 data-dragging:shadow-2xl">
+          <div key={`${exercise.exercise_id}-${exerciseIndex}`} {...reorder.itemProps(exerciseIndex)} className="rounded-(--radius-card) data-dragging:bg-zinc-950 data-dragging:shadow-2xl">
             <Card className="px-2 py-1.5">
               <div className="flex items-center gap-1">
                 <button type="button" aria-label="Přetáhnout cvik" {...reorder.handleProps(exerciseIndex)} className="flex size-9 shrink-0 items-center justify-center rounded-lg text-zinc-500 select-none active:bg-zinc-700">
@@ -456,7 +456,7 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
       </div>
 
       <div className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+9.5rem)] z-20 md:bottom-24">
-        <VoiceRecorder onRecorded={dictate} disabled={voice?.busy} className="size-14 bg-emerald-600 text-zinc-950 shadow-lg" />
+        <VoiceRecorder onRecorded={dictate} disabled={voice?.busy} className="size-14 bg-emerald-600 text-on-accent shadow-lg" />
       </div>
       {voice && (
         <Sheet title="Diktování" onClose={() => setVoice(null)}>
@@ -555,7 +555,7 @@ function SetRow({
       <button
         aria-label={set.completed ? "Zrušit odškrtnutí" : "Série hotová"}
         onClick={onToggle}
-        className={`flex size-9 items-center justify-center rounded-lg ${set.completed ? "bg-emerald-500 text-zinc-950" : "bg-zinc-800 text-zinc-400 active:bg-zinc-700"}`}
+        className={`flex size-9 items-center justify-center rounded-lg ${set.completed ? "bg-emerald-500 text-on-accent" : "bg-zinc-800 text-zinc-400 active:bg-zinc-700"}`}
       >
         <Check size={18} strokeWidth={3} />
       </button>

@@ -21,7 +21,7 @@ export function Layout() {
             to={to}
             end={to === "/"}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${isActive ? "bg-zinc-800 text-white" : "text-zinc-400 hover:bg-zinc-900"}`
+              `flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${isActive ? "bg-zinc-800 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900"}`
             }
           >
             <Icon size={18} /> {label}
@@ -33,16 +33,14 @@ export function Layout() {
         <Outlet />
       </main>
 
-      <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur md:hidden">
+      <nav className="ui-tabbar fixed z-30 md:hidden">
         <div className="grid grid-cols-5">
           {NAV.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               end={to === "/"}
-              className={({ isActive }) =>
-                `flex flex-col items-center gap-1 py-2.5 text-[11px] ${isActive ? "text-emerald-400" : "text-zinc-500"}`
-              }
+              className="ui-tab flex flex-col items-center gap-1 py-2.5 text-[11px]"
             >
               <Icon size={22} strokeWidth={2} />
               {label}
@@ -58,12 +56,12 @@ export function Layout() {
 export function PageHeader({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
     <header className="flex items-center justify-between py-4">
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+      <h1 className="ui-title">{title}</h1>
       {action}
     </header>
   );
 }
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 ${className}`}>{children}</section>;
+  return <section className={`ui-card p-4 ${className}`}>{children}</section>;
 }
