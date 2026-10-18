@@ -52,7 +52,10 @@ export function AiCoach() {
       });
   }, [conversationId]);
 
-  useEffect(() => bottom.current?.scrollIntoView({ behavior: "smooth" }), [messages, busy]);
+  // Braces: newer browsers return a Promise from scrollIntoView, and React would call it as the effect cleanup
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, busy]);
 
   const handle = async (userText: string, request: () => Promise<ChatResponse>) => {
     setMessages((m) => [...m, { role: "user", content: userText }]);
