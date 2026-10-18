@@ -266,7 +266,8 @@ def build_nutrition_tools(ctx: NutritionContext) -> list[Callable[..., dict[str,
 
     def get_daily_nutrition_summary(date: str | None = None) -> dict[str, Any]:
         """Intake of one day: meals, macros and micronutrients with targets, % of target and coverage
-        (share of the day's kcal from foods that know the value; below ~0.7 the total is incomplete).
+        (share of the day's kcal from foods that know the value; below ~0.7 the total is incomplete) and
+        top_sources (the foods that gave the most).
 
         Args:
             date: YYYY-MM-DD; the day open in the app when omitted.
@@ -288,6 +289,7 @@ def build_nutrition_tools(ctx: NutritionContext) -> list[Callable[..., dict[str,
                         "target": n.target,
                         "percent": n.percent,
                         "coverage": n.coverage,
+                        "top_sources": [src.name for src in n.sources[:3]] or None,
                     }
                 )
                 for n in summary.nutrients

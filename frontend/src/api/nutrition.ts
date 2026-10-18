@@ -92,7 +92,10 @@ export type NutrientTotal = {
   coverage: number | null; // 0-1 share of the day's kcal behind `amount`
   target: number | null;
   percent: number | null;
+  sources: NutrientSource[]; // per food, largest first
+  unknown: string[]; // items of the day without this value
 };
+export type NutrientSource = { name: string; amount: number; estimated: boolean };
 export type DaySummary = { date: string; training_day: boolean; meals: Meal[]; nutrients: NutrientTotal[] };
 
 export type Portion = { label: string; grams: number };
@@ -146,7 +149,8 @@ export type Profile = {
 };
 
 export const nutritionKeys = {
-  summary: (date: string) => ["nutrition", "summary", date] as const,
+  // v2: nutrients gained sources / unknown; persisted v1 entries lack them
+  summary: (date: string) => ["nutrition", "summary-v2", date] as const,
   // v2: Food gained micro_refs / borrowed (E26); persisted v1 entries lack them
   foods: (q: string, source: string) => ["nutrition", "foods-v2", q, source] as const,
   food: (id: number) => ["nutrition", "food-v2", id] as const,

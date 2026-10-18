@@ -81,9 +81,15 @@ def test_summary_reports_coverage_and_borrows_reference_micros(client: TestClien
     iron = nutrient(summary, "iron_mg")
     assert (iron["amount"], iron["coverage"], iron["target"]) == (2.0, 0.6, 14)
     assert nutrient(summary, "vitamin_c_mg")["amount"] == 5.0
+    assert iron["sources"] == [
+        {"name": "Chicken", "amount": 1.0, "estimated": False},
+        {"name": "Šunka", "amount": 1.0, "estimated": True},
+    ]
+    assert iron["unknown"] == ["Chléb", "Rychlý zápis"]
     assert nutrient(summary, "kcal")["amount"] == 500
-    assert nutrient(summary, "fiber_g") | {"label": None} == {
+    assert nutrient(summary, "fiber_g") | {"label": None, "unknown": None} == {
         "key": "fiber_g", "label": None, "unit": "g", "amount": None, "coverage": 0.0, "target": 25, "percent": None,
+        "sources": [], "unknown": None,
     }  # fmt: skip
     assert summary["training_day"] is False
 

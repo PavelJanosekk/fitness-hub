@@ -24,6 +24,14 @@ from app.timeutils import day_bounds
 MEAL_ORDER = {meal_type.value: index for index, meal_type in enumerate(MealType)}
 
 
+class NutrientSource(BaseModel):
+    """One food's share of a day total (the same food eaten twice is summed)."""
+
+    name: str
+    amount: float
+    estimated: bool  # borrowed from the food's USDA references (E26), not the food's own value
+
+
 class NutrientTotal(BaseModel):
     key: str
     label: str
@@ -32,6 +40,8 @@ class NutrientTotal(BaseModel):
     coverage: float | None  # 0-1 share of the day's kcal behind `amount`; None on a day without kcal
     target: float | None  # the profile target, else the EU reference
     percent: float | None
+    sources: list[NutrientSource] = []  # largest first
+    unknown: list[str] = []  # items of the day without a value for this nutrient
 
 
 class DaySummary(BaseModel):
@@ -41,18 +51,44 @@ class DaySummary(BaseModel):
     nutrients: list[NutrientTotal]
 
 
-def _item_nutrients(item: MealLogItem, food: Food | None, refs: list[Ref] | None) -> dict[str, float | None]:
-    """Every tracked nutrient for one item; a quick-add item knows only its manual macros."""
+def _item_nutrients(
+    item: MealLogItem, food: Food | None, refs: list[Ref] | None
+) -> tuple[dict[str, float | None], set[str]]:
+    """Every tracked nutrient for one item, and the keys borrowed from references. A quick-add item knows only
+    its manual macros."""
     values: dict[str, float | None] = dict.fromkeys((n.key for n in ALL), None) | item_values(item, food)
     if food is None or item.amount_g is None:
-        return values
+        return values, set()
     scale = item.amount_g / 100
     known = effective_values(food, refs)
+    borrowed = set(known) - set(effective_values(food, None))
     for nutrient in ALL:
         if nutrient.key not in ITEM_MACROS:
             per_100g = known.get(nutrient.key)
             values[nutrient.key] = None if per_100g is None else per_100g * scale
-    return values
+    return values, borrowed
+
+
+def _sources(
+    key: str, items: list[tuple[str, dict[str, float | None], set[str]]]
+) -> tuple[list[NutrientSource], list[str]]:
+    sums: dict[str, list] = {}
+    unknown: list[str] = []
+    for name, values, borrowed in items:
+        value = values[key]
+        if value is None:
+            if name not in unknown:
+                unknown.append(name)
+            continue
+        entry = sums.setdefault(name, [0.0, False])
+        entry[0] += value
+        entry[1] = entry[1] or key in borrowed
+    sources = [
+        NutrientSource(name=name, amount=round(amount, 3), estimated=estimated)
+        for name, (amount, estimated) in sums.items()
+        if round(amount, 3) > 0
+    ]
+    return sorted(sources, key=lambda source: -source.amount), unknown
 
 
 def _rows(session: Session, day: dt.date) -> list[tuple[MealLog, MealLogItem, Food | None]]:
@@ -117,7 +153,11 @@ def _targets(profile: NutritionProfile | None, training_day: bool) -> dict[str, 
 def day_summary(session: Session, day: dt.date) -> DaySummary:
     rows = _rows(session, day)
     refs = refs_for(session, (food.id for _, _, food in rows if food is not None))  # type: ignore[misc]
-    per_item = [_item_nutrients(item, food, refs.get(food.id) if food else None) for _, item, food in rows]  # type: ignore[arg-type]
+    items = [
+        (food.name if food else item.label, *_item_nutrients(item, food, refs.get(food.id) if food else None))  # type: ignore[arg-type]
+        for _, item, food in rows
+    ]
+    per_item = [values for _, values, _ in items]
     day_kcal = sum(values["kcal"] or 0 for values in per_item)
     training_day = is_training_day(session, day)
     targets = _targets(session.get(NutritionProfile, 1), training_day)
@@ -128,6 +168,7 @@ def day_summary(session: Session, day: dt.date) -> DaySummary:
         coverage = round(sum(kcal for _, kcal in known) / day_kcal, 3) if day_kcal > 0 else None
         target = targets.get(nutrient.key, nutrient.reference)
         percent = round(amount / target * 100, 1) if amount is not None and target else None
+        sources, unknown = _sources(nutrient.key, items)
         totals.append(
             NutrientTotal(
                 key=nutrient.key,
@@ -137,6 +178,8 @@ def day_summary(session: Session, day: dt.date) -> DaySummary:
                 coverage=coverage,
                 target=target,
                 percent=percent,
+                sources=sources,
+                unknown=unknown,
             )
         )
     return DaySummary(date=day, training_day=training_day, meals=day_meals(session, day), nutrients=totals)

@@ -2,6 +2,7 @@ import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import type { NutrientTotal } from "../../api/nutrition";
 import { formatNumber } from "../../lib/format";
+import { NutrientSources } from "./NutrientSources";
 
 const MACROS = ["protein_g", "carbs_g", "fat_g", "fiber_g"] as const;
 const SHORT: Record<string, string> = { protein_g: "Bílkoviny", carbs_g: "Sacharidy", fat_g: "Tuky", fiber_g: "Vláknina" };
@@ -27,25 +28,29 @@ export function MacroSummary({ nutrients, trainingDay }: { nutrients: NutrientTo
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between">
-        <p>
-          <span className="text-3xl font-semibold tabular-nums">{formatNumber(kcal?.amount ?? 0)}</span>
-          <span className="text-zinc-400"> / {formatNumber(kcal?.target)} kcal</span>
-        </p>
+        {kcal ? (
+          <NutrientSources nutrient={kcal}>
+            <span className="text-3xl font-semibold tabular-nums">{formatNumber(kcal.amount ?? 0)}</span>
+            <span className="text-zinc-400"> / {formatNumber(kcal.target)} kcal</span>
+          </NutrientSources>
+        ) : (
+          <p className="text-3xl font-semibold tabular-nums">0</p>
+        )}
         {trainingDay && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">tréninkový den</span>}
       </div>
       <Bar percent={kcal?.percent ?? null} tone={over ? "bg-amber-400" : "bg-emerald-500"} />
       <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-        {MACROS.map((key) => {
+        {MACROS.map((key, index) => {
           const n = byKey[key];
           if (!n) return null;
           return (
-            <div key={key}>
+            <NutrientSources key={key} nutrient={n} align={index % 2 === 1 ? "right" : "left"}>
               <p className="text-xs text-zinc-400">{SHORT[key]}</p>
               <p className="tabular-nums">
                 {formatNumber(n.amount)} <span className="text-zinc-500">/ {formatNumber(n.target)} g</span>
               </p>
               <Bar percent={n.percent} />
-            </div>
+            </NutrientSources>
           );
         })}
       </div>
@@ -69,21 +74,25 @@ export function MicroGrid({ nutrients }: { nutrients: NutrientTotal[] }) {
       </button>
       {open && (
         <ul className="mt-2 grid gap-x-4 gap-y-2.5 sm:grid-cols-2">
-          {micros.map((n) => {
+          {micros.map((n, index) => {
             const partial = (n.coverage ?? 0) < MIN_COVERAGE;
             return (
-              <li key={n.key} className={partial ? "opacity-50" : ""}>
-                <div className="flex justify-between text-sm">
-                  <span className="text-zinc-300">{n.label}</span>
-                  <span className="tabular-nums text-zinc-400">
-                    {n.amount === null ? "?" : `${formatNumber(n.amount, digits(n.unit))} ${n.unit}`}
-                    {n.percent !== null && ` · ${formatNumber(n.percent)} %`}
-                  </span>
-                </div>
-                <Bar percent={n.percent} tone={partial ? "bg-zinc-500" : "bg-sky-500"} />
-                {partial && n.coverage !== null && (
-                  <p className="text-[11px] text-zinc-500">známo jen u {formatNumber(n.coverage * 100)} % kalorií</p>
-                )}
+              <li key={n.key}>
+                <NutrientSources nutrient={n} align={index % 2 === 1 ? "right" : "left"}>
+                  <div className={partial ? "opacity-50" : ""}>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-zinc-300">{n.label}</span>
+                      <span className="tabular-nums text-zinc-400">
+                        {n.amount === null ? "?" : `${formatNumber(n.amount, digits(n.unit))} ${n.unit}`}
+                        {n.percent !== null && ` · ${formatNumber(n.percent)} %`}
+                      </span>
+                    </div>
+                    <Bar percent={n.percent} tone={partial ? "bg-zinc-500" : "bg-sky-500"} />
+                    {partial && n.coverage !== null && (
+                      <p className="text-[11px] text-zinc-500">známo jen u {formatNumber(n.coverage * 100)} % kalorií</p>
+                    )}
+                  </div>
+                </NutrientSources>
               </li>
             );
           })}
