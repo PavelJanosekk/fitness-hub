@@ -122,7 +122,8 @@ Domov (cleaning). Radar chart of the skills.
 - The total XP can fall across a level boundary: the level drops, with the reason shown.
 
 ### Bosses
-- Marathon 2. 5. 2027 (HP = training km left in the RunningCoach plan); half marathon 3. 4. 2027 as a mini-boss.
+- Marathon 2. 5. 2027 (HP = training km left in the RunningCoach plan). **No half-marathon mini-boss** (user,
+  2026-10-18: ignore the half marathon).
 - A defeated boss is stored with the race result as a trophy.
 
 ### Weekly quests
@@ -164,9 +165,18 @@ Level-up animation, boss-defeat confetti, XP history chart by week.
   character level drop too. Rust (like every penalty) only counts idle days from the routine's first day, so old
   breaks in the gym / running history cost nothing. A skill never trained (0 XP) does not rust.
 
+### Implementation notes (7.3 boss, `services/boss.py`, `/api/rpg/boss`)
+- The boss is the goal race (`races.is_goal_race`). Max HP = sum of the plan weeks' upper km bound up to the race
+  (1 073 km on 2026-10-18). Every run km since the plan's first week hits it.
+- Heal: a planned day of the day-by-day schedule that passed without a run that day **or a day either side** (a
+  moved run still counts; each run covers one planned day); a finished week without a daily schedule heals by its
+  shortfall against the plan's lower bound. HP never exceeds the max.
+- Defeated only by a run of >= 40 km on race day (moving time = the trophy); a race day without one = "uprchl".
+  No XP is attached to the boss (the concept doesn't give one).
+
 ### Implementation order
 1. XP ledger + character level + titles + XP history with reasons (incl. penalties, forgiveness, pause).
 2. Skills + radar + rusting.
-3. Bosses (marathon).
+3. Boss (marathon only).
 4. Weekly quests + badges.
 5. Debuffs (tired, cursed), game-master summary, animations.

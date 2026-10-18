@@ -3,6 +3,7 @@ import { useState } from "react";
 import { type Pause as PauseRow, useCharacter, usePauses, useSavePause, useXpHistory } from "../api/rpg";
 import { PageHeader, Card } from "../components/Layout";
 import { LevelBadge, signed, XpBar } from "../components/rpg/CharacterCard";
+import { BossCard } from "../components/rpg/BossCard";
 import { SkillsCard } from "../components/rpg/SkillsCard";
 import { Button, Sheet } from "../components/ui";
 import { addDays, formatDay, formatDayMonth, formatNumber, isoDate } from "../lib/format";
@@ -43,6 +44,8 @@ export function Hero() {
             </p>
           </Card>
         )}
+
+        <BossCard />
 
         {c?.skills?.length ? <SkillsCard skills={c.skills} /> : null}
 

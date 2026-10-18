@@ -32,7 +32,23 @@ export type XpEntry = { amount: number; kind: string; text: string };
 export type XpDay = { date: string; total: number; entries: XpEntry[] };
 export type Pause = { id: number; start_date: string; end_date: string | null; note: string | null };
 
+export type BossEvent = { date: string; kind: "hit" | "heal"; km: number; text: string };
+export type Boss = {
+  name: string;
+  race_date: string;
+  days_left: number;
+  max_hp: number;
+  hp: number;
+  damage_km: number;
+  heal_km: number;
+  status: "active" | "defeated" | "missed";
+  result_seconds: number | null;
+  result_km: number | null;
+  events: BossEvent[];
+};
+
 export const rpgKeys = {
+  boss: ["rpg", "boss", "v1"] as const,
   character: ["rpg", "character", "v1"] as const,
   history: (days: number) => ["rpg", "history", "v1", days] as const,
   pauses: ["rpg", "pauses", "v1"] as const,
@@ -43,6 +59,7 @@ export const useCharacter = () =>
   useQuery({ queryKey: rpgKeys.character, queryFn: () => api<Character>("/api/rpg/character"), staleTime: 0 });
 export const useXpHistory = (days: number) =>
   useQuery({ queryKey: rpgKeys.history(days), queryFn: () => api<XpDay[]>(`/api/rpg/history?days=${days}`), staleTime: 0 });
+export const useBoss = () => useQuery({ queryKey: rpgKeys.boss, queryFn: () => api<Boss | null>("/api/rpg/boss"), staleTime: 0 });
 export const usePauses = () => useQuery({ queryKey: rpgKeys.pauses, queryFn: () => api<Pause[]>("/api/rpg/pauses") });
 
 /** Start, end or delete a pause. Online only; paused days change streaks, so habits refetch too. */
