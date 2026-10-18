@@ -1,5 +1,6 @@
 import { Bot, Dumbbell, Footprints, LayoutDashboard, ListChecks, Settings, Utensils } from "lucide-react";
 import { NavLink, Outlet } from "react-router";
+import { LevelWatcher } from "./rpg/LevelWatcher";
 
 const NAV = [
   { to: "/", label: "Přehled", icon: LayoutDashboard },
@@ -33,6 +34,7 @@ export function Layout() {
       <main className="pt-safe mx-auto w-full max-w-3xl px-4 pb-28 md:pb-8">
         <Outlet />
       </main>
+      <LevelWatcher />
 
       <nav className="ui-tabbar fixed z-30 md:hidden">
         <div className="grid grid-cols-6">

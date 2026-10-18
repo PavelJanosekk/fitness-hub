@@ -5,7 +5,7 @@
 1. ✅ `tailscale serve` switched (2026-10-17): https://biggyserver.tailfff1d3.ts.net → prod 8010, `:8443` → dev Vite 5173. The iPhone's Tailscale was offline (last seen 2 days ago) at that point.
 2. ✅ iPhone: PWA installed, voice works. Keep an eye on the GymLogger in real use.
 3. Integrations: ✅ Strava, ✅ Health Connect. **TODO later:** the iOS Shortcut (the user will do it with guidance).
-4. **Habits module ("Rutina", E20) live on prod** (2026-10-18). Next: the user tries it on the iPhone; RPG layer later (ideas in `docs/habits-module-spec.md`).
+4. **Habits module (E20) and the RPG layer (E22, Phase 7 complete) live on prod** (2026-10-18). Next: the user tries it on the iPhone; tune the (tune) values from real use.
 5. Phase 5 done except deferred barcode scanning. The user starts the KT history import in Nastavení (prod). The user still has to put the KT credentials into `.env` before 5.5.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
@@ -131,7 +131,7 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - [x] 7.3 Boss: marathon 2. 5. 2027 only, no half-marathon boss (user) — HP from the plan, hits, heals on skipped runs (±1 day tolerance), defeat by the race
 - [x] 7.4a Backend: weekly quests (run / gym / muscle / home / weakest habit) in the ledger, badges, `/api/rpg/quests` + `/api/rpg/badges`
 - [x] 7.4b Frontend: quests and badges on Hrdina; deploy
-- [ ] 7.5 Debuffs (tired, cursed habit), coach game-master summary, level-up / boss animations
+- [x] 7.5 Debuffs (tired, cursed habit), coach game-master summary, level-up / boss animations
 
 ## Backlog (ideas, not accepted)
 - D1 `Exercise.secondary_muscles` for better volume analysis
@@ -249,3 +249,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-18 (16):** 7.3 marathon boss (user: ignore the half marathon). `/api/rpg/boss` + boss card on Hrdina (HP bar, hits / heals with reasons, trophy or "uprchl"). A real-data check showed a run moved by one day (15. instead of 16. 10.) healing the boss, so planned runs match a run ±1 day. Prod: 1 068 / 1 073 HP, 196 days.
 - **2026-10-18 (17):** 7.4a backend: quests + badges (rules in the spec). 275 tests. Real-data copy: this week run 12 km, 2× gym, clean the flat; unlocked: perfect day, 100 workouts (6. 4.), 50 PRs, level 10.
 - **2026-10-18 (18):** 7.4b quests card (progress, reward, done day, all-quests bonus) and badges grid (unlocked with date, locked greyed with progress) on Hrdina. Deployed (no migration). Next: 7.5 debuffs (tired, cursed habit), coach game-master summary, animations.
+- **2026-10-18 (19):** 7.5: tired debuff (×0.8 until the week is back at 60 %), cursed habits (double XP / minus XP), coach tool `get_rpg_status` + game-master prompt rule, "RPG shrnutí týdne" quick prompt and Hrdina link (pre-fill only), debuff card + chip, level up / down / boss-defeated moments (checked with a headless screenshot). 278 tests. Phase 7 complete and deployed.

@@ -1,6 +1,9 @@
 import { api } from "./client";
 
 export type Tier = "fast" | "smart";
+
+/** Quick prompt for the coach's weekly RPG summary (also linked from Hrdina). */
+export const RPG_SUMMARY_PROMPT = "Udělej mi RPG shrnutí týdne jako game master";
 export type Draft = {
   kind: "workout_sets";
   reason: "exercise_uncertain" | "exercise_unknown" | "implausible_numbers";

@@ -53,7 +53,11 @@ export function CharacterCard() {
               {c.next_title ? `další titul na levelu ${c.next_title.level}: ${c.next_title.title}` : "nejvyšší titul"}
             </div>
           </div>
-          {c.paused ? (
+          {c.tired || c.cursed.length ? (
+            <span className="rounded-full bg-red-500/15 px-2 py-1 text-xs font-semibold text-red-300">
+              {c.tired ? "unavený" : `prokletí ${c.cursed.length}`}
+            </span>
+          ) : c.paused ? (
             <span className="flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-1 text-xs text-zinc-300">
               <Pause size={12} /> pauza
             </span>

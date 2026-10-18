@@ -1,5 +1,7 @@
-import { ArrowDown, ArrowUp, Gift, Pause, Play, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Bot, Flame, Gift, Pause, Play, Skull, Trash2, Zap } from "lucide-react";
+import { Link } from "react-router";
 import { useState } from "react";
+import { RPG_SUMMARY_PROMPT } from "../api/coach";
 import { type Pause as PauseRow, useCharacter, usePauses, useSavePause, useXpHistory } from "../api/rpg";
 import { PageHeader, Card } from "../components/Layout";
 import { LevelBadge, signed, XpBar } from "../components/rpg/CharacterCard";
@@ -45,6 +47,36 @@ export function Hero() {
             </p>
           </Card>
         )}
+
+        {c && (c.tired || c.cursed.length > 0) && (
+          <Card className="space-y-2 border-red-500/30!">
+            <h2 className="font-semibold text-red-300">Debuffy</h2>
+            {c.tired && (
+              <p className="flex items-start gap-2 text-sm">
+                <Zap size={16} className="mt-0.5 shrink-0 text-red-300" />
+                Únava: XP ×0,8, dokud tento týden nebude rutina na 60 %.
+              </p>
+            )}
+            {c.cursed.map((title) => (
+              <p key={title} className="flex items-start gap-2 text-sm">
+                <Skull size={16} className="mt-0.5 shrink-0 text-red-300" />
+                Prokletý návyk {title}: splnění = dvojnásobné XP, vynechání = mínus XP.
+              </p>
+            ))}
+          </Card>
+        )}
+
+        <Link
+          to={`/coach?ask=${encodeURIComponent(RPG_SUMMARY_PROMPT)}`}
+          className="ui-card flex items-center gap-3 p-4 active:bg-zinc-800/60"
+        >
+          <Bot size={22} className="shrink-0 text-emerald-400" />
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold">RPG shrnutí týdne od kouče</span>
+            <span className="text-xs text-zinc-400">XP, tresty a proč, výpravy, boss a rady na příští týden</span>
+          </span>
+          <Flame size={18} className="shrink-0 text-amber-400" />
+        </Link>
 
         <QuestsCard />
 

@@ -27,6 +27,8 @@ export type Character = {
   forgiven_this_month: string | null;
   paused: boolean;
   skills?: Skill[]; // missing in caches persisted before 7.2
+  tired: boolean;
+  cursed: string[];
 };
 export type XpEntry = { amount: number; kind: string; text: string };
 export type XpDay = { date: string; total: number; entries: XpEntry[] };
@@ -55,7 +57,7 @@ export const rpgKeys = {
   quests: ["rpg", "quests", "v1"] as const,
   badges: ["rpg", "badges", "v1"] as const,
   boss: ["rpg", "boss", "v1"] as const,
-  character: ["rpg", "character", "v1"] as const,
+  character: ["rpg", "character", "v2"] as const, // v2: tired + cursed are read without a fallback
   history: (days: number) => ["rpg", "history", "v1", days] as const,
   pauses: ["rpg", "pauses", "v1"] as const,
 };

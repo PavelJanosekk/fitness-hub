@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, SendHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { ApiError } from "../api/client";
-import { type ChatResponse, type Draft, getConversation, sendChat, sendVoice, type Tier } from "../api/coach";
+import { type ChatResponse, type Draft, getConversation, RPG_SUMMARY_PROMPT, sendChat, sendVoice, type Tier } from "../api/coach";
 import { pullServerSets } from "../api/gym";
 import { DraftCard } from "../components/DraftCard";
 import { PageHeader } from "../components/Layout";
@@ -22,6 +23,7 @@ const PROMPTS = [
   "Zhodnoť můj běžecký plán na tento týden vůči únavě z fitka",
   "Jak se vyvíjí moje aerobní efektivita při stejném tepu?",
   "Co mám dnes a zítra podle plánu?",
+  RPG_SUMMARY_PROMPT,
 ];
 
 export function errorText(error: unknown): string {
@@ -67,7 +69,10 @@ export function AiCoach() {
       setMessages((m) => [...m, { role: "model", content: response.reply, drafts: response.drafts, tools: response.tool_calls_made, model: response.model }]);
       for (const saved of response.saved_sets) await pullServerSets(queryClient, saved.workout_id).catch(() => undefined);
       if (response.saved_sets.length) queryClient.invalidateQueries({ queryKey: ["workouts"] });
-      if (response.tool_calls_made.includes("set_habits_done")) queryClient.invalidateQueries({ queryKey: ["habits"] });
+      if (response.tool_calls_made.includes("set_habits_done")) {
+        queryClient.invalidateQueries({ queryKey: ["habits"] });
+        queryClient.invalidateQueries({ queryKey: ["rpg"] });
+      }
     } catch (error) {
       setMessages((m) => [...m, { role: "model", content: `⚠️ ${errorText(error)}` }]);
     } finally {
@@ -84,6 +89,15 @@ export function AiCoach() {
 
   const sendAudio = (audio: Blob) =>
     void handle("🎤 hlasová zpráva", () => sendVoice(audio, { conversationId, model: tier }));
+
+  // ?ask= from another page (Hrdina) pre-fills the question; sending stays a tap (each turn spends free quota)
+  const [params, setParams] = useSearchParams();
+  const ask = params.get("ask");
+  useEffect(() => {
+    if (!ask) return;
+    setInput(ask);
+    setParams({}, { replace: true });
+  }, [ask, setParams]);
 
   const reset = () => {
     localStorage.removeItem(CONVERSATION_KEY);

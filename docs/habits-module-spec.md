@@ -186,6 +186,18 @@ Level-up animation, boss-defeat confetti, XP history chart by week.
   100 / 250 workouts, 1 000 km in a calendar year, first marathon (>= 42 km), 50 PRs, all quests of a week,
   level 10 / 20 / 30. Locked badges show progress.
 
+### Implementation notes (7.5 debuffs, game master, animations)
+- Tired: set on the Monday after a week with a week penalty; that week's gains get a ×0.8 cut entry each day
+  until the week's routine so far reaches 60 % ("Únava pryč"), then normal from the next day.
+- Cursed habit: a daily routine habit (not bonus, not archived) with 3+ misses in the previous week (paused /
+  forgiven days don't count) is cursed for the week: each day done pays its XP again, each finished missed day
+  costs its XP. Shown on Hrdina and as a chip on the Přehled card.
+- Game master: coach tool `get_rpg_status` (level, XP, multiplier, debuffs, quests, boss, skills, last 7 days of
+  XP changes with reasons) + a prompt rule for the weekly RPG summary; a quick prompt in Kouč and a link on Hrdina
+  pre-fill it (sending stays a tap, each turn spends free quota). No automatic Sunday call.
+- Animations: a per-device watcher (localStorage `fitness-hub-rpg-seen`) shows level up (confetti), level down
+  and boss defeated once per change; the first visit only records the state.
+
 ### Implementation order
 1. XP ledger + character level + titles + XP history with reasons (incl. penalties, forgiveness, pause).
 2. Skills + radar + rusting.
