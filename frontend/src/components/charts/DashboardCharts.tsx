@@ -62,7 +62,7 @@ export function WeightChart({ data }: { data: MetricDay[] }) {
         <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
           <CartesianGrid vertical={false} stroke={ink.grid} />
           <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={24} {...axis} />
-          <YAxis domain={["dataMin - 1", "dataMax + 1"]} tickFormatter={(v) => formatNumber(v)} width={44} {...axis} />
+          <YAxis domain={[(min: number) => Math.floor(min - 1), (max: number) => Math.ceil(max + 1)]} allowDecimals={false} tickFormatter={(v) => formatNumber(v)} width={44} {...axis} />
           <Tooltip
             {...tooltip}
             labelFormatter={(d) => shortDate(String(d))}
