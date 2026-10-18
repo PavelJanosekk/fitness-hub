@@ -73,15 +73,75 @@ protein ≥ daily target. A manual tick still works as an override (e.g. trainin
 - **H3** → **weekly targets and points + bonus**.
 - **H4** Seed → **the user's sheet list in Czech**.
 
-## RPG layer — ideas for later (not accepted)
-Everything below can be computed retroactively from habit logs + existing workouts, runs, meals and steps, so v1
-only has to store `points` and `skill`.
-- Character level + XP bar; titles per level.
-- Skills with levels: Síla (gym tonnage, PRs), Výdrž (km, long runs), Výživa (protein target, food logged),
-  Domov, Disciplína, Mysl.
-- Streaks: routine-week streak (week counts at ≥ 60 % daily completion) with an XP multiplier; streak freezes
-  earned over time (a sick week does not reset it).
-- Weekly quests generated from real plans (km from the RunningCoach plan, gym sessions, full-flat clean).
-- Bosses: the marathon (2. 5. 2027) with HP = remaining planned training km; the half marathon as a mini-boss.
-- Badges (perfect day, 30 days creatine, 100 workouts, first marathon).
-- The coach as "game master" for a weekly review.
+## RPG layer — accepted concept (E22, 2026-10-18)
+**Binding for the implementation** (user: "take this as the correct concept to implement by"). Numbers marked
+*(tune)* are starting values to adjust during implementation; the rules themselves are decided.
+
+### Principles
+- **Hard mode, no softening:** XP can go down and **the level can drop** (no level floor).
+- **No streak-saving tokens** (no "streak freeze").
+- **Every XP change has a visible reason:** an XP history lists each gain and penalty with its cause, e.g.
+  "−80 XP: týden 12.–18. 10. splněn na 52 % (pod 60 %)".
+- **Forgiveness: 1 day per calendar month.** The first missed (below-threshold) day of each month is forgiven:
+  it triggers no day penalty, is left out of the week's routine %, and does not break daily streaks. Shown in the
+  history as "odpuštěný den".
+- **Pause (safeguard):** a manual "pauza" (sick, holiday) with a start and end; paused days count for nothing:
+  no XP, no penalties, no effect on streaks or the week %. Shown as a pause period in the history.
+- XP comes from history (habit logs, workouts, runs, meals, steps, sleep), so the level exists from day one.
+  Penalties need the same determinism: a recomputable XP ledger (reason, date, amount, source) rather than
+  hand-edited totals. Storage to decide at implementation (live computation vs. materialized ledger).
+
+### Character and XP
+- Level + XP bar on Přehled and Rutina; titles per level (Učeň → Vytrvalec → Maratonec → …).
+- Gains *(tune)*: habit = points × 10 XP (bonus too); perfect day +50; working set in the gym 2; PR +50;
+  running 5 XP/km, extra for a long run / planned quality session; protein target met, full day of food logged,
+  sleep ≥ 7 h.
+- Level curve: fast at first, slower later.
+
+### Skills
+Each with its own level and bar, fed by habit areas and real data: Síla (gym tonnage, PRs), Výdrž (km, long runs,
+EF), Výživa (protein, food logged, diet), Disciplína (daily routine, streaks), Mysl (Anki, learning, new things),
+Domov (cleaning). Radar chart of the skills.
+
+### Streaks
+- Routine-week streak (week counts at ≥ 60 % of the daily routine; already computed) and per-habit streaks.
+- XP multiplier from the routine-week streak *(tune: +10 % per 2 weeks, max ×1.5)*.
+- Personal best streaks per habit.
+
+### Penalties (hard mode)
+- **Week below 60 %:** the multiplier drops back to ×1.0 and the week's XP is cut *(tune: −10 % of that week's
+  XP, at least −100 XP)*.
+- **Day below 30 % of the routine:** −20 XP *(tune)* (the monthly forgiven day excepted).
+- **Tired (debuff):** after a week below 60 %, the next week earns XP ×0.8 until that week reaches 60 %.
+- **Cursed habit:** a habit missed 3× in a week is "cursed" the next week: done = double XP, missed again =
+  a penalty *(tune)*.
+- **Rusting skill:** a skill not fed for 14 days rusts (greyed bar); from 3 weeks it loses skill XP and its level
+  can drop.
+- **Boss heals:** a skipped planned run gives the marathon boss HP back (remaining planned km grow).
+- **Quest failed:** an unfinished weekly quest stays in the history as failed, no reward.
+- The total XP can fall across a level boundary: the level drops, with the reason shown.
+
+### Bosses
+- Marathon 2. 5. 2027 (HP = training km left in the RunningCoach plan); half marathon 3. 4. 2027 as a mini-boss.
+- A defeated boss is stored with the race result as a trophy.
+
+### Weekly quests
+Generated each Monday from real plans (km from the plan, gym sessions, a neglected muscle group, full-flat clean,
+Anki days), each with an XP reward and a bonus for all of them.
+
+### Badges
+Perfect day / week, 30 days creatine, 100 / 250 workouts, 1 000 km a year, first marathon, 5 km PR, …; locked
+badges shown greyed.
+
+### Coach as game master
+Sunday summary in RPG tone (XP, quests, penalties and why, what is neglected, advice), data via tools as always.
+
+### Small touches
+Level-up animation, boss-defeat confetti, XP history chart by week.
+
+### Implementation order
+1. XP ledger + character level + titles + XP history with reasons (incl. penalties, forgiveness, pause).
+2. Skills + radar + rusting.
+3. Bosses (marathon).
+4. Weekly quests + badges.
+5. Debuffs (tired, cursed), game-master summary, animations.
