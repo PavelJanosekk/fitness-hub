@@ -103,14 +103,20 @@ def test_reimporting_a_day_replaces_it_and_reuses_foods(session: Session) -> Non
     assert len(foods(session)) == 4
 
 
-def test_days_logged_in_the_app_are_skipped(session: Session) -> None:
-    session.add(MealLog(logged_date=D, meal_type="lunch"))
+def test_days_logged_in_the_app_get_the_kt_meals_next_to_them(session: Session) -> None:
+    manual = MealLog(logged_date=D, meal_type="lunch")
+    session.add(manual)
     session.commit()
 
     result = import_day(session, D, DAY)
+    again = import_day(session, D, DAY)
 
-    assert result.skipped and "zapsaná v aplikaci" in result.warnings[0]
-    assert session.exec(select(MealLogItem)).all() == []
+    assert not result.skipped and result.items == again.items > 0
+    assert "zapsaná v aplikaci" in result.warnings[0]
+    meals = session.exec(select(MealLog).where(MealLog.logged_date == D)).all()
+    assert manual.id in {m.id for m in meals}
+    assert len(meals) == 1 + 3  # the app's meal stays, KT's three are replaced (not doubled) on a re-import
+    assert len(session.exec(select(MealLogItem)).all()) == result.items
 
 
 def test_unusable_entries_become_warnings(session: Session) -> None:

@@ -59,7 +59,7 @@ export function KTImportCard() {
       ) : (
         <>
           <p className="mb-3 text-sm text-zinc-400">
-            Stáhne deník a váhu po dnech (1 požadavek za 2 s). Dny, které už máš zapsané v aplikaci, přeskočí. Opakovaný import
+            Stáhne deník a váhu po dnech (1 požadavek za 2 s). Jídla zapsaná v aplikaci nechá a KT jídla přidá k nim (co máš v obou, bude dvakrát). Opakovaný import
             stejného období pokračuje tam, kde skončil.
           </p>
           {s.range_from && s.range_to && s.status !== "idle" && (

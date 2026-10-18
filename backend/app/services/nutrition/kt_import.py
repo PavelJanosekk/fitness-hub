@@ -11,7 +11,9 @@ Verified on real diary days (O3, 2026-10-17):
 
 The job is throttled (one request per REQUEST_INTERVAL_S, as the SDK author asks) and resumable: the state row
 keeps a day cursor. A day is replaced as a whole (its imported meals are deleted and re-created with ids derived
-from KT's), and a day that already has meals logged in this app is skipped so nothing is counted twice.
+from KT's). Meals logged in this app are never touched: on a day that has some, KT's meals are imported next to
+them (the app's own entries and KT's can't be matched, so one logged in both places counts twice; the day gets
+a warning).
 """
 
 import asyncio
@@ -158,15 +160,13 @@ def _food(session: Session, item: DiaryFoodstuff, grams: float, result: DayResul
 
 
 def import_day(session: Session, day: dt.date, diary: Diary) -> DayResult:
-    """Replace the imported meals of one day with what KT has (atomic per day)."""
+    """Replace the imported meals of one day with what KT has (atomic per day); the app's own meals stay."""
     result = DayResult()
     if not any(meal.items for meal in diary.meals):
         return result
     app_logged = session.exec(select(MealLog.id).where(MealLog.logged_date == day, col(MealLog.source).is_(None)))
     if app_logged.first() is not None:
-        result.skipped = True
-        result.warnings.append(f"{day}: den už má jídla zapsaná v aplikaci, přeskočeno")
-        return result
+        result.warnings.append(f"{day}: den má i jídla zapsaná v aplikaci, import je doplnil k nim (možné zdvojení)")
     # Items go with their meal (ON DELETE CASCADE)
     session.execute(
         delete(MealLog).where(col(MealLog.logged_date) == day, col(MealLog.source) == MealSource.kaloricke_tabulky)
