@@ -1,6 +1,6 @@
 # Habits / routine module ("Rutina")
 
-Status: **accepted** (2026-10-18, decision E20 in `docs/PROGRESS.md`): H1 a, H2 yes, H3 both, H4 the user's list. Visual mockup (private claude.ai canvas): https://claude.ai/artifact/TA62pfjToHJyZKVbUtaQQN
+Status: **implemented and live** (2026-10-18, decision E20 in `docs/PROGRESS.md`): H1 a, H2 yes, H3 both, H4 the user's list. Visual mockup (private claude.ai canvas): https://claude.ai/artifact/TA62pfjToHJyZKVbUtaQQN
 (1 Den, 2 Měsíc, 3 Přidat/upravit, 4 Přehled card, 5 RPG concept).
 
 ## Goal (user, 2026-10-18)
@@ -56,7 +56,7 @@ protein ≥ daily target. A manual tick still works as an override (e.g. trainin
 - Coach tools (6.2): `get_habit_summary(days=30)` (rate, current/best streak, weekday pattern, routine-week streak),
   `set_habits_done(...)`.
 
-## Proposed UI (decision H1)
+## UI (decision H1)
 - New tab **Rutina** with a Den / Měsíc switch, plus a compact "Dnešní rutina" card at the top of Přehled showing
   only what is left today.
 - **Den**: day switcher (also swipe), week strip with mini rings (tap = jump to day), hero ring (%, done/total,
