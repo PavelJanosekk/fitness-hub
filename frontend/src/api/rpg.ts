@@ -1,6 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 
+export type Skill = {
+  key: string;
+  name: string;
+  source: string;
+  xp: number;
+  level: number;
+  level_start_xp: number;
+  next_level_xp: number;
+  idle_days: number;
+  rusting: boolean;
+  losing: boolean;
+};
 export type Character = {
   level: number;
   title: string;
@@ -14,6 +26,7 @@ export type Character = {
   week_streak: number;
   forgiven_this_month: string | null;
   paused: boolean;
+  skills?: Skill[]; // missing in caches persisted before 7.2
 };
 export type XpEntry = { amount: number; kind: string; text: string };
 export type XpDay = { date: string; total: number; entries: XpEntry[] };

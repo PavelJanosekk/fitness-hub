@@ -3,6 +3,7 @@ import { useState } from "react";
 import { type Pause as PauseRow, useCharacter, usePauses, useSavePause, useXpHistory } from "../api/rpg";
 import { PageHeader, Card } from "../components/Layout";
 import { LevelBadge, signed, XpBar } from "../components/rpg/CharacterCard";
+import { SkillsCard } from "../components/rpg/SkillsCard";
 import { Button, Sheet } from "../components/ui";
 import { addDays, formatDay, formatDayMonth, formatNumber, isoDate } from "../lib/format";
 
@@ -31,7 +32,7 @@ export function Hero() {
             <XpBar c={c} />
             <div className="grid grid-cols-3 gap-2 text-center">
               <Stat label="Tento týden" value={`${signed(c.week_xp)} XP`} tone={c.week_xp < 0 ? "bad" : undefined} />
-              <Stat label="Hotové týdny v řadě" value={String(c.week_streak)} />
+              <Stat label="Týdny v řadě" value={String(c.week_streak)} />
               <Stat label="Násobič" value={`×${formatNumber(c.multiplier, 1)}`} />
             </div>
             <p className="text-xs text-zinc-500">
@@ -42,6 +43,8 @@ export function Hero() {
             </p>
           </Card>
         )}
+
+        {c?.skills?.length ? <SkillsCard skills={c.skills} /> : null}
 
         <PauseCard />
 
