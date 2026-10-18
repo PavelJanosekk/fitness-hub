@@ -34,7 +34,7 @@ export function KTImportCard() {
     queryFn: () => api<KTImport>(URL),
     refetchInterval: (query) => (query.state.data?.running ? 3000 : false),
   });
-  const [from, setFrom] = useState(() => addDays(isoDate(), -365));
+  const [from, setFrom] = useState(() => addDays(isoDate(), -1));
   const start = useMutation({
     mutationFn: (date_from: string) => api<KTImport>(URL, { method: "POST", body: { date_from } }),
     onSuccess: (data) => queryClient.setQueryData(["kt-import"], data),
