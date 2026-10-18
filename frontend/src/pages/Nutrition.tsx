@@ -17,7 +17,7 @@ import type { Meal, MealItem } from "../api/types";
 import { Card, PageHeader } from "../components/Layout";
 import { Markdown } from "../components/Markdown";
 import { AddFoodSheet } from "../components/nutrition/AddFoodSheet";
-import { MealDraftCard, SourceBadge } from "../components/nutrition/MealDraftCard";
+import { MealDraftCard } from "../components/nutrition/MealDraftCard";
 import { MacroSummary, MicroGrid } from "../components/nutrition/NutrientBars";
 import { TargetsSheet } from "../components/nutrition/TargetsSheet";
 import { DecimalInput, parseDecimal } from "../components/ui";
@@ -184,19 +184,19 @@ function Meals({ meals, date, onAdd }: { meals: Meal[]; date: string; onAdd: (me
         </button>
       </div>
       {meals.length === 0 && <p className="text-sm text-zinc-500">Zatím nic.</p>}
-      <div className="space-y-4">
+      <div className="divide-y divide-zinc-800">
         {meals.map((meal) => (
-          <div key={meal.id}>
-            <div className="mb-1 flex items-center justify-between text-sm">
-              <span className="text-zinc-400">{mealTypeLabel(meal.meal_type)}</span>
-              <span className="flex items-center gap-2 text-zinc-500">
+          <div key={meal.id} className="py-3 first:pt-0 last:pb-0">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-base font-semibold text-zinc-100">{mealTypeLabel(meal.meal_type)}</span>
+              <span className="flex items-center gap-1.5 text-base font-semibold tabular-nums text-zinc-100">
                 {formatNumber(meal.items.reduce((sum, i) => sum + i.kcal, 0))} kcal
-                <button onClick={() => onAdd(meal.meal_type as MealType)} aria-label="Přidat do jídla" className="rounded p-1 active:bg-zinc-800">
-                  <Plus size={14} />
+                <button onClick={() => onAdd(meal.meal_type as MealType)} aria-label="Přidat do jídla" className="rounded p-1 text-zinc-400 active:bg-zinc-800">
+                  <Plus size={16} />
                 </button>
               </span>
             </div>
-            <ul className="divide-y divide-zinc-800/70">
+            <ul>
               {meal.items.map((item) => (
                 <ItemRow key={item.id} item={item} mealType={meal.meal_type as MealType} date={date} />
               ))}
@@ -223,13 +223,10 @@ function ItemRow({ item, mealType, date }: { item: MealItem; mealType: MealType;
   };
 
   return (
-    <li className="flex items-center gap-2 py-2">
+    <li className="flex items-center gap-2 py-1.5 text-sm">
       <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 leading-snug">{item.food_name ?? item.label}</p>
-        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
-          {item.food_source && <SourceBadge source={item.food_source} />}
-          {item.food_name && item.label !== item.food_name && <span className="truncate">„{item.label}“</span>}
-        </p>
+        <p className="line-clamp-2 leading-snug text-zinc-300">{item.food_name ?? item.label}</p>
+        {item.food_name && item.label !== item.food_name && <p className="truncate text-xs text-zinc-500">{item.label}</p>}
       </div>
       {item.food_id ? (
         editing !== null ? (
@@ -237,7 +234,7 @@ function ItemRow({ item, mealType, date }: { item: MealItem; mealType: MealType;
             <DecimalInput ariaLabel="Gramy" value={editing} onChange={setEditing} className="!min-h-9 text-right !text-base" />
           </form>
         ) : (
-          <button onClick={() => setEditing(String(item.amount_g ?? "").replace(".", ","))} className="rounded px-1.5 py-1 tabular-nums text-zinc-300 active:bg-zinc-800">
+          <button onClick={() => setEditing(String(item.amount_g ?? "").replace(".", ","))} className="rounded px-1.5 py-1 tabular-nums text-zinc-400 active:bg-zinc-800">
             {formatNumber(item.amount_g)} g
           </button>
         )
@@ -248,9 +245,9 @@ function ItemRow({ item, mealType, date }: { item: MealItem; mealType: MealType;
         </button>
       ) : (
         <>
-          <span className="w-16 text-right tabular-nums text-zinc-400">{formatNumber(item.kcal)} kcal</span>
-          <button onClick={() => deleteItem.mutate(item.id)} aria-label="Smazat" className="rounded p-1.5 text-zinc-500 active:bg-zinc-800">
-            <Trash2 size={16} />
+          <span className="w-16 text-right tabular-nums text-zinc-500">{formatNumber(item.kcal)} kcal</span>
+          <button onClick={() => deleteItem.mutate(item.id)} aria-label="Smazat" className="rounded p-1.5 text-zinc-600 active:bg-zinc-800">
+            <Trash2 size={15} />
           </button>
         </>
       )}
