@@ -344,3 +344,20 @@ def test_cursed_habit_pays_double_and_costs_when_missed(empty: Session) -> None:
     assert ("curse_missed", -10) in kinds(ledger, d(13))
     assert ("curse_missed", -10) in kinds(ledger, d(15))
     assert rpg.build_ledger(empty, d(16)).cursed == ["Anki"]
+
+
+def test_coach_rpg_status_tool(empty: Session) -> None:
+    from google.genai import _extra_utils
+
+    from app.services.ai_tools import ToolContext, build_coach_tools
+
+    habit(empty, "A", d(12), [d(12), d(13)])
+    run(empty, d(13), 8)
+    now = dt.datetime(2026, 10, 14, 9, tzinfo=dt.UTC)
+    tool = next(fn for fn in build_coach_tools(ToolContext(session=empty, now=now)) if fn.__name__ == "get_rpg_status")
+
+    status = _extra_utils.invoke_function_from_dict_args({}, tool)
+
+    assert status["level"] >= 1 and status["title"]
+    assert any("Běh 8,0 km" in change["reason"] for change in status["xp_changes_last_7_days"])
+    assert status["xp_this_week"] > 0

@@ -602,6 +602,63 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
             result["message"] = "Titles in not_saved did not match exactly and were not saved."
         return result
 
+    def get_rpg_status() -> dict[str, Any]:
+        """The user's RPG layer (gamified training): level, title, XP this week and today, the weekly streak
+        multiplier, debuffs (tired, cursed habits), this week's quests with progress, the marathon boss, skills
+        (rusting ones flagged) and every XP change of the last 7 days with its reason. Use it for the weekly RPG
+        summary ("game master") and for questions about XP, level, penalties, quests or the boss."""
+        from app.services import rpg
+        from app.services.boss import marathon_boss
+
+        on = today(ctx.now)
+        ledger = rpg.build_ledger(session, on)
+        level = rpg.level_of(ledger.total)
+        week_start = on - dt.timedelta(days=on.weekday())
+        recent = [
+            {"date": e.date.isoformat(), "xp": e.amount, "reason": e.text}
+            for e in ledger.entries
+            if e.date > on - dt.timedelta(days=7) and (e.amount != 0 or e.kind in {"forgiven", "curse", "tired"})
+        ]
+        boss = marathon_boss(session, on)
+        return _compact(
+            {
+                "today": on.isoformat(),
+                "level": level,
+                "title": rpg.title_of(level),
+                "xp_total": ledger.total,
+                "xp_to_next_level": rpg.level_start(level + 1) - ledger.total,
+                "xp_this_week": sum(e.amount for e in ledger.entries if e.date >= week_start),
+                "multiplier": ledger.multiplier,
+                "finished_weeks_in_a_row": ledger.week_streak,
+                "tired": ledger.tired or None,
+                "cursed_habits": ledger.cursed or None,
+                "quests": [
+                    {
+                        "title": q.title,
+                        "progress": q.progress,
+                        "target": q.target,
+                        "unit": q.unit,
+                        "xp": q.xp,
+                        "done": q.done_on is not None,
+                    }
+                    for q in ledger.quests
+                ],
+                "boss": boss
+                and {
+                    "name": boss.name,
+                    "hp": boss.hp,
+                    "max_hp": boss.max_hp,
+                    "days_left": boss.days_left,
+                    "status": boss.status,
+                },
+                "skills": [
+                    {"name": rpg.SKILL_NAMES[key], "level": rpg.skill_level_of(state.xp), "idle_days": state.idle_days}
+                    for key, state in ledger.skills.items()
+                ],
+                "xp_changes_last_7_days": recent,
+            }
+        )
+
     return [
         get_calendar,
         get_body_metrics_summary,
@@ -615,6 +672,7 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
         log_quick_intake_from_ai,
         get_habit_summary,
         set_habits_done,
+        get_rpg_status,
     ]
 
 
