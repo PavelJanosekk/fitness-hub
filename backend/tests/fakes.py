@@ -10,8 +10,10 @@ class FakeChat:
     """Mimics google-genai chat AFC: tools run inside send_message and every round lands in the chat history
     (the response itself carries no function-call history)."""
 
-    def __init__(self, client: "FakeGemini", config: types.GenerateContentConfig, history: list[types.Content]):
-        self.client, self.tools = client, {fn.__name__: fn for fn in config.tools or []}
+    def __init__(
+        self, client: "FakeGemini", model: str, config: types.GenerateContentConfig, history: list[types.Content]
+    ):
+        self.client, self.model, self.tools = client, model, {fn.__name__: fn for fn in config.tools or []}
         self.history = list(history)
 
     def get_history(self, curated: bool = False) -> list[types.Content]:
@@ -19,8 +21,8 @@ class FakeChat:
 
     def send_message(self, parts: list[types.Part]) -> SimpleNamespace:
         self.client.sent.append(parts)
-        if self.client.error:
-            raise self.client.error
+        if error := self.client.error or self.client.model_errors.get(self.model):
+            raise error
         self.history.append(types.Content(role="user", parts=parts))
         for name, kwargs in self.client.calls:  # what automatic function calling would do
             result = self.tools[name](**kwargs)
@@ -29,13 +31,20 @@ class FakeChat:
             self.history.append(
                 types.Content(role="user", parts=[types.Part.from_function_response(name=name, response=result)])
             )
+        if error := self.client.mid_turn_errors.get(self.model):  # quota ran out between tool rounds
+            raise error
         self.history.append(types.Content(role="model", parts=[types.Part.from_text(text=self.client.reply)]))
-        return SimpleNamespace(text=self.client.reply, model_version="fake-1")
+        version = self.client.model_versions.get(self.model, "fake-1")
+        return SimpleNamespace(text=self.client.reply, model_version=version)
 
 
 class FakeGemini:
     def __init__(self, reply: str = "Hotovo.", calls: list[tuple[str, dict[str, Any]]] | None = None):
         self.reply, self.calls, self.error = reply, calls or [], None
+        # Per-model failures (fallback chain): raised before the tools run, or after them
+        self.model_errors: dict[str, Exception] = {}
+        self.mid_turn_errors: dict[str, Exception] = {}
+        self.model_versions: dict[str, str] = {}
         self.created: list[dict[str, Any]] = []
         self.sent: list[list[types.Part]] = []
         self.results: list[Any] = []
@@ -47,7 +56,7 @@ class FakeGemini:
 
     def _create(self, model: str, config: types.GenerateContentConfig, history: list[types.Content]) -> FakeChat:
         self.created.append({"model": model, "config": config, "history": history})
-        return FakeChat(self, config, history)
+        return FakeChat(self, model, config, history)
 
     def _generate(self, model: str, contents: Any, config: types.GenerateContentConfig) -> Any:
         self.generated.append({"model": model, "contents": contents, "config": config})

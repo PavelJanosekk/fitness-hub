@@ -4,16 +4,27 @@ Uses the chat API with automatic function calling (the SDK's recommended path fo
 from the database as text-only history.
 """
 
+import functools
+import itertools
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from app.config import settings
 
+log = logging.getLogger(__name__)
+
 Tier = Literal["fast", "smart"]
 MAX_TOOL_CALLS_PER_TURN = 10
+# Daily free-tier quota used up (429) or the model overloaded (503): the next model in the chain may still answer
+FALLBACK_CODES = {429, 503}
+# Tools that write to the database; a turn that already ran one is never re-run on another model
+WRITE_TOOL_PREFIX = "log_"
 
 
 class AINotConfiguredError(RuntimeError):
@@ -45,6 +56,26 @@ def tier_settings(tier: Tier, fast_model: str | None = None) -> tuple[str, str |
     return model, (level or None)
 
 
+def model_chain(model: str) -> list[str]:
+    """The tier's model followed by GEMINI_MODEL_FALLBACKS (free-tier quotas are per model, E15)."""
+    fallbacks = [m.strip() for m in (settings.gemini_model_fallbacks or "").split(",") if m.strip()]
+    return list(dict.fromkeys([model, *fallbacks]))
+
+
+def _recording_calls(tools: list[Any], called: list[str]) -> list[Any]:
+    """The tools wrapped to note each call by name (functools.wraps keeps the signature AFC declares)."""
+
+    def wrap(fn: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(fn)
+        def recorded(*args: Any, **kwargs: Any) -> Any:
+            called.append(fn.__name__)
+            return fn(*args, **kwargs)
+
+        return recorded
+
+    return [wrap(fn) for fn in tools]
+
+
 def history_content(role: str, text: str) -> types.Content:
     return types.Content(role=role, parts=[types.Part.from_text(text=text)])
 
@@ -60,13 +91,33 @@ def run_assistant(
     fast_model: str | None = None,
 ) -> AssistantReply:
     model, thinking_level = tier_settings(tier, fast_model)
+    called: list[str] = []
     config = types.GenerateContentConfig(
         system_instruction=system_instruction,
-        tools=tools,
+        tools=_recording_calls(tools, called),
         temperature=0.2,
         automatic_function_calling=types.AutomaticFunctionCallingConfig(maximum_remote_calls=MAX_TOOL_CALLS_PER_TURN),
         thinking_config=types.ThinkingConfig(thinking_level=thinking_level.upper()) if thinking_level else None,
     )
+    chain = model_chain(model)
+    for candidate, fallback in itertools.pairwise(chain):
+        try:
+            return _send(client, candidate, config, history, parts)
+        except genai_errors.APIError as exc:
+            wrote = any(name.startswith(WRITE_TOOL_PREFIX) for name in called)
+            if exc.code not in FALLBACK_CODES or wrote:
+                raise
+            log.warning("Gemini %s failed with %s, falling back to %s", candidate, exc.code, fallback)
+    return _send(client, chain[-1], config, history, parts)
+
+
+def _send(
+    client: genai.Client,
+    model: str,
+    config: types.GenerateContentConfig,
+    history: list[types.Content],
+    parts: list[types.Part],
+) -> AssistantReply:
     chat = client.chats.create(model=model, config=config, history=history)
     response = chat.send_message(parts)
     # Chat AFC records each function call in the chat history (not on the response): everything after the

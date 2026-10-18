@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # estimate) can each use their own model. Both fall back to gemini_model_fast.
     gemini_model_nutrition: str | None = None
     gemini_model_lite: str | None = None
+    # Comma-separated models tried in order when an assistant's model is out of quota (429) or overloaded (503)
+    gemini_model_fallbacks: str | None = None
 
     # KalorickéTabulky history import (Phase 5.5): credentials only ever live in .env
     kaloricketabulky_email: str | None = None

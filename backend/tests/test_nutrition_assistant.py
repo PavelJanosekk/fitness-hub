@@ -22,6 +22,7 @@ from app.services.nutrition.resolver import MealItemInput, normalize
 def models(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "gemini_model_fast", "fast-model")
     monkeypatch.setattr(settings, "gemini_model_smart", None)
+    monkeypatch.setattr(settings, "gemini_model_fallbacks", None)
 
 
 @pytest.fixture

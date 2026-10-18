@@ -21,6 +21,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def models(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "gemini_model_fast", "fast-model")
     monkeypatch.setattr(settings, "gemini_model_smart", None)
+    monkeypatch.setattr(settings, "gemini_model_fallbacks", None)
 
 
 @pytest.fixture
@@ -120,6 +121,55 @@ def test_quota_errors_become_429(client: TestClient, fake) -> None:
     )
 
     assert client.post("/api/ai/chat", json={"message": "x"}).status_code == 429
+
+
+def quota_error() -> genai_errors.ClientError:
+    return genai_errors.ClientError(429, {"error": {"code": 429, "message": "quota", "status": "RESOURCE_EXHAUSTED"}})
+
+
+def test_quota_error_falls_back_to_the_next_model(client: TestClient, fake, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "gemini_model_fallbacks", "busy-model, spare-model, fast-model")
+    gemini = fake(calls=[("get_calendar", {"days": 1})])
+    gemini.mid_turn_errors["fast-model"] = quota_error()  # read-only tools ran, then the quota ran out
+    gemini.model_errors["busy-model"] = genai_errors.ServerError(
+        503, {"error": {"code": 503, "message": "overloaded", "status": "UNAVAILABLE"}}
+    )
+    gemini.model_versions["spare-model"] = "spare-1"
+
+    response = client.post("/api/ai/chat", json={"message": "x"}).json()
+
+    assert [c["model"] for c in gemini.created] == ["fast-model", "busy-model", "spare-model"]
+    assert response["model"] == "spare-1"
+    assert response["tool_calls_made"] == ["get_calendar"]
+
+
+def test_no_fallback_after_a_write_tool_ran(client: TestClient, fake, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "gemini_model_fallbacks", "spare-model")
+    gemini = fake(calls=[("log_daily_metric_from_ai", {"weight_kg": 80.0})])
+    gemini.mid_turn_errors["fast-model"] = quota_error()
+
+    assert client.post("/api/ai/chat", json={"message": "vazim 80"}).status_code == 429
+    assert [c["model"] for c in gemini.created] == ["fast-model"]  # re-running would log the weight twice
+
+
+def test_only_quota_and_overload_errors_fall_back(client: TestClient, fake, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "gemini_model_fallbacks", "spare-model")
+    gemini = fake()
+    gemini.model_errors["fast-model"] = genai_errors.ClientError(
+        400, {"error": {"code": 400, "message": "bad request", "status": "INVALID_ARGUMENT"}}
+    )
+
+    assert client.post("/api/ai/chat", json={"message": "x"}).status_code == 502
+    assert [c["model"] for c in gemini.created] == ["fast-model"]
+
+
+def test_quota_error_when_every_model_is_exhausted(client: TestClient, fake, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "gemini_model_fallbacks", "spare-model")
+    gemini = fake()
+    gemini.model_errors.update({"fast-model": quota_error(), "spare-model": quota_error()})
+
+    assert client.post("/api/ai/chat", json={"message": "x"}).status_code == 429
+    assert [c["model"] for c in gemini.created] == ["fast-model", "spare-model"]
 
 
 def test_missing_model_config_is_503(client: TestClient, fake, monkeypatch: pytest.MonkeyPatch) -> None:

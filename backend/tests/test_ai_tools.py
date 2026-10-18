@@ -164,3 +164,31 @@ def test_running_context_has_runs_weekly_km_and_leg_days(tools, session: Session
     ]
     assert result["weekly_km"] == {"2026-W42": 10.0}
     assert result["leg_workouts"][0]["leg_sets"] == 1
+
+
+def test_call_recording_keeps_what_the_sdk_declares_and_converts(session: Session) -> None:
+    """The fallback runner wraps every tool; AFC must still see the same declaration and pydantic-typed args."""
+    from google.genai import _extra_utils, types
+
+    from app.services.gemini_service import _recording_calls
+    from app.services.nutrition.assistant import NutritionContext, build_nutrition_tools
+    from app.services.nutrition.resolver import TopScoreChooser
+
+    raw = [
+        *build_coach_tools(ToolContext(session=session, now=NOW)),
+        *build_nutrition_tools(NutritionContext(session=session, http=None, chooser_factory=TopScoreChooser)),
+    ]
+    called: list[str] = []
+    wrapped = _recording_calls(raw, called)
+
+    def declare(fn):
+        return types.FunctionDeclaration.from_callable_with_api_option(callable=fn, api_option="GEMINI_API")
+
+    assert [declare(fn) for fn in wrapped] == [declare(fn) for fn in raw]
+    log_sets = next(fn for fn in wrapped if fn.__name__ == "log_workout_sets_from_ai")
+    converted = _extra_utils.convert_argument_from_function(
+        {"exercise_name": "x", "sets": [{"weight_kg": 80, "reps": 5}]}, log_sets
+    )
+    assert isinstance(converted["sets"][0], SetInput)
+    wrapped[0]()
+    assert called == [raw[0].__name__]
