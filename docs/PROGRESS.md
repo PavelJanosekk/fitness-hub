@@ -5,7 +5,8 @@
 1. ✅ `tailscale serve` switched (2026-10-17): https://biggyserver.tailfff1d3.ts.net → prod 8010, `:8443` → dev Vite 5173. The iPhone's Tailscale was offline (last seen 2 days ago) at that point.
 2. ✅ iPhone: PWA installed, voice works. Keep an eye on the GymLogger in real use.
 3. Integrations: ✅ Strava, ✅ Health Connect. **TODO later:** the iOS Shortcut (the user will do it with guidance).
-4. Phase 5 done except deferred barcode scanning. The user starts the KT history import in Nastavení (prod). The user still has to put the KT credentials into `.env` before 5.5.
+4. **Habits module ("Rutina") proposed** in `docs/habits-module-spec.md` (draft + mockup); waiting for the user's answers to H1–H4 before implementing.
+5. Phase 5 done except deferred barcode scanning. The user starts the KT history import in Nastavení (prod). The user still has to put the KT credentials into `.env` before 5.5.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -48,6 +49,7 @@
 | O4 | ✅ E3: bulk seed | Before Phase 5 |
 | O5 | ✅ Live list checked: fast = `gemini-3.7-flash` (works with tool calls + typed args; served as 3.8-flash). **The key is on the free tier: Pro = 0 quota.** Smart tier = same Flash with high thinking until billing is enabled. Free-tier data may be used by Google; paid tier not. User: no paid calls for now | Phase 2 |
 | O6 | ✅ `tailscale serve` (E13) | Phase 4 |
+| O7 | Habits module decisions H1–H4 (`docs/habits-module-spec.md`) | Before the habits module |
 
 ## Phase checklist
 
@@ -205,3 +207,4 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - **2026-10-18 (3):** E19 themes. Chart palettes for modern (dark, surface ~#151729) and zen (light, paper #fbf8f1) pass every dataviz validator check; zen text colors checked for WCAG contrast (secondary text 5.7:1, accent fill with paper text 4.9:1, white on the modern accent 4.5:1). Verified with headless-Chrome screenshots of every page in all three themes (dashboard, gym start + active workout with rest timer, run, nutrition, coach, a sheet, settings); minimal looks as before. Fonts in headless Alpine fall back, so the rounded / serif faces are only visible on Apple devices. The weight chart now uses whole-kg ticks (half-kg ticks printed as 83, 83, 82, 82). Both deployed to prod.
 - **2026-10-18 (4):** Gym: exercise management. "Cviky" in the Gym header opens `/gym/exercises` (search, muscle-group filter, create, edit name / group / equipment); the exercise picker can create the searched exercise and adds it straight to the workout or template. Uses the existing `POST`/`PATCH /api/exercises`, now with stripped names and case-insensitive uniqueness (409). A rename also updates the workout in progress. Online only (the server assigns the id). No delete yet. Checked by a scripted headless-Chrome run on dev (create, rename, duplicate error, create from the picker); test rows removed from the dev DB (209 tests).
 - **2026-10-18 (5):** KT import defaults to yesterday and no longer skips days with app-logged meals (KT's meals are added next to them, double-count warning; re-imports replace only KT's). Nutrition assistant: chat and voice now send the day open in the Jídlo tab (`date`), used as the default for `log_meal_from_items` / the summary and named in the prompt; an explicit day in the user's words still wins. Replaces the `[den …]` text prefix, which voice never had (212 tests).
+- **2026-10-18 (6):** User asked for a daily/weekly habit tracker (their Google Sheet) with charts, and an RPG layer later (streaks, XP, skills). Reviewed their Gemini-written addendum (12 findings: non-idempotent toggle, no unique day, undefined streak edges, no start/archive dates, no edit/order, points/bonus missing, etc.) and wrote `docs/habits-module-spec.md` (draft) plus a 5-screen mockup canvas. Decisions H1–H4 pending (O7).
