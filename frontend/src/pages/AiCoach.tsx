@@ -10,7 +10,7 @@ import { Markdown } from "../components/Markdown";
 import { Segmented } from "../components/ui";
 import { VoiceRecorder } from "../components/VoiceRecorder";
 
-type Message = { role: "user" | "model"; content: string; drafts?: Draft[]; tools?: string[] };
+type Message = { role: "user" | "model"; content: string; drafts?: Draft[]; tools?: string[]; model?: string | null };
 
 const CONVERSATION_KEY = "fitness-hub-coach-conversation";
 const TIERS = [
@@ -61,7 +61,7 @@ export function AiCoach() {
       const response = await request();
       localStorage.setItem(CONVERSATION_KEY, response.conversation_id);
       if (response.conversation_id !== conversationId) setConversationId(response.conversation_id);
-      setMessages((m) => [...m, { role: "model", content: response.reply, drafts: response.drafts, tools: response.tool_calls_made }]);
+      setMessages((m) => [...m, { role: "model", content: response.reply, drafts: response.drafts, tools: response.tool_calls_made, model: response.model }]);
       for (const saved of response.saved_sets) await pullServerSets(queryClient, saved.workout_id).catch(() => undefined);
       if (response.saved_sets.length) queryClient.invalidateQueries({ queryKey: ["workouts"] });
     } catch (error) {
@@ -117,7 +117,12 @@ export function AiCoach() {
             <div className={m.role === "user" ? "max-w-[85%] rounded-2xl rounded-br-md bg-emerald-600/90 px-3.5 py-2 text-on-accent" : "w-full"}>
               {m.role === "user" ? m.content : <Markdown text={m.content} />}
               {m.drafts?.map((d, j) => <DraftCard key={j} draft={d} onSaved={(id) => void pullServerSets(queryClient, id)} />)}
-              {m.tools && m.tools.length > 0 && <p className="mt-1 text-xs text-zinc-600">nástroje: {m.tools.join(", ")}</p>}
+              {(!!m.model || !!m.tools?.length) && (
+                <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-zinc-600">
+                  {m.model && <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">{m.model.replace(/^gemini-/, "")}</span>}
+                  {!!m.tools?.length && <span>nástroje: {m.tools.join(", ")}</span>}
+                </p>
+              )}
             </div>
           </div>
         ))}
