@@ -9,7 +9,7 @@ export const keys = {
   weekly: (weeks: number) => ["metrics", "weekly", weeks] as const,
   steps: (date: string) => ["metrics", "steps", date] as const,
   intake: (date: string) => ["nutrition", "day", date] as const,
-  energy: (start: string, end: string) => ["metrics", "energy", "v1", start, end] as const,
+  energy: (start: string, end: string) => ["metrics", "energy", "v2", start, end] as const,
 };
 
 export function useMetrics(days: number) {

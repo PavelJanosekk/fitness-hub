@@ -120,25 +120,24 @@ export function KcalChart({ data }: { data: MetricDay[] }) {
 }
 
 const ENERGY_PARTS = [
-  ["base_kcal", "Základ"],
   ["steps_kcal", "Kroky"],
   ["exercise_kcal", "Trénink"],
 ] as const;
 
-/** Estimated daily expenditure stacked as base / steps / training; the base is neutral, the active parts carry color. */
+/** Actively burned kcal per day, stacked as steps / training (the base metabolism is left out on purpose). */
 export function EnergyChart({ data }: { data: EnergyDay[] }) {
   const { series, ink, surface, axis, tooltip } = useChartKit();
-  const colors = { base_kcal: ink.muted, steps_kcal: series[3], exercise_kcal: series[2] };
-  // Without a profile the base is unknown; such days show no bar rather than only their active part
-  const rows = data.map((d) => (d.total_kcal === null ? { date: d.date } : d));
-  // Whole thousands read better than the 850-kcal steps recharts picks on its own
-  const top = Math.ceil(Math.max(1, ...data.map((d) => d.total_kcal ?? 0)) / 1000) * 1000;
-  const ticks = Array.from({ length: top / 1000 + 1 }, (_, i) => i * 1000);
+  const colors = { steps_kcal: series[3], exercise_kcal: series[2] };
+  const max = Math.max(1, ...data.map((d) => d.active_kcal ?? 0));
+  // Round steps instead of the odd ones recharts picks on its own
+  const step = max <= 1000 ? 250 : max <= 2000 ? 500 : 1000;
+  const top = Math.ceil(max / step) * step;
+  const ticks = Array.from({ length: top / step + 1 }, (_, i) => i * step);
   return (
     <>
       <Legend items={ENERGY_PARTS.map(([key, label]) => ({ label, color: colors[key] }))} />
       <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={rows} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
+        <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
           <CartesianGrid vertical={false} stroke={ink.grid} />
           <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={24} {...axis} />
           <YAxis domain={[0, top]} ticks={ticks} tickFormatter={(v) => formatNumber(v)} width={54} {...axis} />
@@ -146,9 +145,9 @@ export function EnergyChart({ data }: { data: EnergyDay[] }) {
             {...tooltip}
             labelFormatter={(d, payload) => {
               const day = payload?.[0]?.payload as EnergyDay | undefined;
-              const total = day?.total_kcal ? ` · ≈ ${formatNumber(day.total_kcal)} kcal` : "";
+              const active = day?.active_kcal !== null && day?.active_kcal !== undefined ? ` · ≈ ${formatNumber(day.active_kcal)} kcal` : "";
               const note = day?.missing?.includes("steps") ? " (bez kroků)" : "";
-              return `${shortDate(String(d))}${total}${note}`;
+              return `${shortDate(String(d))}${active}${note}`;
             }}
             formatter={(v, name) => [`${formatNumber(Number(v))} kcal`, ENERGY_PARTS.find(([k]) => k === name)?.[1] ?? String(name)]}
           />
@@ -158,7 +157,6 @@ export function EnergyChart({ data }: { data: EnergyDay[] }) {
               dataKey={key}
               stackId="energy"
               fill={colors[key]}
-              fillOpacity={key === "base_kcal" ? 0.45 : 1}
               stroke={surface}
               strokeWidth={1}
               radius={i === ENERGY_PARTS.length - 1 ? [4, 4, 0, 0] : undefined}

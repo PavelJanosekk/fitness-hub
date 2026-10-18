@@ -70,6 +70,9 @@ export type EnergyDay = {
   steps_counted: number | null;
   steps_kcal: number | null;
   exercise_kcal: number | null;
+  /** steps + training: the headline number */
+  active_kcal: number | null;
+  /** base + active, informational; null without a profile */
   total_kcal: number | null;
   missing: ("weight" | "profile" | "steps")[];
   items: EnergyItem[];

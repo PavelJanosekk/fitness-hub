@@ -29,23 +29,20 @@ function itemLabel(item: EnergyItem) {
   return `${activityLabel(item.activity_type)}${distance}`;
 }
 
-/** The day's estimated expenditure under the intake summary: a number only, nothing is subtracted. */
+/** The day's actively burned kcal (steps + training) under the intake summary: a number only, nothing is subtracted. */
 export function EnergySummary({ date, onOpenTargets }: { date: string; onOpenTargets: () => void }) {
   const energy = useEnergy(date, date);
   const [open, setOpen] = useState(false);
   const day = energy.data?.[0];
   if (!day) return null;
 
-  if (day.total_kcal === null) {
+  if (day.active_kcal === null) {
     return (
       <div className="mt-4 border-t border-zinc-800 pt-3 text-sm text-zinc-400">
         <p className="flex items-center gap-1.5">
-          <Flame size={16} className="text-zinc-500" /> Výdej energie
-          {day.exercise_kcal ? <span className="tabular-nums"> · trénink {formatNumber(day.exercise_kcal)} kcal</span> : null}
+          <Flame size={16} className="text-zinc-500" /> Aktivně spáleno
         </p>
-        <button onClick={onOpenTargets} className="mt-1 text-left text-xs text-emerald-400">
-          {day.missing.includes("weight") ? "Pro odhad výdeje zapiš váhu na Přehledu." : "Pro odhad výdeje doplň v cílech pohlaví, rok narození a výšku ›"}
-        </button>
+        <p className="mt-1 text-xs text-zinc-500">Pro odhad zapiš váhu na Přehledu.</p>
       </div>
     );
   }
@@ -54,26 +51,24 @@ export function EnergySummary({ date, onOpenTargets }: { date: string; onOpenTar
     <div className="mt-4 border-t border-zinc-800 pt-3">
       <button onClick={() => setOpen(!open)} className="flex w-full items-center justify-between text-left">
         <span className="flex items-center gap-1.5 text-zinc-400">
-          <Flame size={16} /> Výdej
+          <Flame size={16} /> Aktivně spáleno
         </span>
         <span className="flex items-center gap-1 tabular-nums">
-          <span className="font-semibold text-zinc-100">≈ {formatNumber(day.total_kcal)} kcal</span>
+          <span className="font-semibold text-zinc-100">≈ {formatNumber(day.active_kcal)} kcal</span>
           <ChevronDown size={16} className={`text-zinc-500 ${open ? "rotate-180" : ""}`} />
         </span>
       </button>
       <p className="mt-0.5 text-right text-xs tabular-nums text-zinc-500">
-        základ {formatNumber(day.base_kcal)} · kroky {day.steps_kcal === null ? "?" : formatNumber(day.steps_kcal)} · trénink{" "}
-        {formatNumber(day.exercise_kcal)}
+        kroky {day.steps_kcal === null ? "?" : formatNumber(day.steps_kcal)} · trénink {formatNumber(day.exercise_kcal)}
       </p>
-      {open && <EnergyDetail day={day} />}
+      {open && <EnergyDetail day={day} onOpenTargets={onOpenTargets} />}
     </div>
   );
 }
 
-function EnergyDetail({ day }: { day: EnergyDay }) {
+function EnergyDetail({ day, onOpenTargets }: { day: EnergyDay; onOpenTargets: () => void }) {
   const isToday = day.date === isoDate();
   const rows: [string, string, number | null][] = [
-    ["Základ", `klidový metabolismus ${formatNumber(day.bmr_kcal)} kcal + trávení a běžný pohyb (×1,15)`, day.base_kcal],
     [
       "Kroky",
       day.steps === null
@@ -101,9 +96,27 @@ function EnergyDetail({ day }: { day: EnergyDay }) {
           <span className="shrink-0 tabular-nums text-zinc-300">{kcal === null ? "?" : `${formatNumber(kcal)} kcal`}</span>
         </div>
       ))}
-      <p className="pt-1 text-[11px] text-zinc-500">
-        Přibližný odhad z váhy {formatNumber(day.weight_kg, 1)} kg.{isToday && " Dnes: základ za celý den, kroky a trénink zatím."}
-      </p>
+      <div className="space-y-1 border-t border-zinc-800 pt-2 text-xs text-zinc-500">
+        {day.bmr_kcal === null ? (
+          <button onClick={onOpenTargets} className="text-left text-emerald-400">
+            Bazální metabolismus: doplň v cílech pohlaví, rok narození a výšku ›
+          </button>
+        ) : (
+          <>
+            <p className="flex justify-between gap-3">
+              <span>Bazální metabolismus (navíc, v čísle výše není)</span>
+              <span className="tabular-nums">{formatNumber(day.bmr_kcal)} kcal</span>
+            </p>
+            <p className="flex justify-between gap-3">
+              <span>Celkový výdej dne (bazál ×1,15 + aktivně)</span>
+              <span className="tabular-nums">≈ {formatNumber(day.total_kcal)} kcal</span>
+            </p>
+          </>
+        )}
+        <p className="text-[11px]">
+          Přibližný odhad z váhy {formatNumber(day.weight_kg, 1)} kg.{isToday && " Dnes: kroky a trénink zatím."}
+        </p>
+      </div>
     </div>
   );
 }

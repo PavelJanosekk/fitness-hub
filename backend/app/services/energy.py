@@ -1,6 +1,7 @@
 """Estimated daily energy expenditure (E21): base metabolism + steps + training.
 
-Shown next to intake as information only; nothing is subtracted from anything.
+Shown next to intake as information only; nothing is subtracted from anything. The headline is the active part
+(steps + training); the base is informational.
 - Base: Mifflin-St Jeor BMR x BASE_FACTOR (digestion and everyday movement other than steps).
 - Steps: net walking cost of 0.5 kcal/kg/km over a stride of 0.415 x height. Steps recorded during foot
   activities are left out because the activity already counts them.
@@ -249,7 +250,8 @@ def estimate_days(session: Session, start: dt.date, end: dt.date) -> list[Energy
             missing.append("profile")
         else:
             base = round(basal * BASE_FACTOR)
-        total = base + (steps_kcal or 0) + round(exercise) if base is not None else None
+        active = (steps_kcal or 0) + round(exercise)
+        total = base + active if base is not None else None
         days.append(
             EnergyDay(
                 date=day,
@@ -260,6 +262,7 @@ def estimate_days(session: Session, start: dt.date, end: dt.date) -> list[Energy
                 steps_counted=counted_steps,
                 steps_kcal=steps_kcal,
                 exercise_kcal=round(exercise),
+                active_kcal=active,
                 total_kcal=total,
                 missing=missing,
                 items=[s.item for s in day_sessions],

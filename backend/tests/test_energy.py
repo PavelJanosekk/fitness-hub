@@ -45,6 +45,7 @@ def test_rest_day_is_base_plus_steps(client: TestClient, session: Session, athle
     assert day["base_kcal"] == round(BMR * 1.15)
     assert day["steps_kcal"] == round(0.5 * 80 * 10000 * STRIDE_KM)
     assert day["exercise_kcal"] == 0
+    assert day["active_kcal"] == day["steps_kcal"]
     assert day["total_kcal"] == day["base_kcal"] + day["steps_kcal"]
     assert day["missing"] == []
 
@@ -93,6 +94,7 @@ def test_run_steps_are_not_counted_twice_and_a_watch_logged_gym_session_is_one_s
     assert day["steps"] == 10000
     assert day["steps_counted"] == 5000
     assert day["exercise_kcal"] == run["kcal"] + gym["kcal"]
+    assert day["active_kcal"] == round(0.5 * 80 * 5000 * STRIDE_KM) + run["kcal"] + gym["kcal"]
     assert day["total_kcal"] == round(BMR * 1.15) + round(0.5 * 80 * 5000 * STRIDE_KM) + run["kcal"] + gym["kcal"]
 
 
@@ -119,6 +121,7 @@ def test_estimates_without_device_calories(client: TestClient, session: Session,
     assert ride["kcal"] == round(4.0 * 80 - RESTING_PER_HOUR)
     assert day["missing"] == ["steps"]  # unknown steps are not zero steps
     assert day["steps_kcal"] is None
+    assert day["active_kcal"] == run["kcal"] + ride["kcal"]
     assert day["total_kcal"] == round(BMR * 1.15) + run["kcal"] + ride["kcal"]
 
 
@@ -126,6 +129,7 @@ def test_missing_profile_or_weight_leaves_the_total_unknown(client: TestClient, 
     (day,) = energy(client)
     assert day["missing"] == ["weight"]
     assert day["total_kcal"] is None
+    assert day["active_kcal"] is None
 
     session.add(DailyMetric(date=D + dt.timedelta(days=2), weight_kg=81, steps=4000))
     session.commit()
@@ -134,6 +138,7 @@ def test_missing_profile_or_weight_leaves_the_total_unknown(client: TestClient, 
     assert before["weight_kg"] == 81  # before the first weigh-in the first weight is used
     assert before["missing"] == ["steps", "profile"]
     assert after["steps_kcal"] is not None  # stride falls back to 0.75 m without a height
+    assert after["active_kcal"] == after["steps_kcal"]  # the active part needs only a weight
     assert after["total_kcal"] is None
 
 

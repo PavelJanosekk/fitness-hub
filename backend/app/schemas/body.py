@@ -60,6 +60,7 @@ class EnergyDay(BaseModel):
     steps_counted: int | None = None  # minus steps taken during runs and walks, which the activity counts
     steps_kcal: int | None = None
     exercise_kcal: int | None = None
-    total_kcal: int | None = None  # null without a profile (sex, birth year, height) or any weight
+    active_kcal: int | None = None  # steps + training, the headline number; null without any weight
+    total_kcal: int | None = None  # base + active; null without a profile (sex, birth year, height) or any weight
     missing: list[str] = []  # weight | profile | steps
     items: list[EnergyItem] = []

@@ -71,11 +71,11 @@ export function Dashboard() {
         </Card>
 
         <Card>
-          <h2 className="mb-3 font-semibold">Výdej energie (odhad)</h2>
-          {energy.data?.some((d) => d.total_kcal !== null) ? (
+          <h2 className="mb-3 font-semibold">Aktivně spálené kalorie (odhad)</h2>
+          {energy.data?.some((d) => d.active_kcal !== null) ? (
             <EnergyChart data={energy.data} />
           ) : (
-            <Empty text={energy.data ? "Pro odhad výdeje doplň v Jídle → Cíle pohlaví, rok narození a výšku." : "Načítám…"} />
+            <Empty text={energy.data ? "Pro odhad zapiš váhu nahoře." : "Načítám…"} />
           )}
         </Card>
 
