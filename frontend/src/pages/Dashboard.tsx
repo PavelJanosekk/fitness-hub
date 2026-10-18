@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { newEntryId, useDayIntake, useEnergy, useMetrics, useQuickAddKcal, useSaveWeight, useStepsBreakdown, useWeekly } from "../api/queries";
 import { EnergyChart, KcalChart, WeeklyGymChart, WeeklyRunChart, WeightChart } from "../components/charts/DashboardCharts";
 import { RoutineCard } from "../components/habits/RoutineCard";
+import { CharacterCard } from "../components/rpg/CharacterCard";
 import { Card, PageHeader } from "../components/Layout";
 import { Button, DecimalInput, parseDecimal, Segmented, Sheet } from "../components/ui";
 import { addDays, formatNumber, isoDate } from "../lib/format";
@@ -47,6 +48,7 @@ export function Dashboard() {
       />
 
       <div className="space-y-3">
+        <CharacterCard />
         <RoutineCard />
         <TodayCard weight7d={lastWeight?.weight_7d_avg ?? null} />
 

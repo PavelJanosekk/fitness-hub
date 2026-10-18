@@ -20,8 +20,13 @@ import { useChartColors } from "../charts/palette";
 /** All habits in their order with done-day sets; `active` = not archived. */
 export function useHabitDays() {
   const board = useHabitBoard();
-  const habits = useMemo(() => (board.data?.habits ?? []).map(withDays).sort((a, b) => a.position - b.position || a.id - b.id), [board.data]);
-  return { board, habits, active: habits.filter((h) => h.archived_at === null) };
+  const habits = useMemo(() => {
+    const skip = new Set([...(board.data?.paused ?? []), ...(board.data?.forgiven ?? [])]);
+    return (board.data?.habits ?? []).map((h) => withDays(h, skip)).sort((a, b) => a.position - b.position || a.id - b.id);
+  }, [board.data]);
+  const paused = useMemo(() => new Set(board.data?.paused ?? []), [board.data]);
+  const forgiven = useMemo(() => new Set(board.data?.forgiven ?? []), [board.data]);
+  return { board, habits, active: habits.filter((h) => h.archived_at === null), paused, forgiven };
 }
 
 /**

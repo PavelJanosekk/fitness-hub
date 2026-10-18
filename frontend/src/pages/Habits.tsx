@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Flame, PartyPopper, Pencil, Plus } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
+import { useCharacter } from "../api/rpg";
 import { HabitRow, Ring, useHabitDays, useToggleHabit } from "../components/habits/parts";
 import { Card, PageHeader } from "../components/Layout";
 import { Button, Segmented } from "../components/ui";
@@ -38,7 +39,8 @@ export function Habits() {
   const day = params.get("d") && params.get("d")! <= today ? params.get("d")! : today;
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
-  const { board, habits, active } = useHabitDays();
+  const { board, habits, active, paused, forgiven } = useHabitDays();
+  const character = useCharacter();
 
   const open = (next: { v?: "day" | "month"; d?: string }) => {
     const v = next.v ?? view;
@@ -57,6 +59,11 @@ export function Habits() {
             </button>
           ) : (
             <div className="flex items-center gap-1">
+              {character.data && (
+                <Link to="/hero" className="mr-1 rounded-full border border-emerald-700 px-2.5 py-1 text-xs font-semibold text-emerald-300">
+                  Lv {character.data.level}
+                </Link>
+              )}
               <button onClick={() => setEditing(true)} aria-label="Upravit rutiny" className="rounded-full p-2 text-zinc-400 active:bg-zinc-800">
                 <Pencil size={20} />
               </button>
@@ -87,7 +94,7 @@ export function Habits() {
         <div className="space-y-3">
           <Segmented options={VIEWS} value={view} onChange={(v) => open({ v })} />
           {view === "day" ? (
-            <DayView habits={habits} day={day} today={today} onDay={(d) => open({ d })} />
+            <DayView habits={habits} day={day} today={today} onDay={(d) => open({ d })} paused={paused.has(day)} forgiven={forgiven.has(day)} />
           ) : (
             <Suspense fallback={<p className="text-zinc-500">Načítám…</p>}>
               <MonthView habits={habits} today={today} onOpenDay={(d) => open({ v: "day", d })} />
@@ -105,7 +112,21 @@ export function Habits() {
   );
 }
 
-function DayView({ habits, day, today, onDay }: { habits: HabitDays[]; day: string; today: string; onDay: (day: string) => void }) {
+function DayView({
+  habits,
+  day,
+  today,
+  onDay,
+  paused,
+  forgiven,
+}: {
+  habits: HabitDays[];
+  day: string;
+  today: string;
+  onDay: (day: string) => void;
+  paused: boolean;
+  forgiven: boolean;
+}) {
   const toggle = useToggleHabit();
   const shown = habits.filter((h) => isActive(h, day) || (h.archived_at === null && day >= weekStart(h.start_date) && h.frequency === "weekly"));
   const daily = shown.filter((h) => h.frequency === "daily" && !h.is_bonus);
@@ -153,6 +174,11 @@ function DayView({ habits, day, today, onDay }: { habits: HabitDays[]; day: stri
 
       <WeekStrip habits={habits} day={day} today={today} onDay={onDay} />
       <DayHero habits={habits} day={day} today={today} />
+      {(paused || forgiven) && (
+        <p className="rounded-2xl border border-zinc-800 px-3.5 py-2.5 text-[13px] text-zinc-300">
+          {paused ? "Pauza: tento den se nepočítá do sérií, procent ani XP." : "Odpuštěný den (1× za měsíc): nepřeruší série a nepočítá se do týdne."}
+        </p>
+      )}
 
       {daily.length > 0 && (
         <Section title="Denní" count={`${daily.filter((h) => h.doneSet.has(day)).length} / ${daily.length}`}>

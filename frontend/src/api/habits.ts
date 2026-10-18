@@ -36,7 +36,10 @@ export function registerHabitMutations(queryClient: QueryClient) {
       queryClient.setQueryData<HabitBoard>(habitKeys.board, (board) => board && applyDay(board, write)),
     // Refetch (auto rules, other devices) only after the last queued tick, or a refetch would hide the later ones
     onSettled: () => {
-      if (queryClient.isMutating({ mutationKey: DAY_KEY }) <= 1) queryClient.invalidateQueries({ queryKey: ["habits"] });
+      if (queryClient.isMutating({ mutationKey: DAY_KEY }) <= 1) {
+        queryClient.invalidateQueries({ queryKey: ["habits"] });
+        queryClient.invalidateQueries({ queryKey: ["rpg"] });
+      }
     },
   });
 }
@@ -78,7 +81,10 @@ export function useSaveHabit() {
     retry: 0,
     mutationFn: ({ id, ...body }: Partial<HabitInput> & { id?: number; archived?: boolean }) =>
       id ? api<Habit>(`/api/habits/${id}`, { method: "PATCH", body }) : api<Habit>("/api/habits", { method: "POST", body }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["habits"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["habits"] });
+      queryClient.invalidateQueries({ queryKey: ["rpg"] });
+    },
   });
 }
 
