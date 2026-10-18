@@ -12,8 +12,10 @@ from app.database import SessionDep
 from app.models.gym import EndedBy, Exercise, MuscleGroup, Workout, WorkoutSet, WorkoutTemplate
 from app.schemas.gym import (
     ExerciseCreate,
+    ExerciseProgression,
     ExerciseRead,
     ExerciseUpdate,
+    GymStats,
     LastPerformance,
     LastPerformanceSet,
     SetIn,
@@ -24,6 +26,7 @@ from app.schemas.gym import (
     WorkoutTemplateIn,
     WorkoutTemplateRead,
 )
+from app.services import gym_stats
 from app.services import workouts as svc
 from app.services.strong_import import (
     DEFAULT_REMAP_RULES,
@@ -114,12 +117,27 @@ def last_performance(exercise_id: int, session: SessionDep) -> LastPerformance:
     )
 
 
+@router.get("/exercises/{exercise_id}/progression", response_model=ExerciseProgression)
+def exercise_progression(exercise_id: int, session: SessionDep) -> ExerciseProgression:
+    """Per-session top set, estimated 1RM and records of one exercise over its whole history (Gym → Grafy)."""
+    exercise = session.get(Exercise, exercise_id)
+    if exercise is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Exercise not found")
+    return gym_stats.exercise_progression(session, exercise)
+
+
 # --- Workouts --------------------------------------------------------------------------------
 
 
 @router.get("/workouts", response_model=list[WorkoutSummary])
 def list_workouts(session: SessionDep, limit: int = Query(20, ge=1, le=200)) -> list[WorkoutSummary]:
     return svc.list_summaries(session, limit)
+
+
+@router.get("/workouts/stats", response_model=GymStats)
+def workout_stats(session: SessionDep, weeks: int = Query(26, ge=1, le=104)) -> GymStats:
+    """Training calendar (a year), weekly sets / volume per muscle group and the exercise list (Gym → Grafy)."""
+    return gym_stats.gym_stats(session, weeks)
 
 
 @router.get("/workouts/active", response_model=WorkoutRead | None)

@@ -157,3 +157,56 @@ class WorkoutTemplateRead(BaseModel):
     name: str
     position: int
     exercises: list[TemplateExercise]
+
+
+# --- Stats (Gym → Grafy) -----------------------------------------------------------------------
+
+
+class StatsDay(BaseModel):
+    date: dt.date
+    workouts: int
+    sets: int
+    volume_kg: float
+
+
+class StatsWeek(BaseModel):
+    week_start: dt.date  # Monday
+    workouts: int
+    sets: dict[str, int]  # muscle group -> working sets
+    volume_kg: dict[str, float]  # muscle group -> kg x reps
+    muscles: dict[str, int]  # antagonist muscle (services/gym_stats.MUSCLES) -> working sets
+    unclassified_sets: int  # working sets no antagonist muscle was derived for
+
+
+class StatsExercise(BaseModel):
+    exercise_id: int
+    name: str
+    muscle_group: str
+    sessions: int
+    last_date: dt.date
+
+
+class GymStats(BaseModel):
+    days: list[StatsDay]  # only days with a workout, oldest first
+    weeks: list[StatsWeek]  # every week of the window, oldest first, the current one last
+    exercises: list[StatsExercise]  # most sessions first
+
+
+class ProgressionSession(BaseModel):
+    workout_id: uuid.UUID
+    date: dt.date
+    sets: int
+    volume_kg: float
+    max_weight: float | None  # heaviest working set (> 0 kg)
+    max_weight_reps: int | None
+    e1rm: float | None  # best Epley estimate over sets up to 12 reps
+    e1rm_set: str | None  # the set behind it, e.g. "80 × 5"  # noqa: RUF003
+    max_reps: int | None  # most reps in one set
+    pr: list[Literal["weight", "e1rm", "reps"]] = []  # beat every earlier session
+
+
+class ExerciseProgression(BaseModel):
+    exercise_id: int
+    name: str
+    weighted: bool  # most sessions used a load; otherwise reps are the measure (bodyweight)
+    sessions: list[ProgressionSession]
