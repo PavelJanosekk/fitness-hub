@@ -74,12 +74,22 @@ def _chat_response(turn: NutritionTurn) -> NutritionChatResponse:
     )
 
 
+class NutritionChatRequest(ChatRequest):
+    date: dt.date | None = None  # the day open in the app: meals are logged to it unless the user names another
+
+
 @router.post("/chat", response_model=NutritionChatResponse)
-def chat(body: ChatRequest, session: SessionDep, client: GeminiDep, http: HttpDep) -> NutritionChatResponse:
+def chat(body: NutritionChatRequest, session: SessionDep, client: GeminiDep, http: HttpDep) -> NutritionChatResponse:
     """The nutrition assistant: log meals in Czech, ask about intake. Its own conversations (E2)."""
     turn = run_gemini(
         lambda: nutrition_turn(
-            session, client, http, user_text=body.message, conversation_id=body.conversation_id, tier=body.model
+            session,
+            client,
+            http,
+            user_text=body.message,
+            conversation_id=body.conversation_id,
+            tier=body.model,
+            view_date=body.date,
         )
     )
     return _chat_response(turn)
@@ -94,6 +104,7 @@ def voice(
     text: Annotated[str | None, Form(max_length=4000)] = None,
     conversation_id: Annotated[uuid.UUID | None, Form()] = None,
     model: Annotated[Tier, Form()] = "fast",
+    date: Annotated[dt.date | None, Form()] = None,
 ) -> NutritionChatResponse:
     """A dictated meal as audio or text; saved or returned as a draft (hybrid flow)."""
     if audio is None and not text:
@@ -111,6 +122,7 @@ def voice(
             extra_parts=extra_parts,
             conversation_id=conversation_id,
             tier=model,
+            view_date=date,
         )
     )
     return _chat_response(turn)

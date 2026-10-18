@@ -218,14 +218,16 @@ export function useDeleteFood() {
   return useMutation({ mutationFn: (id: number) => api(`/api/nutrition/foods/${id}`, { method: "DELETE" }), onSettled: invalidate });
 }
 
-export const sendNutritionChat = (message: string, conversation_id: string | null, model: Tier = "fast") =>
-  api<NutritionChatResponse>("/api/nutrition/chat", { method: "POST", body: { message, model, conversation_id } });
+/** `date` is the day open in the app: the assistant logs meals to it unless the user names another day. */
+export const sendNutritionChat = (message: string, conversation_id: string | null, date: string, model: Tier = "fast") =>
+  api<NutritionChatResponse>("/api/nutrition/chat", { method: "POST", body: { message, model, conversation_id, date } });
 
-export function sendNutritionVoice(audio: Blob, conversationId: string | null) {
+export function sendNutritionVoice(audio: Blob, conversationId: string | null, date: string) {
   const form = new FormData();
   const extension = audio.type.includes("mp4") ? "m4a" : audio.type.includes("ogg") ? "ogg" : "webm";
   form.append("audio", audio, `recording.${extension}`);
   if (conversationId) form.append("conversation_id", conversationId);
+  form.append("date", date);
   return api<NutritionChatResponse>("/api/nutrition/voice", { method: "POST", form });
 }
 

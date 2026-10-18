@@ -71,7 +71,7 @@ export function Nutrition() {
 
       <div className="space-y-3">
         <Card>{summary.data ? <MacroSummary nutrients={summary.data.nutrients} trainingDay={summary.data.training_day} /> : <p className="text-zinc-500">Načítám…</p>}</Card>
-        <Assistant date={date} today={today} />
+        <Assistant date={date} />
         <Meals meals={summary.data?.meals ?? []} date={date} onAdd={(mealType) => setAdding({ mealType })} />
         {summary.data && (
           <Card>
@@ -87,7 +87,7 @@ export function Nutrition() {
 }
 
 /** Dictate or type what you ate; known foods save directly, the rest come back as cards to confirm. */
-function Assistant({ date, today }: { date: string; today: string }) {
+function Assistant({ date }: { date: string }) {
   const queryClient = useQueryClient();
   const [conversationId, setConversationId] = useState<string | null>(() => localStorage.getItem(CONVERSATION_KEY));
   const [messages, setMessages] = useState<Message[]>([]);
@@ -118,14 +118,11 @@ function Assistant({ date, today }: { date: string; today: string }) {
     }
   };
 
-  // Browsing another day: the assistant should log and answer for that day
-  const withDate = (text: string) => (date === today ? text : `[den ${date}] ${text}`);
-
   const send = (text: string) => {
     const message = text.trim();
     if (!message || busy) return;
     setInput("");
-    void handle(message, () => sendNutritionChat(withDate(message), conversationId));
+    void handle(message, () => sendNutritionChat(message, conversationId, date));
   };
 
   return (
@@ -170,7 +167,7 @@ function Assistant({ date, today }: { date: string; today: string }) {
             <SendHorizontal size={20} />
           </button>
         ) : (
-          <VoiceRecorder onRecorded={(audio) => void handle("🎤 hlasová zpráva", () => sendNutritionVoice(audio, conversationId))} disabled={busy} />
+          <VoiceRecorder onRecorded={(audio) => void handle("🎤 hlasová zpráva", () => sendNutritionVoice(audio, conversationId, date))} disabled={busy} />
         )}
       </form>
     </Card>

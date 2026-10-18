@@ -56,7 +56,8 @@ Zapisování jídla:
 - Balené výrobky (is_branded=true): ponech značku, vyplň brand_search_query (např. "Milko skyr bílý")
   a usda_query_en jako obecnou náhradu.
 - Odpovídá-li položka potravině ze seznamu známých potravin, vyplň její food_id.
-- meal_type urči z kontextu a denní doby; date vynech, jde-li o dnešek.
+- meal_type urči z kontextu a denní doby. Den: zapisuj k dni, který má uživatel v aplikaci otevřený (uvedený níže);
+  date předej jen tehdy, když uživatel výslovně řekne jiný den ("včera", "v sobotu").
 - Když nástroj vrátí "needs_confirmation", nic se neuložilo: stručně řekni, co navrhuješ, a uživatel to
   v aplikaci potvrdí jedním ťuknutím.
 
@@ -178,6 +179,8 @@ class NutritionContext:
     http: httpx.Client | None
     chooser_factory: Callable[[], Any]
     now: dt.datetime = field(default_factory=now_utc)
+    # The day open in the app: the default for logging and for the summary (None = today)
+    view_date: dt.date | None = None
     drafts: list[dict[str, Any]] = field(default_factory=list)
     saved_meals: list[dict[str, Any]] = field(default_factory=list)
 
@@ -202,14 +205,14 @@ def build_nutrition_tools(ctx: NutritionContext) -> list[Callable[..., dict[str,
         Args:
             meal_type: One of breakfast, morning_snack, lunch, afternoon_snack, dinner, second_dinner, other.
             items: Every food of the meal with its amount in grams.
-            date: YYYY-MM-DD only when it wasn't today.
+            date: YYYY-MM-DD only when the user names another day than the one open in the app.
         """
         if meal_type not in MealType.__members__:
             return {"error": f"meal_type must be one of {', '.join(MealType.__members__)}"}
         if not items:
             return {"error": "No items"}
         try:
-            day = dt.date.fromisoformat(date) if date else local_date(ctx.now)
+            day = dt.date.fromisoformat(date) if date else ctx.view_date or local_date(ctx.now)
         except ValueError:
             return {"error": "date must be YYYY-MM-DD"}
         resolutions = resolve_items(session, ctx.http, items, ctx.chooser_factory())
@@ -266,10 +269,10 @@ def build_nutrition_tools(ctx: NutritionContext) -> list[Callable[..., dict[str,
         (share of the day's kcal from foods that know the value; below ~0.7 the total is incomplete).
 
         Args:
-            date: YYYY-MM-DD; today when omitted.
+            date: YYYY-MM-DD; the day open in the app when omitted.
         """
         try:
-            day = dt.date.fromisoformat(date) if date else local_date(ctx.now)
+            day = dt.date.fromisoformat(date) if date else ctx.view_date or local_date(ctx.now)
         except ValueError:
             return {"error": "date must be YYYY-MM-DD"}
         summary = day_summary(session, day)
@@ -317,13 +320,18 @@ def known_foods(session: Session, limit: int = KNOWN_FOODS) -> str:
     return "\n".join(f"{food.id} | {food.name} | {round(grams or 0)} g" for food, _, grams in rows)
 
 
-def nutrition_system_instruction(session: Session, now: dt.datetime) -> str:
+def nutrition_system_instruction(session: Session, now: dt.datetime, view_date: dt.date | None = None) -> str:
     today = local_date(now)
     sections = [
         NUTRITION_ROLE,
         f"Dnes je {CZECH_WEEKDAYS[today.weekday()]} {today.day}.{today.month}.{today.year}, "
         f"{now.astimezone(settings.tz).strftime('%H:%M')} místního času.",
     ]
+    if view_date is not None and view_date != today:
+        sections.append(
+            f"Uživatel má v aplikaci otevřený den {CZECH_WEEKDAYS[view_date.weekday()]} {view_date.isoformat()} "
+            f"(ne dnešek). Jídla zapisuj k tomuto dni a na dotazy o příjmu odpovídej za něj, pokud neřekne jiný den."
+        )
     if foods := known_foods(session):
         sections.append("Známé potraviny (food_id | název | typická porce):\n" + foods)
     return "\n\n".join(sections)
@@ -349,14 +357,17 @@ def nutrition_turn(
     extra_parts: list[types.Part] | None = None,
     conversation_id: uuid.UUID | None = None,
     tier: Tier = "fast",
+    view_date: dt.date | None = None,
 ) -> NutritionTurn:
     conversation = get_conversation(session, conversation_id, Assistant.nutrition)
     history = load_history(session, conversation)
     now = now_utc()
-    ctx = NutritionContext(session=session, http=http, chooser_factory=lambda: GeminiChooser(client), now=now)
+    ctx = NutritionContext(
+        session=session, http=http, chooser_factory=lambda: GeminiChooser(client), now=now, view_date=view_date
+    )
     result = run_assistant(
         client,
-        system_instruction=nutrition_system_instruction(session, now),
+        system_instruction=nutrition_system_instruction(session, now, view_date),
         tools=build_nutrition_tools(ctx),
         history=history,
         parts=[*(extra_parts or []), types.Part.from_text(text=user_text)],

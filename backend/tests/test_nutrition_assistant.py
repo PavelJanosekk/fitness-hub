@@ -247,6 +247,37 @@ def test_unparseable_dates_are_reported_to_the_model(client: TestClient, fake) -
     assert gemini.results[0] == {"error": "date must be YYYY-MM-DD"}
 
 
+def test_meals_go_to_the_day_open_in_the_app(client: TestClient, session: Session, fake) -> None:
+    food(session, source=FoodSource.custom, name_cs="Tvaroh", kcal=98)
+    gemini = fake(calls=[("log_meal_from_items", {"meal_type": "other", "items": [item("tvaroh", "Tvaroh", 200)]})])
+
+    response = client.post("/api/nutrition/chat", json={"message": "200 g tvarohu", "date": "2026-10-10"})
+
+    [saved] = response.json()["saved_meals"]
+    assert saved["date"] == "2026-10-10"
+    assert session.get(MealLog, uuid.UUID(saved["meal_id"])).logged_date == dt.date(2026, 10, 10)
+    assert "2026-10-10" in gemini.created[0]["config"].system_instruction
+
+
+def test_voice_meals_go_to_the_day_open_in_the_app(client: TestClient, session: Session, fake) -> None:
+    food(session, source=FoodSource.custom, name_cs="Tvaroh", kcal=98)
+    fake(calls=[("log_meal_from_items", {"meal_type": "other", "items": [item("tvaroh", "Tvaroh", 200)]})])
+
+    response = client.post("/api/nutrition/voice", data={"text": "200 g tvarohu", "date": "2026-10-10"})
+
+    assert response.json()["saved_meals"][0]["date"] == "2026-10-10"
+
+
+def test_an_explicit_date_beats_the_open_day(client: TestClient, session: Session, fake) -> None:
+    food(session, source=FoodSource.custom, name_cs="Tvaroh", kcal=98)
+    call = {"meal_type": "other", "date": "2026-10-01", "items": [item("tvaroh", "Tvaroh", 200)]}
+    fake(calls=[("log_meal_from_items", call)])
+
+    response = client.post("/api/nutrition/chat", json={"message": "před týdnem tvaroh", "date": "2026-10-10"})
+
+    assert response.json()["saved_meals"][0]["date"] == "2026-10-01"
+
+
 def test_meal_on_a_given_date(client: TestClient, session: Session, fake) -> None:
     food(session, source=FoodSource.custom, name_cs="Skyr bílý", kcal=63)
     fake(
