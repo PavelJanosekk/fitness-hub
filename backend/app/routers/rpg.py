@@ -8,7 +8,7 @@ from sqlmodel import Session, col, select
 
 from app.database import SessionDep
 from app.models.rpg import RpgPause
-from app.schemas.rpg import Character, NextTitle, PauseIn, PauseRead, PauseUpdate, XpDay, XpEntryRead
+from app.schemas.rpg import Character, NextTitle, PauseIn, PauseRead, PauseUpdate, Skill, XpDay, XpEntryRead
 from app.services import rpg
 from app.services.habits import week_start
 from app.timeutils import today
@@ -36,6 +36,24 @@ def character(session: SessionDep) -> Character:
         week_streak=ledger.week_streak,
         forgiven_this_month=forgiven[0] if forgiven else None,
         paused=ledger.paused_today,
+        skills=[_skill(ledger, key, name, source) for key, name, source in rpg.SKILLS],
+    )
+
+
+def _skill(ledger: rpg.Ledger, key: str, name: str, source: str) -> Skill:
+    state = ledger.skills.get(key) or rpg.SkillState(key)
+    level = rpg.skill_level_of(state.xp)
+    return Skill(
+        key=key,
+        name=name,
+        source=source,
+        xp=state.xp,
+        level=level,
+        level_start_xp=rpg.skill_level_start(level),
+        next_level_xp=rpg.skill_level_start(level + 1),
+        idle_days=state.idle_days,
+        rusting=state.idle_days >= rpg.RUST_START_DAYS,
+        losing=state.idle_days >= rpg.RUST_LOSS_DAYS,
     )
 
 

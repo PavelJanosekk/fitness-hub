@@ -126,7 +126,8 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Steps, each committed:
 - [x] 7.1a Backend: live XP ledger (`services/rpg.py`), pauses (migration 0013), forgiven/paused days in habit streaks + board, `/api/rpg` (character, history, pauses), tests
 - [x] 7.1b Frontend: character card on Přehled, Hrdina page (XP history with reasons, pauses), Rutina shows forgiven/paused days; deploy
-- [ ] 7.2 Skills (levels, radar chart, rusting with level loss)
+- [x] 7.2a Backend: skill attribution of every ledger entry, skill levels, rusting with XP / level loss, skills in `/api/rpg/character`
+- [ ] 7.2b Frontend: skills card with radar chart and rust badges on Hrdina; deploy
 - [ ] 7.3 Bosses: marathon 2. 5. 2027 + half marathon 3. 4. 2027 (HP from the plan, heals on skipped runs)
 - [ ] 7.4 Weekly quests (from real plans) + badges
 - [ ] 7.5 Debuffs (tired, cursed habit), coach game-master summary, level-up / boss animations
@@ -242,3 +243,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-18 (14):** E24 run charts: `services/run_stats.py` (Daniels VDOT checked against his tables: 10K 50:03 = 40, 5K 19:57 = 50, marathon 3:49:45 = 40) + `/api/running/stats` (3 new tests), `components/running/RunStats.tsx`, shared `components/charts/CalendarHeatmap.tsx` (Gym uses it too). Checked on dev data in minimal and zen. Same isolated worktree stack as E23, removed afterwards. Deployed to prod the same day at the user's request (backup `data/backups/manual-pre-e24-2026-10-18-1437.dump`, no migration); prod has 165 runs, 115 with EF and 116 with zone data.
 - **2026-10-18 (12):** 7.1a backend: live XP ledger with gains, multiplier, day/week penalties, forgiven day per month, pauses, level up/down entries; habit streaks/rates/week % step over paused and forgiven days; `/api/rpg/character|history|pauses`; migration 0013. 269 tests. On a copy of the real data: level 11 Vytrvalec, 15 738 XP, 14. 10. forgiven.
 - **2026-10-18 (13):** 7.1b frontend: character card (level, title, XP bar, today's XP, multiplier / pause chip) on top of Přehled, `/hero` "Hrdina" page (stats, forgiven-day status, pause on/off with dates and note, XP history by day with reasons, older history paging), level chip in the Rutina header, Rutina day banner for paused / forgiven days, ticks and habit edits refresh the ledger. Deployed (backup `manual-pre-0013-2026-10-18-1634.dump`, 0013 migrated): prod level 12 Vytrvalec, 18 254 XP. Next: 7.2 skills.
+- **2026-10-18 (14):** 7.2a backend: skills (Síla, Výdrž, Výživa, Disciplína, Mysl, Domov) with attribution rules, `50 × level^1.5` curve, rusting. First try rusted the whole pre-app history (Síla idle since July cut the total from 15.7k to 6.1k XP), so rust counts idle days only from the routine's first day, like every penalty. Real-data copy: level 11, Síla 12, Výdrž 10.

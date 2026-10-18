@@ -130,3 +130,57 @@ def test_character_history_and_pauses_api(client: TestClient, empty: Session) ->
     assert [p["start_date"] for p in client.get("/api/rpg/pauses").json()] == ["2026-10-04", "2026-10-01"]
     assert client.delete(f"/api/rpg/pauses/{created.json()['id']}").status_code == 204
     assert isinstance(client.get("/api/rpg/history?days=7").json(), list)
+
+
+def test_skills_get_their_xp(empty: Session, exercises: dict[str, int]) -> None:
+    import uuid
+
+    from app.models.gym import Workout, WorkoutSet
+
+    cviceni = Habit(title="Cvičení", start_date=d(12), skill="body", points=1)
+    anki = Habit(title="Anki", start_date=d(12), skill="mind", points=2)
+    empty.add_all([cviceni, anki])
+    empty.commit()
+    empty.add_all([HabitLog(habit_id=cviceni.id, date=d(12)), HabitLog(habit_id=anki.id, date=d(12))])
+    workout = Workout(id=uuid.uuid4(), name="Push", started_at=dt.datetime(2026, 10, 12, 18, tzinfo=settings.tz))
+    empty.add(workout)
+    empty.flush()
+    empty.add_all(
+        [
+            WorkoutSet(
+                workout_id=workout.id, exercise_id=exercises["Bench Press (Barbell)"], exercise_order=1, set_order=i
+            )
+            for i in (1, 2, 3)
+        ]
+    )
+    empty.commit()
+    run(empty, d(12), 8)
+
+    skills = {k: s.xp for k, s in rpg.build_ledger(empty, d(13)).skills.items()}
+
+    # Cvičení 10 split 5/5, Anki 20, perfect day 50 -> Disciplína, 3 sets x 2 -> Síla, 8 km x 5 -> Výdrž
+    assert skills == {"strength": 5 + 6, "endurance": 5 + 40, "mind": 20, "discipline": 50}
+    habits_entries = [e.text for e in rpg.build_ledger(empty, d(13)).entries if e.kind == "habits"]
+    assert sorted(habits_entries) == ["Návyky (Mysl): Anki", "Návyky (Tělo): Cvičení"]
+
+
+def test_idle_skill_rusts_weekly_and_pause_freezes_it(empty: Session) -> None:
+    habit(empty, "A", d(1, 9), [d(1, 9) + dt.timedelta(days=i) for i in range(49)])
+    run(empty, d(1, 9), 10)  # Výdrž 50 XP, then nothing
+    empty.add(RpgPause(start_date=d(10, 9), end_date=d(16, 9)))
+    empty.commit()
+
+    ledger = rpg.build_ledger(empty, MONDAY)
+
+    rust = [(e.date, e.amount) for e in ledger.entries if e.kind == "rust"]
+    # idle 2.-9. 9. and from 17. 9. (the pause doesn't count): 21 idle days on 29. 9., then weekly
+    assert rust == [(d(29, 9), -20), (d(6), -20), (d(13), -10)]
+    endurance = ledger.skills["endurance"]
+    assert endurance.xp == 0 and endurance.idle_days >= rpg.RUST_LOSS_DAYS
+
+
+def test_character_lists_all_skills(client: TestClient, empty: Session) -> None:
+    skills = client.get("/api/rpg/character").json()["skills"]
+
+    assert [s["key"] for s in skills] == ["strength", "endurance", "nutrition", "discipline", "mind", "home"]
+    assert all(s["level"] >= 1 and s["next_level_xp"] > s["level_start_xp"] for s in skills)

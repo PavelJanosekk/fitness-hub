@@ -154,6 +154,16 @@ Level-up animation, boss-defeat confetti, XP history chart by week.
 - Level curve: `100 × level^1.5` XP per level; titles at 1 Učeň, 5 Poutník, 10 Vytrvalec, 15 Maratonec,
   20 Železný, 25 Mistr, 30 Legenda (tune).
 
+### Implementation notes (7.2 skills)
+- Attribution: gym sets + PRs → Síla; runs + long runs → Výdrž; food, protein → Výživa; habits by their area
+  (Výživa, Domov, Disciplína, Mysl; "Tělo" habits split half Síla / half Výdrž; no area → Disciplína);
+  perfect day, multiplier bonus, sleep and routine penalties (day / week) → Disciplína.
+- Skill level curve: `50 × level^1.5` per level (tune).
+- Rust: a trained skill with no XP for 14 unpaused days shows as rusting; from 21 days it loses 10 % of its XP
+  (min 20, never below 0) and then again every further 7 days. The loss is a ledger entry, so the total XP and the
+  character level drop too. Rust (like every penalty) only counts idle days from the routine's first day, so old
+  breaks in the gym / running history cost nothing. A skill never trained (0 XP) does not rust.
+
 ### Implementation order
 1. XP ledger + character level + titles + XP history with reasons (incl. penalties, forgiveness, pause).
 2. Skills + radar + rusting.

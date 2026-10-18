@@ -11,6 +11,10 @@ Day by day from the first data point to today:
 - a finished day below 30 % of the routine: -20; the month's first missed day (< 60 %) is forgiven instead;
 - a finished week below 60 %: -max(100, 10 % of that week's XP) and the streak (multiplier) resets;
 - paused days count for nothing.
+
+Skills (7.2): every entry is attributed to skills (`XpEntry.skills`). A skill that gained nothing for
+RUST_START_DAYS rusts: from RUST_LOSS_DAYS on it loses RUST_SHARE of its XP every week (a ledger entry, so the total
+and the level drop too); paused days and days before the routine's first day don't count as idle.
 """
 
 import datetime as dt
@@ -50,6 +54,34 @@ WEEK_PENALTY_MIN = 100
 WEEK_PENALTY_SHARE = 0.10
 MULTIPLIER_STEP = 0.1  # per 2 qualifying weeks in a row
 MULTIPLIER_MAX = 1.5
+RUST_START_DAYS = 14  # idle days until a skill shows as rusting
+RUST_LOSS_DAYS = 21  # idle days until it starts losing XP, then every further week
+RUST_SHARE = 0.10
+RUST_MIN = 20
+
+SKILLS = [
+    ("strength", "Síla", "gym a osobní rekordy"),
+    ("endurance", "Výdrž", "běhy, dlouhé běhy"),
+    ("nutrition", "Výživa", "jídlo, bílkoviny, návyky Výživa"),
+    ("discipline", "Disciplína", "rutina, perfektní dny, spánek"),
+    ("mind", "Mysl", "návyky Mysl"),
+    ("home", "Domov", "návyky Domov"),
+]
+SKILL_NAMES = {key: name for key, name, _ in SKILLS}
+KIND_SKILL = {
+    "gym": "strength",
+    "pr": "strength",
+    "run": "endurance",
+    "long_run": "endurance",
+    "food": "nutrition",
+    "protein": "nutrition",
+    "sleep": "discipline",
+    "perfect_day": "discipline",
+    "multiplier": "discipline",
+    "day_penalty": "discipline",
+    "week_penalty": "discipline",
+}
+HABIT_SKILL_NAMES = {"body": "Tělo", "nutrition": "Výživa", "home": "Domov", "discipline": "Disciplína", "mind": "Mysl"}
 TITLES = [
     (1, "Učeň"),
     (5, "Poutník"),
@@ -67,6 +99,22 @@ class XpEntry:
     amount: int
     kind: str
     text: str
+    skills: dict[str, int] = field(default_factory=dict)  # attribution of `amount` to skills
+
+
+def habit_skills(habit_skill: str | None, amount: int) -> dict[str, int]:
+    """Habit areas map to RPG skills; "body" habits (e.g. Cvičení) split between Síla and Výdrž."""
+    if habit_skill == "body":
+        return {"strength": amount // 2, "endurance": amount - amount // 2}
+    return {habit_skill if habit_skill in SKILL_NAMES else "discipline": amount}
+
+
+@dataclass
+class SkillState:
+    key: str
+    xp: int = 0
+    last_gain: dt.date | None = None
+    idle_days: int = 0  # unpaused days since the last gain
 
 
 @dataclass
@@ -77,6 +125,7 @@ class Ledger:
     multiplier: float = 1.0  # in effect this week
     paused_today: bool = False
     forgiven: set[dt.date] = field(default_factory=set)
+    skills: dict[str, SkillState] = field(default_factory=dict)
 
 
 # --- Levels ----------------------------------------------------------------------------------
@@ -94,6 +143,22 @@ def level_start(level: int) -> int:
 def level_of(total: int) -> int:
     level = 1
     while total >= level_start(level + 1):
+        level += 1
+    return level
+
+
+def skill_xp_to_next(level: int) -> int:
+    """Skills level up on a flatter curve than the character (tune)."""
+    return round(50 * level**1.5)
+
+
+def skill_level_start(level: int) -> int:
+    return sum(skill_xp_to_next(n) for n in range(1, level))
+
+
+def skill_level_of(xp: int) -> int:
+    level = 1
+    while xp >= skill_level_start(level + 1):
         level += 1
     return level
 
@@ -124,14 +189,14 @@ def _mult(value: float) -> str:
 def _gains_by_day(session: Session, board: list[hs.HabitDays], on: dt.date) -> dict[dt.date, list[XpEntry]]:
     gains: dict[dt.date, list[XpEntry]] = defaultdict(list)
 
-    # Habits: daily ticks per day in one entry; a weekly habit when the week's target is reached
-    daily: dict[dt.date, list[tuple[str, int]]] = defaultdict(list)
+    # Habits: one entry per day and area; a weekly habit when the week's target is reached
+    daily: dict[dt.date, dict[str | None, list[tuple[str, int]]]] = defaultdict(lambda: defaultdict(list))
     for item in board:
         habit = item.habit
         if habit.frequency == HabitFrequency.daily:
             for day in item.done:
                 if day <= on and hs.is_active(habit, day):
-                    daily[day].append((habit.title, habit.points * HABIT_XP))
+                    daily[day][habit.skill].append((habit.title, habit.points * HABIT_XP))
             continue
         by_week: dict[dt.date, list[dt.date]] = defaultdict(list)
         for day in sorted(d for d in item.done if d <= on):
@@ -139,12 +204,15 @@ def _gains_by_day(session: Session, board: list[hs.HabitDays], on: dt.date) -> d
         for days in by_week.values():
             if len(days) >= habit.weekly_target:
                 reached = days[habit.weekly_target - 1]
-                gains[reached].append(
-                    XpEntry(reached, habit.points * WEEKLY_HABIT_XP, "weekly_habit", f"Týdenní úkol: {habit.title}")
-                )
-    for day, ticks in daily.items():
-        names = ", ".join(title for title, _ in ticks)
-        gains[day].append(XpEntry(day, sum(xp for _, xp in ticks), "habits", f"Návyky: {names}"))
+                xp = habit.points * WEEKLY_HABIT_XP
+                text = f"Týdenní úkol: {habit.title}"
+                gains[reached].append(XpEntry(reached, xp, "weekly_habit", text, habit_skills(habit.skill, xp)))
+    for day, areas in daily.items():
+        for area, ticks in areas.items():
+            names = ", ".join(title for title, _ in ticks)
+            label = f"Návyky ({HABIT_SKILL_NAMES[area]})" if area in HABIT_SKILL_NAMES else "Návyky"
+            xp = sum(points for _, points in ticks)
+            gains[day].append(XpEntry(day, xp, "habits", f"{label}: {names}", habit_skills(area, xp)))
         done, scheduled = hs.routine_day(board, day)
         if scheduled and done == scheduled:
             gains[day].append(XpEntry(day, PERFECT_DAY_XP, "perfect_day", "Perfektní den"))
@@ -195,6 +263,40 @@ def _gains_by_day(session: Session, board: list[hs.HabitDays], on: dt.date) -> d
             hours = f"{metric.sleep_hours:.1f}".replace(".", ",")
             gains[metric.date].append(XpEntry(metric.date, SLEEP_XP, "sleep", f"Spánek {hours} h"))
     return gains
+
+
+def _track_skills(
+    skills: dict[str, SkillState], entries: list[XpEntry], day: dt.date, rust_from: dt.date | None
+) -> list[XpEntry]:
+    """Credit the day's entries to skills, then let idle skills rust. Returns the rust entries.
+
+    Like every penalty, rust only exists once the RPG does (`rust_from` = the routine's first day): idle days before
+    it are not counted, so old breaks in the training history never cost anything.
+    """
+    gained: set[str] = set()
+    for entry in entries:
+        attribution = entry.skills or ({KIND_SKILL[entry.kind]: entry.amount} if entry.kind in KIND_SKILL else {})
+        entry.skills = attribution
+        for key, amount in attribution.items():
+            state = skills.setdefault(key, SkillState(key))
+            state.xp += amount
+            if amount > 0:
+                gained.add(key)
+    rust: list[XpEntry] = []
+    for key, state in skills.items():
+        if key in gained:
+            state.last_gain, state.idle_days = day, 0
+            continue
+        if state.last_gain is None or rust_from is None or day < rust_from:
+            continue  # never trained, or before the RPG existed: nothing to rust
+        state.idle_days += 1
+        idle = state.idle_days
+        if idle >= RUST_LOSS_DAYS and (idle - RUST_LOSS_DAYS) % 7 == 0 and state.xp > 0:
+            loss = min(state.xp, max(RUST_MIN, round(state.xp * RUST_SHARE)))
+            state.xp -= loss
+            text = f"Rezavění: {SKILL_NAMES[key]} ({idle} dní bez XP)"
+            rust.append(XpEntry(day, -loss, "rust", text, {key: -loss}))
+    return rust
 
 
 def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
@@ -260,6 +362,9 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
                     entries.append(XpEntry(day, -penalty, "week_penalty", text))
                     streak = 0
             week_xp = 0
+
+        if day not in paused:
+            entries.extend(_track_skills(ledger.skills, entries, day, routine_start))
 
         total += sum(e.amount for e in entries)
         new_level = level_of(total)
