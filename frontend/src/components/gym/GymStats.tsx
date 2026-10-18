@@ -1,5 +1,5 @@
 import { Check, ChevronDown, Search, TriangleAlert, Trophy } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -20,14 +20,13 @@ import {
 } from "recharts";
 import { type ProgressionSession, type StatsDay, type StatsExercise, type StatsWeek, useGymStats, useProgression } from "../../api/gym";
 import { addDays, formatDay, formatDayMonth, formatNumber, isoDate } from "../../lib/format";
+import { CalendarHeatmap, mondayOf as monday } from "../charts/CalendarHeatmap";
 import { Legend, useChartKit } from "../charts/DashboardCharts";
 import { MUSCLE_GROUPS } from "../charts/palette";
 import { Card } from "../Layout";
 import { Segmented, Sheet } from "../ui";
 
 const DAY_MS = 86_400_000;
-const CALENDAR_WEEKS = 53;
-const monday = (iso: string) => addDays(iso, -((new Date(`${iso}T12:00:00`).getDay() + 6) % 7));
 const groupColor = (series: readonly string[], key: string) => series[MUSCLE_GROUPS.findIndex(([k]) => k === key)];
 const groupLabel = (key: string) => MUSCLE_GROUPS.find(([k]) => k === key)?.[1] ?? key;
 const plural = (n: number, one: string, few: string, many: string) => (n === 1 ? one : n >= 2 && n <= 4 ? few : many);
@@ -80,89 +79,14 @@ function Tiles({ days, weeks }: { days: StatsDay[]; weeks: StatsWeek[] }) {
   );
 }
 
-/** Sequential single-hue scale (accent), the same steps as the Rutina calendar. */
-const HEAT = ["bg-zinc-800", "bg-emerald-500/30", "bg-emerald-500/55", "bg-emerald-500/80", "bg-emerald-500"];
-
 function ActivityHeatmap({ days }: { days: StatsDay[] }) {
-  const today = isoDate();
-  const start = addDays(monday(today), -7 * (CALENDAR_WEEKS - 1));
   const byDate = new Map(days.map((d) => [d.date, d]));
-  const scroller = useRef<HTMLDivElement>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-  // The newest weeks are on the right: start scrolled there
-  useEffect(() => {
-    if (scroller.current) scroller.current.scrollLeft = scroller.current.scrollWidth;
-  }, []);
-
-  // Levels by working sets, split at the quartiles of the user's own training days
-  const counts = days.filter((d) => d.date >= start).map((d) => d.sets).sort((a, b) => a - b);
-  const quantile = (q: number) => counts[Math.min(counts.length - 1, Math.floor(q * counts.length))] ?? 0;
-  const cuts = [quantile(0.25), quantile(0.5), quantile(0.75)];
-  const level = (sets: number) => (sets === 0 ? 0 : 1 + cuts.filter((c) => sets > c).length);
-
-  const columns = Array.from({ length: CALENDAR_WEEKS }, (_, w) => Array.from({ length: 7 }, (_, d) => addDays(start, w * 7 + d)));
-  const monthFormat = new Intl.DateTimeFormat("cs-CZ", { month: "short" });
-  const info = selected ? byDate.get(selected) : null;
-  return (
-    <Card className="space-y-2">
-      <div className="flex items-baseline justify-between">
-        <h2 className="font-semibold">Aktivita</h2>
-        <span className="text-xs text-zinc-500">posledních 12 měsíců</span>
-      </div>
-      <div className="flex gap-1.5">
-        <div className="grid shrink-0 grid-rows-[14px_repeat(7,12px)] gap-[3px] text-[10px] leading-3 text-zinc-500">
-          <span />
-          {["Po", "", "St", "", "Pá", "", "Ne"].map((d, i) => (
-            <span key={i}>{d}</span>
-          ))}
-        </div>
-        <div ref={scroller} className="min-w-0 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex w-max gap-[3px]">
-            {columns.map((column, w) => {
-              const first = column.find((d) => d.slice(8) === "01");
-              return (
-                <div key={w} className="grid grid-rows-[14px_repeat(7,12px)] gap-[3px]">
-                  <span className="w-3 overflow-visible text-[10px] leading-3 whitespace-nowrap text-zinc-500">
-                    {first ? monthFormat.format(new Date(`${first}T12:00:00`)) : ""}
-                  </span>
-                  {column.map((d) => {
-                    const day = byDate.get(d);
-                    return d > today ? (
-                      <span key={d} />
-                    ) : (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => setSelected(d === selected ? null : d)}
-                        aria-label={`${formatDay(d)}${day ? `, ${day.sets} sérií` : ", bez tréninku"}`}
-                        className={`size-3 rounded-[3px] ${HEAT[level(day?.sets ?? 0)]} ${d === selected ? "ring-2 ring-zinc-100" : ""}`}
-                      />
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-      <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-500">
-        <span className="min-w-0 truncate text-xs text-zinc-300">
-          {selected
-            ? info
-              ? `${formatDay(selected)} · ${info.workouts > 1 ? `${info.workouts} tréninky · ` : ""}${info.sets} sérií · ${formatNumber(info.volume_kg)} kg`
-              : `${formatDay(selected)} · bez tréninku`
-            : "Ťukni na den"}
-        </span>
-        <span className="flex shrink-0 items-center gap-1">
-          méně
-          {HEAT.map((c) => (
-            <span key={c} className={`size-2.5 rounded-[2px] ${c}`} />
-          ))}
-          víc sérií
-        </span>
-      </div>
-    </Card>
-  );
+  const detail = (day: string) => {
+    const info = byDate.get(day);
+    if (!info) return `${formatDay(day)} · bez tréninku`;
+    return `${formatDay(day)} · ${info.workouts > 1 ? `${info.workouts} tréninky · ` : ""}${info.sets} sérií · ${formatNumber(info.volume_kg)} kg`;
+  };
+  return <CalendarHeatmap values={new Map(days.map((d) => [d.date, d.sets]))} detail={detail} moreLabel="víc sérií" />;
 }
 
 const RANGES = [

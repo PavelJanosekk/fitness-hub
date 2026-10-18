@@ -87,3 +87,24 @@ export function zones(lthr: number) {
 /** Link to the activity on strava.com (external ids look like "strava:1234567890"). */
 export const stravaUrl = (activity: Pick<Activity, "external_id">) =>
   activity.external_id?.startsWith("strava:") ? `https://www.strava.com/activities/${activity.external_id.slice(7)}` : null;
+
+export type RunStat = {
+  id: number;
+  date: string;
+  distance_km: number;
+  moving_s: number;
+  avg_hr: number | null;
+  heat: boolean;
+  vdot: number | null;
+  pace_s_per_km: number | null;
+  gap_s_per_km: number | null;
+  hr_avg_steady: number | null;
+  ef_gap: number | null;
+  gap_at_easy_band_s_per_km: number | null;
+  pct_above_easy: number | null;
+  zone_seconds: Record<string, number> | null;
+};
+export type RunStats = { lthr: number | null; runs: RunStat[] };
+
+export const useRunStats = () =>
+  useQuery({ queryKey: ["running", "stats", "v1"], queryFn: () => api<RunStats>("/api/running/stats") });

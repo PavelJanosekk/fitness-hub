@@ -1,11 +1,12 @@
 import { ChevronDown, ExternalLink, Flag, Thermometer } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import { useWeekly } from "../api/queries";
 import { type Activity, type PlanWeek, stravaUrl, useActivities, useKb, useRunWeeks, zones } from "../api/running";
 import { RunVolumeChart } from "../components/charts/DashboardCharts";
 import { Card, PageHeader } from "../components/Layout";
 import { WeekRunList } from "../components/running/WeekRunList";
-import { Pager } from "../components/ui";
+import { Pager, Segmented } from "../components/ui";
 import { formatDay, formatDayMonth, formatNumber, formatPace, isoDate } from "../lib/format";
 
 const RUN_TYPES = new Set(["Run", "TrailRun", "VirtualRun"]);
@@ -13,8 +14,34 @@ const WEEKS_PER_PAGE = 4;
 const RUNS_PER_PAGE = 5;
 const daysUntil = (iso: string) => Math.round((new Date(`${iso}T12:00:00`).getTime() - new Date(`${isoDate()}T12:00:00`).getTime()) / 86_400_000);
 const stravaLabel = "Otevřít na Stravě";
+// The charts load only when the Grafy tab is opened
+const RunStats = lazy(() => import("../components/running/RunStats").then((m) => ({ default: m.RunStats })));
+const VIEWS = [
+  ["plan", "Plán"],
+  ["stats", "Grafy"],
+] as const;
 
 export function RunningPlan() {
+  const [params, setParams] = useSearchParams();
+  const view = params.get("v") === "stats" ? "stats" : "plan";
+  return (
+    <>
+      <PageHeader title="Běh" />
+      <div className="space-y-3">
+        <Segmented options={VIEWS} value={view} onChange={(v) => setParams(v === "stats" ? { v } : {}, { replace: true })} />
+        {view === "stats" ? (
+          <Suspense fallback={<p className="text-zinc-500">Načítám…</p>}>
+            <RunStats />
+          </Suspense>
+        ) : (
+          <PlanView />
+        )}
+      </div>
+    </>
+  );
+}
+
+function PlanView() {
   const kb = useKb();
   const weeks = useRunWeeks();
   const activities = useActivities();
@@ -42,81 +69,78 @@ export function RunningPlan() {
 
   return (
     <>
-      <PageHeader title="Běh" />
-      <div className="space-y-3">
+      <Card>
+        <h2 className="mb-2 font-semibold">Objem za 10 týdnů</h2>
+        {volume.some((w) => w.runs) ? <RunVolumeChart weeks={volume} /> : <p className="py-4 text-sm text-zinc-500">Běhy se objeví po propojení Stravy (Nastavení).</p>}
+      </Card>
+
+      {upcoming.length > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          {upcoming.map((race) => (
+            <Card key={race.name} className={race.is_goal_race ? "border-emerald-700" : ""}>
+              <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                <Flag size={14} /> {formatDay(race.date)}
+              </div>
+              <div className="mt-1 text-3xl font-semibold tabular-nums">{daysUntil(race.date)}</div>
+              <div className="text-xs text-zinc-400">dní · {race.name}</div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {current && (
         <Card>
-          <h2 className="mb-2 font-semibold">Objem za 10 týdnů</h2>
-          {volume.some((w) => w.runs) ? <RunVolumeChart weeks={volume} /> : <p className="py-4 text-sm text-zinc-500">Běhy se objeví po propojení Stravy (Nastavení).</p>}
+          <div className="mb-1 text-xs text-zinc-500">{current.block}</div>
+          <h2 className="mb-3 font-semibold">
+            Tento týden · {formatDay(current.week_start)} – {formatDay(current.week_end)}
+          </h2>
+          <WeekProgress week={current} />
+          {current.notes && <p className="mt-3 text-sm text-zinc-400">{current.notes}</p>}
+          <div className="mt-2 border-t border-zinc-800 pt-1">
+            <WeekRunList week={current} today={today} openableRunIds={openableRunIds} onOpenRun={openRun} />
+          </div>
         </Card>
+      )}
 
-        {upcoming.length > 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            {upcoming.map((race) => (
-              <Card key={race.name} className={race.is_goal_race ? "border-emerald-700" : ""}>
-                <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-                  <Flag size={14} /> {formatDay(race.date)}
-                </div>
-                <div className="mt-1 text-3xl font-semibold tabular-nums">{daysUntil(race.date)}</div>
-                <div className="text-xs text-zinc-400">dní · {race.name}</div>
-              </Card>
-            ))}
-          </div>
-        )}
+      <PlanWeeks
+        weeks={(weeks.data ?? []).filter((w) => w !== current)}
+        today={today}
+        openableRunIds={openableRunIds}
+        onOpenRun={openRun}
+      />
 
-        {current && (
-          <Card>
-            <div className="mb-1 text-xs text-zinc-500">{current.block}</div>
-            <h2 className="mb-3 font-semibold">
-              Tento týden · {formatDay(current.week_start)} – {formatDay(current.week_end)}
-            </h2>
-            <WeekProgress week={current} />
-            {current.notes && <p className="mt-3 text-sm text-zinc-400">{current.notes}</p>}
-            <div className="mt-2 border-t border-zinc-800 pt-1">
-              <WeekRunList week={current} today={today} openableRunIds={openableRunIds} onOpenRun={openRun} />
-            </div>
-          </Card>
-        )}
-
-        <PlanWeeks
-          weeks={(weeks.data ?? []).filter((w) => w !== current)}
-          today={today}
-          openableRunIds={openableRunIds}
-          onOpenRun={openRun}
-        />
-
-        {kb.data?.lthr && (
-          <Card>
-            <h2 className="mb-2 font-semibold">Zóny (LTHR {kb.data.lthr})</h2>
-            <table className="w-full text-sm">
-              <tbody>
-                {zones(kb.data.lthr).map((z) => (
-                  <tr key={z.zone} className="border-t border-zinc-800 first:border-0">
-                    <td className="py-1.5 font-medium">{z.zone}</td>
-                    <td className="py-1.5 text-zinc-400">{z.label}</td>
-                    <td className="py-1.5 text-right tabular-nums">{z.range} bpm</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        )}
-
+      {kb.data?.lthr && (
         <Card>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="font-semibold">Poslední běhy</h2>
-            <Pager page={runPage} pages={Math.ceil(runs.length / RUNS_PER_PAGE)} onChange={setRunPage} />
-          </div>
-          {runs.length ? (
-            <ul className="divide-y divide-zinc-800">
-              {runs.slice(runPage * RUNS_PER_PAGE, (runPage + 1) * RUNS_PER_PAGE).map((run) => (
-                <RunRow key={run.id} run={run} highlighted={run.id === highlight} />
+          <h2 className="mb-2 font-semibold">Zóny (LTHR {kb.data.lthr})</h2>
+          <table className="w-full text-sm">
+            <tbody>
+              {zones(kb.data.lthr).map((z) => (
+                <tr key={z.zone} className="border-t border-zinc-800 first:border-0">
+                  <td className="py-1.5 font-medium">{z.zone}</td>
+                  <td className="py-1.5 text-zinc-400">{z.label}</td>
+                  <td className="py-1.5 text-right tabular-nums">{z.range} bpm</td>
+                </tr>
               ))}
-            </ul>
-          ) : (
-            <p className="py-4 text-sm text-zinc-500">Běhy se objeví po propojení Stravy (Nastavení).</p>
-          )}
+            </tbody>
+          </table>
         </Card>
-      </div>
+      )}
+
+      <Card>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="font-semibold">Poslední běhy</h2>
+          <Pager page={runPage} pages={Math.ceil(runs.length / RUNS_PER_PAGE)} onChange={setRunPage} />
+        </div>
+        {runs.length ? (
+          <ul className="divide-y divide-zinc-800">
+            {runs.slice(runPage * RUNS_PER_PAGE, (runPage + 1) * RUNS_PER_PAGE).map((run) => (
+              <RunRow key={run.id} run={run} highlighted={run.id === highlight} />
+            ))}
+          </ul>
+        ) : (
+          <p className="py-4 text-sm text-zinc-500">Běhy se objeví po propojení Stravy (Nastavení).</p>
+        )}
+      </Card>
     </>
   );
 }
