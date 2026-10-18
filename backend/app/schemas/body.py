@@ -35,3 +35,31 @@ class MetricDay(BaseModel):
     steps: int | None = None
     sleep_hours: float | None = None
     notes: str | None = None
+
+
+class EnergyItem(BaseModel):
+    """One training session of the day and its net cost (on top of the base)."""
+
+    source: str  # gym | strava | activity
+    activity_type: str  # Strava sport type; gym workouts are "WeightTraining"
+    name: str | None = None
+    minutes: int
+    distance_km: float | None = None
+    method: str  # device: the watch's calories via Strava; estimate: MET or running cost x weight
+    kcal: int | None = None
+
+
+class EnergyDay(BaseModel):
+    """Estimated expenditure of a day (services/energy.py). Null parts are unknown, listed in `missing`."""
+
+    date: dt.date
+    weight_kg: float | None = None
+    bmr_kcal: int | None = None
+    base_kcal: int | None = None  # BMR + digestion and everyday movement other than steps
+    steps: int | None = None
+    steps_counted: int | None = None  # minus steps taken during runs and walks, which the activity counts
+    steps_kcal: int | None = None
+    exercise_kcal: int | None = None
+    total_kcal: int | None = None  # null without a profile (sex, birth year, height) or any weight
+    missing: list[str] = []  # weight | profile | steps
+    items: list[EnergyItem] = []

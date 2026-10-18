@@ -1,12 +1,12 @@
 import { Check, CloudOff, Footprints, Moon, Settings } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
-import { newEntryId, useDayIntake, useMetrics, useQuickAddKcal, useSaveWeight, useStepsBreakdown, useWeekly } from "../api/queries";
-import { KcalChart, WeeklyGymChart, WeeklyRunChart, WeightChart } from "../components/charts/DashboardCharts";
+import { newEntryId, useDayIntake, useEnergy, useMetrics, useQuickAddKcal, useSaveWeight, useStepsBreakdown, useWeekly } from "../api/queries";
+import { EnergyChart, KcalChart, WeeklyGymChart, WeeklyRunChart, WeightChart } from "../components/charts/DashboardCharts";
 import { RoutineCard } from "../components/habits/RoutineCard";
 import { Card, PageHeader } from "../components/Layout";
 import { Button, DecimalInput, parseDecimal, Segmented, Sheet } from "../components/ui";
-import { formatNumber, isoDate } from "../lib/format";
+import { addDays, formatNumber, isoDate } from "../lib/format";
 
 const RANGES = [
   [30, "30 dní"],
@@ -30,6 +30,7 @@ export function Dashboard() {
   const [showSteps, setShowSteps] = useState(false);
   const metrics = useMetrics(range);
   const weekly = useWeekly(12);
+  const energy = useEnergy(addDays(isoDate(), -(range - 1)), isoDate());
   const days = metrics.data ?? [];
   const todayMetric = days.at(-1);
   const lastWeight = [...days].reverse().find((d) => d.weight_7d_avg !== null);
@@ -67,6 +68,15 @@ export function Dashboard() {
         <Card>
           <h2 className="mb-3 font-semibold">Příjem energie</h2>
           {days.some((d) => d.calories_in !== null) ? <KcalChart data={days} /> : <Empty text="Zatím žádný zapsaný příjem." />}
+        </Card>
+
+        <Card>
+          <h2 className="mb-3 font-semibold">Výdej energie (odhad)</h2>
+          {energy.data?.some((d) => d.total_kcal !== null) ? (
+            <EnergyChart data={energy.data} />
+          ) : (
+            <Empty text={energy.data ? "Pro odhad výdeje doplň v Jídle → Cíle pohlaví, rok narození a výšku." : "Načítám…"} />
+          )}
         </Card>
 
         <Card>

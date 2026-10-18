@@ -2,13 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDays, isoDate } from "../lib/format";
 import { uuid } from "../lib/uuid";
 import { api } from "./client";
-import type { DayIntake, MetricDay, StepsBreakdown, WeekStats } from "./types";
+import type { DayIntake, EnergyDay, MetricDay, StepsBreakdown, WeekStats } from "./types";
 
 export const keys = {
   metrics: (days: number) => ["metrics", days] as const,
   weekly: (weeks: number) => ["metrics", "weekly", weeks] as const,
   steps: (date: string) => ["metrics", "steps", date] as const,
   intake: (date: string) => ["nutrition", "day", date] as const,
+  energy: (start: string, end: string) => ["metrics", "energy", "v1", start, end] as const,
 };
 
 export function useMetrics(days: number) {
@@ -18,6 +19,13 @@ export function useMetrics(days: number) {
     queryFn: () => api<MetricDay[]>(`/api/metrics?start_date=${addDays(end, -(days - 1))}&end_date=${end}`),
   });
 }
+
+/** Estimated expenditure per day (base + steps + training) for [start, end]. */
+export const useEnergy = (start: string, end: string) =>
+  useQuery({
+    queryKey: keys.energy(start, end),
+    queryFn: () => api<EnergyDay[]>(`/api/metrics/energy?start_date=${start}&end_date=${end}`),
+  });
 
 export const useWeekly = (weeks: number) =>
   useQuery({ queryKey: keys.weekly(weeks), queryFn: () => api<WeekStats[]>(`/api/metrics/weekly?weeks=${weeks}`) });

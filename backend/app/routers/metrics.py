@@ -4,8 +4,9 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.database import SessionDep
 from app.models.body import DailyMetric
-from app.schemas.body import MetricDay, MetricUpsert, WeekStats
+from app.schemas.body import EnergyDay, MetricDay, MetricUpsert, WeekStats
 from app.schemas.health import StepsBreakdown
+from app.services.energy import estimate_days
 from app.services.health_ingest import breakdown
 from app.services.metrics import daily_series, upsert_daily_metric, weekly_stats
 from app.timeutils import today
@@ -13,6 +14,7 @@ from app.timeutils import today
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 
 MAX_RANGE_DAYS = 3660
+MAX_ENERGY_DAYS = 400
 
 
 @router.get("", response_model=list[MetricDay])
@@ -30,6 +32,18 @@ def get_metrics(
 def get_weekly(session: SessionDep, weeks: int = Query(12, ge=1, le=104)) -> list[WeekStats]:
     """Weekly running km and gym sets per muscle group for the dashboard."""
     return weekly_stats(session, weeks)
+
+
+@router.get("/energy", response_model=list[EnergyDay])
+def get_energy(
+    session: SessionDep, start_date: dt.date | None = None, end_date: dt.date | None = None
+) -> list[EnergyDay]:
+    """Estimated daily expenditure (base + steps + training), one entry per day; defaults to today."""
+    end = end_date or today()
+    start = start_date or end
+    if start > end or (end - start).days > MAX_ENERGY_DAYS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Invalid date range")
+    return estimate_days(session, start, end)
 
 
 @router.get("/steps-breakdown", response_model=StepsBreakdown)

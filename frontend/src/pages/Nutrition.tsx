@@ -17,6 +17,7 @@ import type { Meal, MealItem } from "../api/types";
 import { Card, PageHeader } from "../components/Layout";
 import { Markdown } from "../components/Markdown";
 import { AddFoodSheet } from "../components/nutrition/AddFoodSheet";
+import { EnergySummary } from "../components/nutrition/EnergySummary";
 import { MealDraftCard } from "../components/nutrition/MealDraftCard";
 import { MacroSummary, MicroGrid } from "../components/nutrition/NutrientBars";
 import { TargetsSheet } from "../components/nutrition/TargetsSheet";
@@ -70,7 +71,10 @@ export function Nutrition() {
       </div>
 
       <div className="space-y-3">
-        <Card>{summary.data ? <MacroSummary nutrients={summary.data.nutrients} trainingDay={summary.data.training_day} /> : <p className="text-zinc-500">Načítám…</p>}</Card>
+        <Card>
+          {summary.data ? <MacroSummary nutrients={summary.data.nutrients} trainingDay={summary.data.training_day} /> : <p className="text-zinc-500">Načítám…</p>}
+          <EnergySummary date={date} onOpenTargets={() => setTargets(true)} />
+        </Card>
         <Assistant date={date} />
         <Meals meals={summary.data?.meals ?? []} date={date} onAdd={(mealType) => setAdding({ mealType })} />
         {summary.data && (

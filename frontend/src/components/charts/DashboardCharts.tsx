@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { MetricDay, WeekStats } from "../../api/types";
+import type { EnergyDay, MetricDay, WeekStats } from "../../api/types";
 import { formatNumber } from "../../lib/format";
 import { MUSCLE_GROUPS, useChartColors } from "./palette";
 
@@ -98,7 +98,7 @@ export function KcalChart({ data }: { data: MetricDay[] }) {
         <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
           <CartesianGrid vertical={false} stroke={ink.grid} />
           <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={24} {...axis} />
-          <YAxis tickFormatter={(v) => formatNumber(v)} width={44} {...axis} />
+          <YAxis tickFormatter={(v) => formatNumber(v)} width={54} {...axis} />
           <Tooltip
             {...tooltip}
             labelFormatter={(d) => shortDate(String(d))}
@@ -114,6 +114,59 @@ export function KcalChart({ data }: { data: MetricDay[] }) {
             isAnimationActive={false}
           />
         </ComposedChart>
+      </ResponsiveContainer>
+    </>
+  );
+}
+
+const ENERGY_PARTS = [
+  ["base_kcal", "Základ"],
+  ["steps_kcal", "Kroky"],
+  ["exercise_kcal", "Trénink"],
+] as const;
+
+/** Estimated daily expenditure stacked as base / steps / training; the base is neutral, the active parts carry color. */
+export function EnergyChart({ data }: { data: EnergyDay[] }) {
+  const { series, ink, surface, axis, tooltip } = useChartKit();
+  const colors = { base_kcal: ink.muted, steps_kcal: series[3], exercise_kcal: series[2] };
+  // Without a profile the base is unknown; such days show no bar rather than only their active part
+  const rows = data.map((d) => (d.total_kcal === null ? { date: d.date } : d));
+  // Whole thousands read better than the 850-kcal steps recharts picks on its own
+  const top = Math.ceil(Math.max(1, ...data.map((d) => d.total_kcal ?? 0)) / 1000) * 1000;
+  const ticks = Array.from({ length: top / 1000 + 1 }, (_, i) => i * 1000);
+  return (
+    <>
+      <Legend items={ENERGY_PARTS.map(([key, label]) => ({ label, color: colors[key] }))} />
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={rows} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
+          <CartesianGrid vertical={false} stroke={ink.grid} />
+          <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={24} {...axis} />
+          <YAxis domain={[0, top]} ticks={ticks} tickFormatter={(v) => formatNumber(v)} width={54} {...axis} />
+          <Tooltip
+            {...tooltip}
+            labelFormatter={(d, payload) => {
+              const day = payload?.[0]?.payload as EnergyDay | undefined;
+              const total = day?.total_kcal ? ` · ≈ ${formatNumber(day.total_kcal)} kcal` : "";
+              const note = day?.missing?.includes("steps") ? " (bez kroků)" : "";
+              return `${shortDate(String(d))}${total}${note}`;
+            }}
+            formatter={(v, name) => [`${formatNumber(Number(v))} kcal`, ENERGY_PARTS.find(([k]) => k === name)?.[1] ?? String(name)]}
+          />
+          {ENERGY_PARTS.map(([key], i) => (
+            <Bar
+              key={key}
+              dataKey={key}
+              stackId="energy"
+              fill={colors[key]}
+              fillOpacity={key === "base_kcal" ? 0.45 : 1}
+              stroke={surface}
+              strokeWidth={1}
+              radius={i === ENERGY_PARTS.length - 1 ? [4, 4, 0, 0] : undefined}
+              maxBarSize={14}
+              isAnimationActive={false}
+            />
+          ))}
+        </BarChart>
       </ResponsiveContainer>
     </>
   );

@@ -49,3 +49,28 @@ export type DayIntake = {
   meals: Meal[];
   totals: { kcal: number; protein_g: number | null; carbs_g: number | null; fat_g: number | null };
 };
+
+export type EnergyItem = {
+  source: "gym" | "strava" | "activity";
+  activity_type: string;
+  name: string | null;
+  minutes: number;
+  distance_km: number | null;
+  /** device: the watch's calories via Strava; estimate: MET or running cost × weight */
+  method: "device" | "estimate";
+  kcal: number | null;
+};
+/** Estimated expenditure of a day; null parts are unknown and named in `missing` */
+export type EnergyDay = {
+  date: string;
+  weight_kg: number | null;
+  bmr_kcal: number | null;
+  base_kcal: number | null;
+  steps: number | null;
+  steps_counted: number | null;
+  steps_kcal: number | null;
+  exercise_kcal: number | null;
+  total_kcal: number | null;
+  missing: ("weight" | "profile" | "steps")[];
+  items: EnergyItem[];
+};
