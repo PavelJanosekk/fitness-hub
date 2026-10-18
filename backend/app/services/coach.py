@@ -10,7 +10,7 @@ from google.genai import types
 from sqlmodel import Session
 
 from app.models.chat import Assistant
-from app.services.ai_tools import CZECH_WEEKDAYS, ToolContext, build_coach_tools, exercise_catalog
+from app.services.ai_tools import CZECH_WEEKDAYS, ToolContext, build_coach_tools, exercise_catalog, habit_catalog
 from app.services.coach_kb import core_context
 from app.services.conversations import get_conversation, load_history, store_turn
 from app.services.gemini_service import Tier, run_assistant
@@ -26,6 +26,9 @@ Pravidla:
 - Když uživatel diktuje odcvičené série, zapiš je nástrojem log_workout_sets_from_ai (jeden cvik na
   volání, přesný název z níže uvedeného seznamu cviků). Pokud nástroj vrátí "needs_confirmation",
   nic nebylo uloženo: řekni to a uživatel to v aplikaci potvrdí jedním ťuknutím.
+- Když uživatel řekne, že splnil (nebo nesplnil) něco ze své rutiny, odškrtni to nástrojem set_habits_done
+  s přesnými názvy z níže uvedeného seznamu návyků. U otázek na disciplínu a pravidelnost nejdřív zavolej
+  get_habit_summary.
 - Data a dny v týdnu vždy ověř nástrojem get_calendar, nepočítej z hlavy. Týdny jsou pondělí–neděle.
 - U každého čísla si ověř období a jednotky (tempo min/km vs. čas).
 - Díry v datech nebo podivná čísla nejdřív s uživatelem vyjasni, neinterpretuj je."""
@@ -47,6 +50,8 @@ def coach_system_instruction(session: Session, now: dt.datetime) -> str:
         _today_line(now),
         "Seznam cviků v databázi (název [partie]):\n" + exercise_catalog(session),
     ]
+    if habits := habit_catalog(session):
+        sections.append("Návyky v rutině uživatele (název [frekvence]):\n" + habits)
     if knowledge := core_context(session):
         sections.append(knowledge)
     return "\n\n".join(sections)

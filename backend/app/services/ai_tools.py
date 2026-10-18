@@ -19,9 +19,11 @@ from sqlmodel import Session, col, select
 
 from app.models.coach import Race
 from app.models.gym import Exercise, MuscleGroup, Workout, WorkoutSet, WorkoutSource
+from app.models.habits import Habit, HabitFrequency, HabitLog
 from app.models.running import Activity, ActivityMetrics, TrainingPlanItem
 from app.schemas.body import MetricUpsert
 from app.schemas.nutrition import QuickAdd
+from app.services import habits as habit_svc
 from app.services.coach_kb import plan_weeks, read_document
 from app.services.exercises import resolve_exercise
 from app.services.metrics import daily_series, upsert_daily_metric
@@ -72,6 +74,20 @@ def exercise_catalog(session: Session) -> str:
     """'Name [group]' lines for the system prompt, so the model can use exact exercise names."""
     exercises = session.exec(select(Exercise).order_by(col(Exercise.name))).all()
     return "\n".join(f"- {e.name} [{e.muscle_group}]" for e in exercises)
+
+
+def habit_catalog(session: Session) -> str:
+    """'Title [frequency]' lines of the active habits for the system prompt, so the model uses exact titles."""
+    habits = session.exec(
+        select(Habit).where(col(Habit.archived_at).is_(None)).order_by(col(Habit.position), col(Habit.id))
+    ).all()
+    lines = []
+    for h in habits:
+        kind = "denně" if h.frequency == HabitFrequency.daily else f"týdně {h.weekly_target}×"
+        extra = ", bonus" if h.is_bonus else ""
+        auto = ", plní se i automaticky z dat" if h.auto_rule else ""
+        lines.append(f"- {h.title} [{kind}{extra}{auto}]")
+    return "\n".join(lines)
 
 
 def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
@@ -479,6 +495,113 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
             )
         return {"today": today(ctx.now).isoformat(), "days": rows}
 
+    def get_habit_summary(days: int = 30) -> dict[str, Any]:
+        """The user's daily and weekly routine (habit tracker): per habit the completion rate over the last
+        `days` days, current and best streak (days for daily habits, weeks for weekly ones) and the last day done;
+        plus the daily routine's average, perfect days, weekday pattern and the streak of weeks at >= 60 %.
+        Use it for questions about discipline, consistency and routines.
+
+        Args:
+            days: Window for rates and averages (7-365).
+        """
+        on = today(ctx.now)
+        days = max(7, min(days, 365))
+        start = on - dt.timedelta(days=days - 1)
+        board = habit_svc.load_board(session, end=on, archived=False)
+        if not board:
+            return {"habits": [], "message": "The user has no habits set up."}
+        rows = []
+        for item in board:
+            habit = item.habit
+            done, scheduled = habit_svc.completion(item, start, on)
+            last = max((d for d in item.done if d <= on), default=None)
+            row = {
+                "title": habit.title,
+                "frequency": habit.frequency,
+                "weekly_target": habit.weekly_target if habit.frequency == HabitFrequency.weekly else None,
+                "bonus": habit.is_bonus or None,
+                "auto": habit.auto_rule,
+                "rate_pct": round(done / scheduled * 100) if scheduled else None,
+                "done": done,
+                "scheduled": scheduled,
+                "current_streak": habit_svc.current_streak(item, on),
+                "best_streak": habit_svc.best_streak(item, on),
+                "last_done": last.isoformat() if last else None,
+            }
+            if habit.frequency == HabitFrequency.weekly:
+                row["done_this_week"] = habit_svc.week_count(item.done, habit_svc.week_start(on))
+            else:
+                row["done_today"] = on in item.done
+            rows.append(_compact(row))
+
+        day_pcts: list[tuple[dt.date, float]] = []
+        for offset in range(days):
+            day = start + dt.timedelta(days=offset)
+            done, scheduled = habit_svc.routine_day(board, day)
+            if scheduled and day < on:  # today is still open
+                day_pcts.append((day, done / scheduled * 100))
+        by_weekday: dict[int, list[float]] = defaultdict(list)
+        for day, pct in day_pcts:
+            by_weekday[day.weekday()].append(pct)
+        return {
+            "today": on.isoformat(),
+            "window_days": days,
+            "habits": rows,
+            "daily_routine": _compact(
+                {
+                    "avg_pct": round(fmean(p for _, p in day_pcts)) if day_pcts else None,
+                    "perfect_days": sum(1 for _, p in day_pcts if p >= 100),
+                    "days_counted": len(day_pcts),
+                    "by_weekday_pct": {CZECH_WEEKDAYS[w]: round(fmean(v)) for w, v in sorted(by_weekday.items())},
+                    "week_streak": habit_svc.routine_week_streak(board, on),
+                    "week_streak_threshold_pct": habit_svc.ROUTINE_WEEK_PCT,
+                }
+            ),
+        }
+
+    def set_habits_done(habit_titles: list[str], done: bool = True, date: str | None = None) -> dict[str, Any]:
+        """Tick (or untick) habits of the user's routine, e.g. "ustlal jsem a vzal kreatin". Only exact titles
+        are saved; anything else is returned with candidates and NOT saved, so ask the user which one they meant.
+
+        Args:
+            habit_titles: Exact habit titles from the routine list.
+            done: True ticks, False unticks (for a weekly habit it unticks the whole week).
+            date: Day as YYYY-MM-DD; omit for today. For a weekly habit any day of that week.
+        """
+        try:
+            day = dt.date.fromisoformat(date) if date else today(ctx.now)
+        except ValueError:
+            return {"error": f"Invalid date {date!r}, use YYYY-MM-DD"}
+        if day > today(ctx.now):
+            return {"error": "Cannot tick a future day"}
+        saved, unmatched = [], []
+        for title in habit_titles:
+            habit, candidates = habit_svc.resolve_habit(session, title)
+            if habit is None:
+                unmatched.append({"input": title, "candidates": [h.title for h, _ in candidates]})
+                continue
+            if not done and habit.frequency == HabitFrequency.weekly:
+                monday = habit_svc.week_start(day)
+                for log in session.exec(
+                    select(HabitLog).where(
+                        HabitLog.habit_id == habit.id,
+                        col(HabitLog.date).between(monday, monday + dt.timedelta(days=6)),
+                    )
+                ):
+                    session.delete(log)
+                session.commit()
+            else:
+                if done and day < habit.start_date:
+                    habit.start_date = day
+                    session.add(habit)
+                habit_svc.set_day(session, habit, day, done)
+            saved.append(habit.title)
+        result: dict[str, Any] = {"date": day.isoformat(), "done": done, "saved": saved}
+        if unmatched:
+            result["not_saved"] = unmatched
+            result["message"] = "Titles in not_saved did not match exactly and were not saved."
+        return result
+
     return [
         get_calendar,
         get_body_metrics_summary,
@@ -490,6 +613,8 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
         log_workout_sets_from_ai,
         log_daily_metric_from_ai,
         log_quick_intake_from_ai,
+        get_habit_summary,
+        set_habits_done,
     ]
 
 

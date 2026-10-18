@@ -233,3 +233,80 @@ def test_resolve_habit_exact_and_fuzzy(empty: Session) -> None:
     none, candidates = svc.resolve_habit(empty, "koupelna")
     assert none is None and candidates[0][0].title == "Úklid · koupelna"
     assert svc.resolve_habit(empty, "Starý návyk") == (None, [])
+
+
+# --- Coach tools ---------------------------------------------------------------------------------
+
+NOW = dt.datetime(2026, 10, 18, 9, 0, tzinfo=dt.UTC)  # Sunday 11:00 in Prague
+
+
+def coach_tool(session: Session, name: str):
+    from app.services.ai_tools import ToolContext, build_coach_tools
+
+    return next(fn for fn in build_coach_tools(ToolContext(session=session, now=NOW)) if fn.__name__ == name)
+
+
+def test_habit_catalog_lists_active_habits(empty: Session) -> None:
+    from app.services.ai_tools import habit_catalog
+
+    add_habit(empty, title="Postel")
+    add_habit(empty, title="Koupelna", frequency="weekly", weekly_target=2, position=1)
+    add_habit(empty, title="Dieta", is_bonus=True, auto_rule="protein", position=2)
+    add_habit(empty, title="Staré", archived_at=at(1, 9), position=3)
+
+    assert habit_catalog(empty).splitlines() == [
+        "- Postel [denně]",
+        "- Koupelna [týdně 2×]",
+        "- Dieta [denně, bonus, plní se i automaticky z dat]",
+    ]
+
+
+def test_set_habits_done_saves_exact_titles_only(empty: Session) -> None:
+    from google.genai import _extra_utils
+
+    bed = add_habit(empty, title="Ustlat postel")
+    add_habit(empty, title="Kreatin + vitamíny")
+    tool = coach_tool(empty, "set_habits_done")
+
+    result = _extra_utils.invoke_function_from_dict_args({"habit_titles": ["ustlat postel", "kreatin"]}, tool)
+
+    assert result["saved"] == ["Ustlat postel"] and result["date"] == "2026-10-18"
+    assert result["not_saved"] == [{"input": "kreatin", "candidates": ["Kreatin + vitamíny"]}]
+    assert empty.exec(select(HabitLog.habit_id, HabitLog.date)).all() == [(bed.id, SUNDAY)]
+    assert "error" in tool(habit_titles=["Ustlat postel"], date="2026-10-19")
+
+
+def test_set_habits_done_unticks_a_whole_week_of_a_weekly_habit(empty: Session) -> None:
+    room = add_habit(empty, title="Úklid · koupelna", frequency="weekly")
+    empty.add_all([HabitLog(habit_id=room.id, date=d(13)), HabitLog(habit_id=room.id, date=d(9))])
+    empty.commit()
+
+    result = coach_tool(empty, "set_habits_done")(habit_titles=["Úklid · koupelna"], done=False)
+
+    assert result["saved"] == ["Úklid · koupelna"]
+    assert empty.exec(select(HabitLog.date)).all() == [d(9)]  # the previous week stays
+
+
+def test_habit_summary_rates_streaks_and_routine(empty: Session) -> None:
+    bed = add_habit(empty, title="Postel", start_date=d(12))
+    anki = add_habit(empty, title="Anki", start_date=d(12), position=1)
+    add_habit(empty, title="Koupelna", frequency="weekly", start_date=d(5), position=2)
+    empty.add_all(
+        [HabitLog(habit_id=bed.id, date=d(day)) for day in (12, 13, 14, 15, 16, 17)]
+        + [HabitLog(habit_id=anki.id, date=d(day)) for day in (12, 14)]
+    )
+    empty.commit()
+
+    result = coach_tool(empty, "get_habit_summary")(days=7)
+
+    habits = {h["title"]: h for h in result["habits"]}
+    assert habits["Postel"]["current_streak"] == 6 and habits["Postel"]["done_today"] is False
+    assert (habits["Postel"]["done"], habits["Postel"]["scheduled"]) == (6, 7)
+    assert habits["Anki"]["best_streak"] == 1 and habits["Anki"]["last_done"] == "2026-10-14"
+    # the window only holds the current week, which is still open: no rate yet
+    assert habits["Koupelna"]["scheduled"] == 0 and "rate_pct" not in habits["Koupelna"]
+    assert habits["Koupelna"]["done_this_week"] == 0
+    routine = result["daily_routine"]
+    assert routine["days_counted"] == 6  # 12.-17.; today is still open
+    assert routine["perfect_days"] == 2 and routine["avg_pct"] == 67
+    assert routine["by_weekday_pct"]["pondělí"] == 100
