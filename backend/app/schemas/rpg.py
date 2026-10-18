@@ -88,3 +88,28 @@ class BossRead(BaseModel):
     result_seconds: int | None
     result_km: float | None
     events: list[BossEventRead]  # newest first
+
+
+class QuestRead(BaseModel):
+    key: str
+    title: str
+    target: float
+    unit: str
+    progress: float
+    xp: int
+    done_on: dt.date | None
+
+
+class QuestWeek(BaseModel):
+    week_start: dt.date
+    quests: list[QuestRead]
+    all_bonus_xp: int
+    all_done: bool
+
+
+class BadgeRead(BaseModel):
+    key: str
+    title: str
+    description: str
+    unlocked_on: dt.date | None
+    progress: str | None

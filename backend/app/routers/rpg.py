@@ -1,4 +1,4 @@
-"""RPG layer (E22): character, XP history with reasons, pauses."""
+"""RPG layer (E22): character, XP history with reasons, pauses, boss, quests, badges."""
 
 import datetime as dt
 from collections import defaultdict
@@ -9,6 +9,7 @@ from sqlmodel import Session, col, select
 from app.database import SessionDep
 from app.models.rpg import RpgPause
 from app.schemas.rpg import (
+    BadgeRead,
     BossEventRead,
     BossRead,
     Character,
@@ -16,11 +17,16 @@ from app.schemas.rpg import (
     PauseIn,
     PauseRead,
     PauseUpdate,
+    QuestRead,
+    QuestWeek,
     Skill,
     XpDay,
     XpEntryRead,
 )
+from app.services import habits as hs
+from app.services import quests as qs
 from app.services import rpg
+from app.services.badges import compute_badges
 from app.services.boss import marathon_boss
 from app.services.habits import week_start
 from app.timeutils import today
@@ -79,6 +85,27 @@ def boss(session: SessionDep, events: int = 12) -> BossRead | None:
         **{k: v for k, v in found.__dict__.items() if k != "events"},
         events=[BossEventRead(**e.__dict__) for e in found.events[: max(0, events)]],
     )
+
+
+@router.get("/quests", response_model=QuestWeek)
+def quests(session: SessionDep) -> QuestWeek:
+    """This week's quests with progress."""
+    on = today()
+    current = rpg.build_ledger(session, on).quests
+    return QuestWeek(
+        week_start=week_start(on),
+        quests=[QuestRead(**{k: getattr(q, k) for k in QuestRead.model_fields}) for q in current],
+        all_bonus_xp=qs.ALL_QUESTS_XP,
+        all_done=bool(current) and all(q.done_on for q in current),
+    )
+
+
+@router.get("/badges", response_model=list[BadgeRead])
+def badges(session: SessionDep) -> list[BadgeRead]:
+    on = today()
+    ledger = rpg.build_ledger(session, on)
+    board = hs.load_board(session, end=on)
+    return [BadgeRead(**b.__dict__) for b in compute_badges(session, ledger, board, on)]
 
 
 @router.get("/history", response_model=list[XpDay])

@@ -30,6 +30,7 @@ from app.models.nutrition import MealLog, NutritionProfile
 from app.models.rpg import RpgPause
 from app.models.running import Activity
 from app.services import habits as hs
+from app.services import quests as qs
 from app.services.metrics import intake_by_day
 from app.services.run_analysis import RUN_TYPES
 from app.services.workouts import WORKING_SET, personal_records
@@ -126,6 +127,7 @@ class Ledger:
     paused_today: bool = False
     forgiven: set[dt.date] = field(default_factory=set)
     skills: dict[str, SkillState] = field(default_factory=dict)
+    quests: list["qs.Quest"] = field(default_factory=list)  # this week's
 
 
 # --- Levels ----------------------------------------------------------------------------------
@@ -299,6 +301,46 @@ def _track_skills(
     return rust
 
 
+def quest_skills(quest: "qs.Quest") -> dict[str, int]:
+    return {quest.skill: quest.xp} if quest.skill else habit_skills(quest.habit_skill, quest.xp)
+
+
+def _quest_entries(
+    session: Session,
+    board: list[hs.HabitDays],
+    gains: dict[dt.date, list[XpEntry]],
+    routine_start: dt.date,
+    on: dt.date,
+) -> list["qs.Quest"]:
+    """Adds every week's quest rewards / failures to `gains`; returns this week's quests."""
+    first = hs.week_start(routine_start)
+    history = qs.load_history(session, first - dt.timedelta(days=qs.LOOKBACK_DAYS), on)
+    week, current = first, []
+    while week <= on:
+        quests = qs.week_quests(history, board, week, on)
+        for quest in quests:
+            if quest.done_on:
+                text = f"Výprava splněna: {quest.title}"
+                gains[quest.done_on].append(XpEntry(quest.done_on, quest.xp, "quest", text, quest_skills(quest)))
+        if quests and all(q.done_on for q in quests):
+            last = max(q.done_on for q in quests if q.done_on)
+            bonus = XpEntry(
+                last, qs.ALL_QUESTS_XP, "quests_all", "Všechny výpravy týdne splněny", {"discipline": qs.ALL_QUESTS_XP}
+            )
+            gains[last].append(bonus)
+        sunday = week + dt.timedelta(days=6)
+        if sunday < on:
+            for quest in quests:
+                if not quest.done_on:
+                    progress = f"{quest.progress:g}/{quest.target:g} {quest.unit}".replace(".", ",")
+                    gains[sunday].append(
+                        XpEntry(sunday, 0, "quest_failed", f"Výprava nesplněna: {quest.title} ({progress})")
+                    )
+        current = quests
+        week += dt.timedelta(weeks=1)
+    return current
+
+
 def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
     on = on or today()
     board = hs.load_board(session, end=on)
@@ -314,6 +356,8 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
         return ledger
 
     routine_start = min((d.habit.start_date for d in board), default=None)
+    if routine_start:
+        ledger.quests = _quest_entries(session, board, gains, routine_start, on)
     first_day = min([*gains.keys(), *([routine_start] if routine_start else [])])
     streak, week_xp, total = 0, 0, 0
     multiplier = 1.0

@@ -129,7 +129,8 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - [x] 7.2a Backend: skill attribution of every ledger entry, skill levels, rusting with XP / level loss, skills in `/api/rpg/character`
 - [x] 7.2b Frontend: skills card with radar chart and rust badges on Hrdina; deploy
 - [x] 7.3 Boss: marathon 2. 5. 2027 only, no half-marathon boss (user) — HP from the plan, hits, heals on skipped runs (±1 day tolerance), defeat by the race
-- [ ] 7.4 Weekly quests (from real plans) + badges
+- [x] 7.4a Backend: weekly quests (run / gym / muscle / home / weakest habit) in the ledger, badges, `/api/rpg/quests` + `/api/rpg/badges`
+- [ ] 7.4b Frontend: quests and badges on Hrdina; deploy
 - [ ] 7.5 Debuffs (tired, cursed habit), coach game-master summary, level-up / boss animations
 
 ## Backlog (ideas, not accepted)
@@ -246,3 +247,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-18 (14):** 7.2a backend: skills (Síla, Výdrž, Výživa, Disciplína, Mysl, Domov) with attribution rules, `50 × level^1.5` curve, rusting. First try rusted the whole pre-app history (Síla idle since July cut the total from 15.7k to 6.1k XP), so rust counts idle days only from the routine's first day, like every penalty. Real-data copy: level 11, Síla 12, Výdrž 10.
 - **2026-10-18 (15):** 7.2b skills card (radar of skill levels, per-skill bar, rust / losing badges) on Hrdina. Deployed (no migration): prod level 12 Vytrvalec, Síla 12, Výdrž 10, Výživa 7, Disciplína 2, Mysl 2, Domov 1. Next: 7.3 bosses.
 - **2026-10-18 (16):** 7.3 marathon boss (user: ignore the half marathon). `/api/rpg/boss` + boss card on Hrdina (HP bar, hits / heals with reasons, trophy or "uprchl"). A real-data check showed a run moved by one day (15. instead of 16. 10.) healing the boss, so planned runs match a run ±1 day. Prod: 1 068 / 1 073 HP, 196 days.
+- **2026-10-18 (17):** 7.4a backend: quests + badges (rules in the spec). 286 tests. Real-data copy: this week run 12 km, 2× gym, clean the flat; unlocked: perfect day, 100 workouts (6. 4.), 50 PRs, level 10.

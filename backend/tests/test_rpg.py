@@ -2,7 +2,7 @@ import datetime as dt
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, delete
+from sqlmodel import Session, delete, select
 
 from app.config import settings
 from app.models.habits import Habit, HabitLog
@@ -83,7 +83,8 @@ def test_streak_multiplier_then_week_penalty_resets_it(empty: Session) -> None:
     penalty = next(e for e in ledger.entries if e.kind == "week_penalty")
     assert penalty.amount == -100 and "série 2 končí" in penalty.text and penalty.date == d(18)
     assert ledger.week_streak == 0 and ledger.multiplier == 1.0
-    assert ledger.total == 14 * 60 + 66 - 5 * 20 - 100
+    # + the week of 5. 10.'s habit quest for A (the weakest habit of the 7 days before), done on 9. 10.
+    assert ledger.total == 14 * 60 + 60 + 66 - 5 * 20 - 100
 
 
 def test_penalties_take_the_level_down(empty: Session) -> None:
@@ -231,3 +232,85 @@ def test_marathon_boss_hits_heals_and_defeat(empty: Session) -> None:
     run(empty, race_day, 42.3)
     assert marathon_boss(empty, race_day).status == "defeated"
     assert marathon_boss(empty, race_day).hp == 0
+
+
+def _workout(session: Session, day: dt.date, exercise_id: int, sets: int) -> None:
+    import uuid
+
+    from app.models.gym import Workout, WorkoutSet
+
+    workout = Workout(
+        id=uuid.uuid4(), name="Trénink", started_at=dt.datetime.combine(day, dt.time(18), tzinfo=settings.tz)
+    )
+    session.add(workout)
+    session.flush()
+    session.add_all(
+        [
+            WorkoutSet(workout_id=workout.id, exercise_id=exercise_id, exercise_order=1, set_order=i + 1)
+            for i in range(sets)
+        ]
+    )
+    session.commit()
+
+
+def test_weekly_quests_rewards_bonus_and_failures(empty: Session, exercises: dict[str, int]) -> None:
+    from sqlmodel import delete as sql_delete
+
+    from app.models.coach import TrainingWeek
+
+    empty.exec(sql_delete(TrainingWeek))
+    empty.add(TrainingWeek(week_start=d(12), week_end=d(18), km_min=10, km_max=12))
+    from app.models.gym import Exercise
+
+    by_group = {e.muscle_group: e.id for e in empty.exec(select(Exercise)).all()}
+    bench, squat = exercises["Bench Press (Barbell)"], exercises["Squat (Barbell)"]
+    for day in (d(15, 9), d(22, 9), d(29, 9), d(6)):  # 1 workout a week before -> target 2 (minimum)
+        _workout(empty, day, bench, 3)
+    for group in ("back", "shoulders", "arms", "core"):  # legs stay the only untrained group
+        _workout(empty, d(7), by_group[group], 1)
+    weak = habit(empty, "Anki", d(14, 9), [d(14, 9) + dt.timedelta(days=i) for i in range(0, 28, 3)])
+    habit(empty, "Postel", d(14, 9), [d(14, 9) + dt.timedelta(days=i) for i in range(35)])
+    room = Habit(title="Úklid · koupelna", frequency="weekly", skill="home", start_date=d(14, 9))
+    empty.add(room)
+    empty.commit()
+    # this week: everything done
+    run(empty, d(13), 6)
+    run(empty, d(15), 5)
+    _workout(empty, d(14), squat, 6)  # legs were the weakest group (0 sets before)
+    _workout(empty, d(16), bench, 3)
+    empty.add_all(
+        [HabitLog(habit_id=room.id, date=d(17))]
+        + [HabitLog(habit_id=weak.id, date=day) for day in (d(12), d(13), d(14), d(15), d(16))]
+    )
+    empty.commit()
+
+    ledger = rpg.build_ledger(empty, MONDAY)
+
+    quests = {q.key: q for q in rpg.build_ledger(empty, d(18)).quests}
+    assert quests["run"].title == "Uběhni 10 km podle plánu" and quests["run"].done_on == d(15)
+    assert quests["gym"].target == 2 and quests["gym"].done_on == d(16)
+    assert quests["muscle:legs"].done_on == d(14)
+    assert quests["home"].done_on == d(17)
+    assert quests[f"habit:{weak.id}"].done_on == d(16)
+    this_week = [(e.date, e.kind, e.amount) for e in ledger.entries if e.kind.startswith("quest") and e.date >= d(12)]
+    assert (d(17), "quests_all", 100) in this_week
+    assert sum(1 for _, kind, _ in this_week if kind == "quest") == 5
+    # earlier weeks had open quests (no plan -> no run quest; gym 1 of 2): recorded as failed, no XP
+    failed = [e for e in ledger.entries if e.kind == "quest_failed"]
+    assert failed and all(e.amount == 0 for e in failed)
+    skills = next(
+        e.skills for e in ledger.entries if e.kind == "quest" and "koupelna" not in e.text and "byt" in e.text
+    )
+    assert skills == {"home": 80}
+
+
+def test_badges(client: TestClient, empty: Session) -> None:
+    habit(empty, "A", d(12), [d(12), d(13)])
+    run(empty, d(13), 42.5)
+
+    badges = {b["key"]: b for b in client.get("/api/rpg/badges").json()}
+
+    assert badges["perfect_day"]["unlocked_on"] == "2026-10-12"
+    assert badges["marathon"]["unlocked_on"] == "2026-10-13"
+    assert badges["workouts_100"]["unlocked_on"] is None and badges["workouts_100"]["progress"] == "0 / 100"
+    assert badges["streak_30"]["progress"].startswith("nejlepší")

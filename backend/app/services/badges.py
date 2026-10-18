@@ -1,0 +1,153 @@
+"""RPG layer, step 7.4 (E22): badges, derived from the whole history and the XP ledger (never stored).
+
+A badge unlocks on the first day its condition was met and stays unlocked (also when the level drops later).
+"""
+
+import datetime as dt
+import re
+from dataclasses import dataclass
+
+from sqlmodel import Session
+
+from app.models.habits import HabitFrequency
+from app.services import habits as hs
+from app.services import quests as qs
+from app.services.rpg import Ledger
+
+MARATHON_KM = 42.0
+
+
+@dataclass
+class Badge:
+    key: str
+    title: str
+    description: str
+    unlocked_on: dt.date | None = None
+    progress: str | None = None  # for locked badges, e.g. "87 / 100"
+
+
+def _days(start: dt.date, end: dt.date):
+    day = start
+    while day <= end:
+        yield day
+        day += dt.timedelta(days=1)
+
+
+def _nth(dates: list[dt.date], n: int) -> dt.date | None:
+    dates = sorted(dates)
+    return dates[n - 1] if len(dates) >= n else None
+
+
+def compute_badges(session: Session, ledger: Ledger, board: list[hs.HabitDays], on: dt.date) -> list[Badge]:
+    history = qs.load_history(session, dt.date(2000, 1, 1), on)
+    routine_start = min((d.habit.start_date for d in board), default=on)
+    result: list[Badge] = []
+
+    # Routine
+    perfect_days = [day for day in _days(routine_start, on) if (r := hs.routine_day(board, day))[1] and r[0] == r[1]]
+    result.append(
+        Badge(
+            "perfect_day", "Perfektní den", "Celá denní rutina za jeden den", perfect_days[0] if perfect_days else None
+        )
+    )
+    perfect = set(perfect_days)
+    week, perfect_week = hs.week_start(routine_start), None
+    while week + dt.timedelta(days=6) <= on and perfect_week is None:
+        if all(week + dt.timedelta(days=i) in perfect for i in range(7)):
+            perfect_week = week + dt.timedelta(days=6)
+        week += dt.timedelta(weeks=1)
+    result.append(Badge("perfect_week", "Perfektní týden", "7 perfektních dní v jednom týdnu", perfect_week))
+
+    best, best_title, streak_30 = 0, None, None
+    for item in board:
+        if item.habit.frequency != HabitFrequency.daily:
+            continue
+        run = 0
+        for day in _days(item.habit.start_date, on):
+            if day in item.done:
+                run += 1
+            elif day not in item.skip:
+                run = 0
+            if run > best:
+                best, best_title = run, item.habit.title
+            if run == 30 and (streak_30 is None or day < streak_30[0]):
+                streak_30 = (day, item.habit.title)
+    result.append(
+        Badge(
+            "streak_30",
+            "30 dní v kuse",
+            f"Jeden návyk 30 dní bez přerušení{f' ({streak_30[1]})' if streak_30 else ''}",
+            streak_30[0] if streak_30 else None,
+            None if streak_30 else f"nejlepší {best} / 30{f' ({best_title})' if best_title else ''}",
+        )
+    )
+
+    streak, weeks_10, week = 0, None, hs.week_start(routine_start)
+    while week <= on and weeks_10 is None:
+        pct = hs.routine_week_pct(board, week, min(on, week + dt.timedelta(days=6))) if board else None
+        finished = week + dt.timedelta(days=6) < on
+        if pct is not None and pct >= hs.ROUTINE_WEEK_PCT:
+            streak += 1
+            if streak == 10:
+                weeks_10 = min(on, week + dt.timedelta(days=6))
+        elif pct is not None and finished:
+            streak = 0
+        week += dt.timedelta(weeks=1)
+    result.append(
+        Badge(
+            "weeks_10",
+            "10 týdnů v řadě",
+            f"10 týdnů rutiny nad {hs.ROUTINE_WEEK_PCT} % bez přerušení",
+            weeks_10,
+            None if weeks_10 else f"{streak} / 10",
+        )
+    )
+
+    # Training
+    workout_days = [day for day, count in history.gym_days.items() for _ in range(count)]
+    for n in (100, 250):
+        result.append(
+            Badge(
+                f"workouts_{n}",
+                f"{n} tréninků",
+                f"{n} tréninků v posilovně",
+                _nth(workout_days, n),
+                f"{len(workout_days)} / {n}",
+            )
+        )
+    km_year, year_badge = 0.0, None
+    by_year: dict[int, float] = {}
+    for day, km in sorted(history.runs):
+        by_year[day.year] = by_year.get(day.year, 0.0) + km
+        if by_year[day.year] >= 1000 and year_badge is None:
+            year_badge = day
+    km_year = by_year.get(on.year, 0.0)
+    result.append(
+        Badge(
+            "km_1000",
+            "1 000 km za rok",
+            "1 000 km běhu v jednom kalendářním roce",
+            year_badge,
+            f"{round(km_year)} / 1 000 km ({on.year})",
+        )
+    )
+    marathon = next((day for day, km in sorted(history.runs) if km >= MARATHON_KM), None)
+    result.append(Badge("marathon", "První maraton", "Běh dlouhý alespoň 42 km", marathon))
+
+    # From the ledger
+    prs = [e.date for e in ledger.entries if e.kind == "pr"]
+    result.append(Badge("prs_50", "50 rekordů", "50 osobních rekordů v posilovně", _nth(prs, 50), f"{len(prs)} / 50"))
+    all_quests = next((e.date for e in ledger.entries if e.kind == "quests_all"), None)
+    result.append(Badge("quests_all", "Splněné výpravy", "Všechny výpravy jednoho týdne", all_quests))
+    reached: dict[int, dt.date] = {}
+    for entry in ledger.entries:
+        if entry.kind == "level_up" and (match := re.search(r"level (\d+)", entry.text)):
+            reached.setdefault(int(match.group(1)), entry.date)
+    for level in (10, 20, 30):
+        unlocked = next((day for lvl, day in sorted(reached.items()) if lvl >= level), None)
+        result.append(Badge(f"level_{level}", f"Level {level}", f"Dosáhni levelu {level}", unlocked))
+
+    for badge in result:
+        if badge.unlocked_on:
+            badge.progress = None
+    return result

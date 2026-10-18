@@ -174,6 +174,18 @@ Level-up animation, boss-defeat confetti, XP history chart by week.
 - Defeated only by a run of >= 40 km on race day (moving time = the trophy); a race day without one = "uprchl".
   No XP is attached to the boss (the concept doesn't give one).
 
+### Implementation notes (7.4 quests and badges, `services/quests.py`, `services/badges.py`)
+- Quests are derived per ISO week from the routine's first week, from data known before the week started:
+  run = the plan week's lower km bound (150 XP); gym = average workouts/week of the previous 4 weeks, clamped 2-4
+  (100 XP); muscle = 6 working sets for the group with the fewest sets in the previous 4 weeks, ties in the order
+  chest, back, legs, shoulders, arms, core (80 XP; only with gym in those weeks); home = every weekly Domov habit
+  (80 XP); habit = 5 days of the weakest daily routine habit of the previous 4 weeks (>= 7 scheduled days; 60 XP).
+  All of them: +100 XP. XP lands on the completion day (multiplier applies, skill by quest); a finished week's open
+  quests become 0-XP "Výprava nesplněna" entries.
+- Badges (no XP, never lost): perfect day, perfect week, 30 days in a row (one habit), 10 routine weeks in a row,
+  100 / 250 workouts, 1 000 km in a calendar year, first marathon (>= 42 km), 50 PRs, all quests of a week,
+  level 10 / 20 / 30. Locked badges show progress.
+
 ### Implementation order
 1. XP ledger + character level + titles + XP history with reasons (incl. penalties, forgiveness, pause).
 2. Skills + radar + rusting.
