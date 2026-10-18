@@ -113,8 +113,25 @@ export type Food = Required<Macros> & {
   micronutrients: Record<string, number>;
   portions: Portion[];
   use_count: number;
+  // E26: USDA foods it borrows unknown values from, and those values per 100 g
+  micros_status: "mapped" | "unmatched" | "manual" | null;
+  micro_refs: MicroRef[];
+  borrowed: Record<string, number>;
 };
-export type FoodInput = Partial<Omit<Food, "id" | "name" | "source" | "use_count" | "category" | "is_raw">>;
+export type MicroRef = { ref_food_id: number; name: string; grams_per_g: number };
+export type FoodInput = Partial<
+  Omit<Food, "id" | "name" | "source" | "use_count" | "category" | "is_raw" | "micros_status" | "micro_refs" | "borrowed">
+> & { micro_refs?: { ref_food_id: number; grams_per_g: number }[] };
+export type NutrientInfo = { key: string; label: string; unit: string; micro: boolean };
+export type Autofill = {
+  name_cs: string;
+  brand: string | null;
+  source: "openfoodfacts" | "usda" | "estimate";
+  source_label: string | null;
+  values: Macros;
+  micronutrients: Record<string, number>;
+  micro_refs: MicroRef[];
+};
 
 export type Profile = {
   sex: "male" | "female" | null;
@@ -130,8 +147,10 @@ export type Profile = {
 
 export const nutritionKeys = {
   summary: (date: string) => ["nutrition", "summary", date] as const,
-  foods: (q: string, source: string) => ["nutrition", "foods", q, source] as const,
-  food: (id: number) => ["nutrition", "food", id] as const,
+  // v2: Food gained micro_refs / borrowed (E26); persisted v1 entries lack them
+  foods: (q: string, source: string) => ["nutrition", "foods-v2", q, source] as const,
+  food: (id: number) => ["nutrition", "food-v2", id] as const,
+  nutrients: ["nutrition", "nutrients"] as const,
   profile: ["nutrition", "profile"] as const,
 };
 
@@ -151,6 +170,13 @@ export function useFoods(q: string, source = "") {
 
 export const useFood = (id: number | null) =>
   useQuery({ queryKey: nutritionKeys.food(id ?? 0), queryFn: () => api<Food>(`/api/nutrition/foods/${id}`), enabled: id !== null });
+
+export const useNutrients = () =>
+  useQuery({ queryKey: nutritionKeys.nutrients, queryFn: () => api<NutrientInfo[]>("/api/nutrition/nutrients"), staleTime: Infinity });
+
+/** Suggested values for a new food from its name (OFF label, USDA or an AI estimate); nothing is saved. */
+export const autofillFood = (name_cs: string, brand: string | null) =>
+  api<Autofill>("/api/nutrition/foods/autofill", { method: "POST", body: { name_cs, brand } });
 
 export const useProfile = () => useQuery({ queryKey: nutritionKeys.profile, queryFn: () => api<Profile>("/api/nutrition/profile") });
 

@@ -51,6 +51,8 @@ from app.services.nutrition.assistant import NutritionTurn, nutrition_turn
 from app.services.nutrition.autofill import AutofillUnavailableError, autofill
 from app.services.nutrition.foods import create_food, read_food, search_foods, update_food
 from app.services.nutrition.meals import MealEntry, save_meal, upsert_item
+from app.services.nutrition.nutrients import ALL as ALL_NUTRIENTS
+from app.services.nutrition.nutrients import MICRO_KEYS
 from app.services.nutrition.resolver import Candidate, MealItemInput, confirm_aliases, materialize
 from app.services.nutrition.summary import DaySummary, day_meals, day_summary, read_item
 from app.timeutils import now_utc, today
@@ -185,6 +187,19 @@ def delete_item(item_id: uuid.UUID, session: SessionDep) -> Response:
             session.delete(meal)
         session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class NutrientInfo(BaseModel):
+    key: str
+    label: str
+    unit: str
+    micro: bool
+
+
+@router.get("/nutrients", response_model=list[NutrientInfo])
+def list_nutrients() -> list[NutrientInfo]:
+    """Every tracked nutrient in display order, for labelling per-food values."""
+    return [NutrientInfo(key=n.key, label=n.label_cs, unit=n.unit, micro=n.key in MICRO_KEYS) for n in ALL_NUTRIENTS]
 
 
 @router.get("/foods", response_model=list[FoodRead])

@@ -1,9 +1,10 @@
-import { ArrowLeft, Plus, Search } from "lucide-react";
+import { ArrowLeft, Plus, Search, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { ApiError } from "../api/client";
-import { type Food, type FoodInput, SOURCE_LABELS, useDeleteFood, useFood, useFoods, useSaveFood } from "../api/nutrition";
+import { type Food, type FoodInput, SOURCE_LABELS, autofillFood, useDeleteFood, useFood, useFoods, useSaveFood } from "../api/nutrition";
 import { PageHeader } from "../components/Layout";
+import { MicroRefsEditor, NutrientValues, type RefDraft, refsBody, toRefDrafts } from "../components/nutrition/FoodMicros";
 import { SourceBadge } from "../components/nutrition/MealDraftCard";
 import { Button, DecimalInput, Segmented, Sheet, parseDecimal } from "../components/ui";
 import { formatNumber } from "../lib/format";
@@ -96,6 +97,8 @@ function FoodSheet({ id, onClose }: { id: number | null; onClose: () => void }) 
 
 const toText = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value).replace(".", ","));
 
+const AUTOFILL_SOURCES = { openfoodfacts: "Open Food Facts", usda: "USDA", estimate: "odhad AI, zkontroluj" } as const;
+
 function FoodForm({ food, onDone }: { food: Food | null; onDone: () => void }) {
   const save = useSaveFood();
   const remove = useDeleteFood();
@@ -104,11 +107,40 @@ function FoodForm({ food, onDone }: { food: Food | null; onDone: () => void }) {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(VALUE_FIELDS.map(([key]) => [key, toText(food?.[key])])),
   );
+  const [refs, setRefs] = useState<RefDraft[]>(() => toRefDrafts(food?.micro_refs ?? []));
+  const [refsTouched, setRefsTouched] = useState(false);
+  const [micros, setMicros] = useState<Record<string, number>>({});
+  const [filling, setFilling] = useState<"idle" | "busy" | "error">("idle");
+  const [filledFrom, setFilledFrom] = useState<string | null>(null);
   const parsed = Object.fromEntries(VALUE_FIELDS.map(([key]) => [key, parseDecimal(values[key] ?? "")]));
-  const valid = name.trim() !== "" && [...REQUIRED].every((key) => parsed[key] !== null);
+  const refsOut = refsBody(refs);
+  const valid = name.trim() !== "" && [...REQUIRED].every((key) => parsed[key] !== null) && refsOut !== null;
+  const borrowed = food?.borrowed ?? {};
+
+  const changeRefs = (next: RefDraft[]) => {
+    setRefs(next);
+    setRefsTouched(true);
+  };
+
+  const fill = async () => {
+    setFilling("busy");
+    try {
+      const result = await autofillFood(name.trim(), brand.trim() || null);
+      setValues(Object.fromEntries(VALUE_FIELDS.map(([key]) => [key, toText(result.values[key])])));
+      setMicros(result.micronutrients);
+      changeRefs(toRefDrafts(result.micro_refs));
+      setFilledFrom([AUTOFILL_SOURCES[result.source], result.source_label].filter(Boolean).join(": "));
+      setFilling("idle");
+    } catch {
+      setFilling("error");
+    }
+  };
 
   const submit = () => {
     const body: FoodInput & { id?: number } = { id: food?.id, name_cs: name.trim(), brand: brand.trim() || null, ...parsed };
+    if (!food) body.micronutrients = micros;
+    // Untouched references stay as they are; a new food without any is mapped in the background
+    if (refsTouched && refsOut) body.micro_refs = refsOut;
     save.mutate(body, { onSuccess: onDone });
   };
   const deleteError = remove.error instanceof ApiError && remove.error.status === 409 ? "Potravina je v zapsaných jídlech, nejde smazat." : null;
@@ -130,19 +162,35 @@ function FoodForm({ food, onDone }: { food: Food | null; onDone: () => void }) {
         Značka
         <input value={brand} onChange={(e) => setBrand(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-zinc-100 outline-none focus:border-emerald-500" />
       </label>
+      {!food && (
+        <div>
+          <Button variant="ghost" onClick={fill} disabled={name.trim() === "" || filling === "busy"} className="flex w-full items-center justify-center gap-2">
+            <Sparkles size={18} />
+            {filling === "busy" ? "Hledám hodnoty…" : "Doplnit automaticky"}
+          </Button>
+          {filling === "error" && <p className="mt-1 text-sm text-red-300">Doplnění teď nejde (AI nedostupná nebo vyčerpaný limit). Vyplň hodnoty ručně.</p>}
+          {filledFrom && <p className="mt-1 text-xs text-zinc-400">Hodnoty z: {filledFrom}</p>}
+        </div>
+      )}
       <p className="text-sm text-zinc-400">Hodnoty na 100 g (prázdné = neznámé)</p>
       <div className="grid grid-cols-2 gap-3">
         {VALUE_FIELDS.map(([key, label]) => (
           <label key={key} className="text-xs text-zinc-400">
             {label}
             {REQUIRED.has(key) && " *"}
-            <DecimalInput ariaLabel={label} value={values[key] ?? ""} onChange={(v) => setValues({ ...values, [key]: v })} className="mt-1" />
+            <DecimalInput
+              ariaLabel={label}
+              value={values[key] ?? ""}
+              onChange={(v) => setValues({ ...values, [key]: v })}
+              placeholder={borrowed[key] !== undefined ? `≈ ${formatNumber(borrowed[key], 1)}` : undefined}
+              className="mt-1"
+            />
           </label>
         ))}
       </div>
-      {food && Object.keys(food.micronutrients).length > 0 && (
-        <p className="text-xs text-zinc-500">Mikroživiny: {Object.keys(food.micronutrients).length} známých hodnot</p>
-      )}
+      {food && <NutrientValues food={food} />}
+      <MicroRefsEditor refs={refs} onChange={changeRefs} status={refsTouched ? null : (food?.micros_status ?? null)} isNew={!food} />
+      {food && refsTouched && <p className="text-xs text-zinc-500">Odhad vitamínů a minerálů se přepočítá po uložení.</p>}
       {food && food.portions.length > 0 && (
         <p className="text-xs text-zinc-500">Porce: {food.portions.map((p) => `${p.label} ${formatNumber(p.grams)} g`).join(" · ")}</p>
       )}
