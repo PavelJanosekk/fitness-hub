@@ -67,3 +67,24 @@ class PauseRead(BaseModel):
     start_date: dt.date
     end_date: dt.date | None
     note: str | None
+
+
+class BossEventRead(BaseModel):
+    date: dt.date
+    kind: str  # hit | heal
+    km: float
+    text: str
+
+
+class BossRead(BaseModel):
+    name: str
+    race_date: dt.date
+    days_left: int
+    max_hp: float
+    hp: float
+    damage_km: float
+    heal_km: float
+    status: str  # active | defeated | missed
+    result_seconds: int | None
+    result_km: float | None
+    events: list[BossEventRead]  # newest first

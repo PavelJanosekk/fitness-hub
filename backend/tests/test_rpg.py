@@ -184,3 +184,50 @@ def test_character_lists_all_skills(client: TestClient, empty: Session) -> None:
 
     assert [s["key"] for s in skills] == ["strength", "endurance", "nutrition", "discipline", "mind", "home"]
     assert all(s["level"] >= 1 and s["next_level_xp"] > s["level_start_xp"] for s in skills)
+
+
+def test_marathon_boss_hits_heals_and_defeat(empty: Session) -> None:
+    from sqlmodel import delete as sql_delete
+
+    from app.models.coach import Race, TrainingDay, TrainingWeek
+    from app.services.boss import marathon_boss
+
+    for model in (Race, TrainingDay, TrainingWeek):
+        empty.exec(sql_delete(model))
+    race_day = d(1, 11)
+    empty.add_all(
+        [
+            Race(name="Maraton", date=race_day, distance_km=42.195, is_goal_race=True),
+            Race(name="Půlmaraton", date=d(25), distance_km=21.1, is_goal_race=False),
+            TrainingWeek(week_start=d(5), week_end=d(11), km_min=20, km_max=25),  # no daily schedule
+            TrainingWeek(week_start=d(12), week_end=d(18), km_min=10, km_max=12),
+            TrainingWeek(week_start=d(26), week_end=race_day, km_min=50, km_max=60),
+            TrainingDay(planned_date=d(14), text="Easy 5 km", km_min=5, km_max=5),
+            TrainingDay(planned_date=d(15), text="Volno", is_rest=True),
+            TrainingDay(planned_date=d(16), text="Easy 6 km", km_min=6, km_max=6),
+        ]
+    )
+    empty.commit()
+    run(empty, d(7), 8)  # week 5.-11.: 8 of at least 20 -> heals 12
+    run(empty, d(14), 5)  # 16. skipped -> heals 6
+    run(empty, d(10), 4)  # a day after a planned day that already had its own run: no effect on the schedule
+
+    boss = marathon_boss(empty, MONDAY)
+
+    assert boss is not None and boss.name == "Maraton" and boss.max_hp == 25 + 12 + 60
+    assert (boss.damage_km, boss.heal_km) == (17, 14)  # week 5.-11.: 12 of 20 -> heals 8
+    assert boss.hp == 97 - 17 + 14
+    assert {e.text for e in boss.events if e.kind == "heal"} == {
+        "Týden 5. 10. pod plánem o 8 km",
+        "Vynechaný běh pá 16. 10.: Easy 6 km",
+    }
+    assert boss.status == "active" and boss.days_left == 13
+
+    run(empty, d(17), 6)  # the skipped 16. was only moved by a day: no heal
+    assert {e.text for e in marathon_boss(empty, MONDAY).events if e.kind == "heal"} == {
+        "Týden 5. 10. pod plánem o 8 km"
+    }
+
+    run(empty, race_day, 42.3)
+    assert marathon_boss(empty, race_day).status == "defeated"
+    assert marathon_boss(empty, race_day).hp == 0

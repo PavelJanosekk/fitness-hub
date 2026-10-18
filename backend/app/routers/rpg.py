@@ -8,8 +8,20 @@ from sqlmodel import Session, col, select
 
 from app.database import SessionDep
 from app.models.rpg import RpgPause
-from app.schemas.rpg import Character, NextTitle, PauseIn, PauseRead, PauseUpdate, Skill, XpDay, XpEntryRead
+from app.schemas.rpg import (
+    BossEventRead,
+    BossRead,
+    Character,
+    NextTitle,
+    PauseIn,
+    PauseRead,
+    PauseUpdate,
+    Skill,
+    XpDay,
+    XpEntryRead,
+)
 from app.services import rpg
+from app.services.boss import marathon_boss
 from app.services.habits import week_start
 from app.timeutils import today
 
@@ -54,6 +66,18 @@ def _skill(ledger: rpg.Ledger, key: str, name: str, source: str) -> Skill:
         idle_days=state.idle_days,
         rusting=state.idle_days >= rpg.RUST_START_DAYS,
         losing=state.idle_days >= rpg.RUST_LOSS_DAYS,
+    )
+
+
+@router.get("/boss", response_model=BossRead | None)
+def boss(session: SessionDep, events: int = 12) -> BossRead | None:
+    """The marathon boss (the goal race); null without a race or a plan."""
+    found = marathon_boss(session)
+    if found is None:
+        return None
+    return BossRead(
+        **{k: v for k, v in found.__dict__.items() if k != "events"},
+        events=[BossEventRead(**e.__dict__) for e in found.events[: max(0, events)]],
     )
 
 
