@@ -1,4 +1,4 @@
-import { Bot, Dumbbell, Footprints, LayoutDashboard, Settings, Utensils } from "lucide-react";
+import { Bot, Dumbbell, Footprints, LayoutDashboard, ListChecks, Settings, Utensils } from "lucide-react";
 import { NavLink, Outlet } from "react-router";
 
 const NAV = [
@@ -6,6 +6,7 @@ const NAV = [
   { to: "/gym", label: "Gym", icon: Dumbbell },
   { to: "/run", label: "Běh", icon: Footprints },
   { to: "/nutrition", label: "Jídlo", icon: Utensils },
+  { to: "/habits", label: "Rutina", icon: ListChecks },
   { to: "/coach", label: "Kouč", icon: Bot },
 ] as const;
 
@@ -34,7 +35,7 @@ export function Layout() {
       </main>
 
       <nav className="ui-tabbar fixed z-30 md:hidden">
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-6">
           {NAV.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}

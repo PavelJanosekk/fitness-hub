@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { App } from "./App";
 import { isGymWrite, registerGymMutations, resumePendingMutations } from "./api/gym";
+import { isHabitWrite, registerHabitMutations } from "./api/habits";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -16,17 +17,19 @@ const queryClient = new QueryClient({
   },
 });
 
-// Registered before the cache is restored, so persisted gym writes can resume after a reload
+// Registered before the cache is restored, so persisted gym and habit writes can resume after a reload
 registerGymMutations(queryClient);
+registerHabitMutations(queryClient);
 
 // The cache (incl. paused mutations) survives reloads and app restarts: nothing typed in the gym is lost
 const persister = createSyncStoragePersister({ storage: window.localStorage, key: "fitness-hub-cache" });
 const persistOptions = {
   persister,
   maxAge: 7 * 24 * 60 * 60 * 1000,
-  // Paused writes (the default) plus a gym write still in flight or retrying when the app closes
+  // Paused writes (the default) plus a gym or habit write still in flight or retrying when the app closes
   dehydrateOptions: {
-    shouldDehydrateMutation: (m: Parameters<typeof isGymWrite>[0]) => m.state.isPaused || (m.state.status === "pending" && isGymWrite(m)),
+    shouldDehydrateMutation: (m: Parameters<typeof isGymWrite>[0]) =>
+      m.state.isPaused || (m.state.status === "pending" && (isGymWrite(m) || isHabitWrite(m))),
   },
 };
 

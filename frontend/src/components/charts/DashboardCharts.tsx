@@ -14,7 +14,7 @@ import { formatNumber } from "../../lib/format";
 import { MUSCLE_GROUPS, useChartColors } from "./palette";
 
 /** The current theme's chart colors plus the axis and tooltip props every chart shares. */
-function useChartKit() {
+export function useChartKit() {
   const colors = useChartColors();
   const { ink } = colors;
   return {

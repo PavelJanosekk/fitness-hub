@@ -10,6 +10,7 @@ const RunningPlan = lazy(() => import("./pages/RunningPlan").then((m) => ({ defa
 const AiCoach = lazy(() => import("./pages/AiCoach").then((m) => ({ default: m.AiCoach })));
 const Nutrition = lazy(() => import("./pages/Nutrition").then((m) => ({ default: m.Nutrition })));
 const FoodDatabase = lazy(() => import("./pages/FoodDatabase").then((m) => ({ default: m.FoodDatabase })));
+const Habits = lazy(() => import("./pages/Habits").then((m) => ({ default: m.Habits })));
 const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
 
 export function App() {
@@ -23,6 +24,7 @@ export function App() {
           <Route path="run" element={<RunningPlan />} />
           <Route path="nutrition" element={<Nutrition />} />
           <Route path="nutrition/foods" element={<FoodDatabase />} />
+          <Route path="habits" element={<Habits />} />
           <Route path="coach" element={<AiCoach />} />
           <Route path="settings" element={<Settings />} />
         </Route>

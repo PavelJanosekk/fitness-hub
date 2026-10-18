@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { newEntryId, useDayIntake, useMetrics, useQuickAddKcal, useSaveWeight, useStepsBreakdown, useWeekly } from "../api/queries";
 import { KcalChart, WeeklyGymChart, WeeklyRunChart, WeightChart } from "../components/charts/DashboardCharts";
+import { RoutineCard } from "../components/habits/RoutineCard";
 import { Card, PageHeader } from "../components/Layout";
 import { Button, DecimalInput, parseDecimal, Segmented, Sheet } from "../components/ui";
 import { formatNumber, isoDate } from "../lib/format";
@@ -45,6 +46,7 @@ export function Dashboard() {
       />
 
       <div className="space-y-3">
+        <RoutineCard />
         <TodayCard weight7d={lastWeight?.weight_7d_avg ?? null} />
 
         <div className="grid grid-cols-2 gap-3">

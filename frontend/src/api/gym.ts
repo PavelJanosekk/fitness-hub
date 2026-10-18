@@ -142,13 +142,13 @@ export const SYNC_SCOPE = { id: "gym-sync" };
  * offlineFirst only pauses for the browser's own offline state. So a write keeps retrying for as long as the
  * server is unreachable. A rejected write (4xx) would fail again, and other 5xx get a few tries.
  */
-function retryGymWrite(failureCount: number, error: unknown): boolean {
+export function retryServerWrite(failureCount: number, error: unknown): boolean {
   if (!(error instanceof ApiError)) return true; // fetch itself failed: no connection to the server
   if ([408, 429, 502, 503, 504].includes(error.status)) return true;
   return error.status >= 500 && failureCount < 5;
 }
 
-const gymRetryDelay = (attempt: number) => Math.min(1000 * 2 ** attempt, 30_000);
+export const serverRetryDelay = (attempt: number) => Math.min(1000 * 2 ** attempt, 30_000);
 
 export const isGymWrite = (mutation: Mutation<unknown, Error, unknown, unknown>) => mutation.options.mutationKey?.[0] === "gym";
 
@@ -167,8 +167,8 @@ export function registerGymMutations(queryClient: QueryClient) {
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api(`/api/workouts/${id}`, { method: "PUT", body }),
     scope: SYNC_SCOPE,
-    retry: retryGymWrite,
-    retryDelay: gymRetryDelay,
+    retry: retryServerWrite,
+    retryDelay: serverRetryDelay,
     // Here, not at the call site: the workout screen is gone by the time a finish request settles
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["workouts"] });
@@ -179,8 +179,8 @@ export function registerGymMutations(queryClient: QueryClient) {
   queryClient.setMutationDefaults(["gym", "discard"], {
     mutationFn: ({ id }: { id: string }) => api(`/api/workouts/${id}`, { method: "DELETE" }),
     scope: SYNC_SCOPE,
-    retry: retryGymWrite,
-    retryDelay: gymRetryDelay,
+    retry: retryServerWrite,
+    retryDelay: serverRetryDelay,
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["workouts"] });
       queryClient.invalidateQueries({ queryKey: ["metrics"] });
@@ -190,14 +190,14 @@ export function registerGymMutations(queryClient: QueryClient) {
     mutationFn: ({ workoutId, setId, body }: { workoutId: string; setId: string; body: SetBody }) =>
       api(`/api/workouts/${workoutId}/sets/${setId}`, { method: "PUT", body }),
     scope: SYNC_SCOPE,
-    retry: retryGymWrite,
-    retryDelay: gymRetryDelay,
+    retry: retryServerWrite,
+    retryDelay: serverRetryDelay,
   });
   queryClient.setMutationDefaults(["gym", "delete-set"], {
     mutationFn: ({ setId }: { setId: string }) => api(`/api/workouts/sets/${setId}`, { method: "DELETE" }),
     scope: SYNC_SCOPE,
-    retry: retryGymWrite,
-    retryDelay: gymRetryDelay,
+    retry: retryServerWrite,
+    retryDelay: serverRetryDelay,
   });
 }
 

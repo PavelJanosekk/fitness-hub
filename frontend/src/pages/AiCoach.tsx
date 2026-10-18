@@ -67,6 +67,7 @@ export function AiCoach() {
       setMessages((m) => [...m, { role: "model", content: response.reply, drafts: response.drafts, tools: response.tool_calls_made, model: response.model }]);
       for (const saved of response.saved_sets) await pullServerSets(queryClient, saved.workout_id).catch(() => undefined);
       if (response.saved_sets.length) queryClient.invalidateQueries({ queryKey: ["workouts"] });
+      if (response.tool_calls_made.includes("set_habits_done")) queryClient.invalidateQueries({ queryKey: ["habits"] });
     } catch (error) {
       setMessages((m) => [...m, { role: "model", content: `⚠️ ${errorText(error)}` }]);
     } finally {
