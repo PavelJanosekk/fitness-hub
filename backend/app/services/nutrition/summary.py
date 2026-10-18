@@ -2,7 +2,7 @@
 
 Coverage = share of the day's kcal that comes from items whose food has a value for that nutrient. A low
 coverage means "unknown", not "deficient": quick-add items and foods without micros (KT, many OFF products)
-lower it. A food without a micro borrows it from its USDA references (E26, `micro_refs.py`).
+lower it. A food without a micro (or fibre, sugar, ...) borrows it from its USDA references (E26, `micro_refs.py`).
 """
 
 import datetime as dt
@@ -17,8 +17,8 @@ from app.models.nutrition import Food, MealLog, MealLogItem, MealType, Nutrition
 from app.models.running import Activity
 from app.schemas.nutrition import MealItemRead, MealRead
 from app.services.nutrition import ITEM_MACROS, item_values
-from app.services.nutrition.micro_refs import Ref, effective_micros, refs_for
-from app.services.nutrition.nutrients import ALL, MICRO_KEYS
+from app.services.nutrition.micro_refs import Ref, effective_values, refs_for
+from app.services.nutrition.nutrients import ALL
 from app.timeutils import day_bounds
 
 MEAL_ORDER = {meal_type.value: index for index, meal_type in enumerate(MealType)}
@@ -47,12 +47,11 @@ def _item_nutrients(item: MealLogItem, food: Food | None, refs: list[Ref] | None
     if food is None or item.amount_g is None:
         return values
     scale = item.amount_g / 100
-    micros = effective_micros(food, refs)
+    known = effective_values(food, refs)
     for nutrient in ALL:
-        if nutrient.key in ITEM_MACROS:
-            continue
-        per_100g = micros.get(nutrient.key) if nutrient.key in MICRO_KEYS else getattr(food, nutrient.key)
-        values[nutrient.key] = None if per_100g is None else per_100g * scale
+        if nutrient.key not in ITEM_MACROS:
+            per_100g = known.get(nutrient.key)
+            values[nutrient.key] = None if per_100g is None else per_100g * scale
     return values
 
 

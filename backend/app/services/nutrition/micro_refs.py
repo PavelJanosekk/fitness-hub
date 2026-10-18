@@ -1,8 +1,10 @@
-"""Micronutrient references (E26): a food borrows the micros it doesn't know from USDA foods.
+"""Micronutrient references (E26): a food borrows the values it doesn't know from USDA foods.
 
-A reference is (USDA food, grams of it per gram of the food). A micro the food has itself (KT calcium/sodium,
-OFF label values) always wins; otherwise it is the sum over the references that know it. The numbers therefore
-always come from USDA; mapping only decides which USDA foods, in what amounts, describe the food.
+A reference is (USDA food, grams of it per gram of the food). A value the food has itself (KT calcium/sodium,
+OFF label values) always wins; otherwise it is the sum over the references that know it. That covers the micros
+and the optional macros (sugar, saturated fat, fibre, salt; KT often lacks fibre); kcal/P/C/F always stay the
+food's. The numbers therefore always come from USDA: mapping only decides which USDA foods, in what amounts,
+describe the food.
 
 Mappings come from a mapping file (`python -m app.services.nutrition.micro_refs < file`), from the Gemini
 mapper for new foods (`mapper.py`) or from the user in the food sheet (status `manual`, never overwritten
@@ -17,7 +19,10 @@ from dataclasses import dataclass
 from sqlmodel import Session, col, delete, select
 
 from app.models.nutrition import Food, FoodMicroRef, FoodSource, MicrosStatus
+from app.services.nutrition.nutrients import MACROS, REQUIRED_MACROS
 from app.timeutils import now_utc
+
+OPTIONAL_MACROS = tuple(n.key for n in MACROS if n.key not in REQUIRED_MACROS)
 
 
 @dataclass(frozen=True)
@@ -42,17 +47,24 @@ def refs_for(session: Session, food_ids: Iterable[int]) -> dict[int, list[Ref]]:
     return dict(out)
 
 
-def effective_micros(food: Food | None, refs: list[Ref] | None) -> dict[str, float]:
-    """Per-100 g micros: the food's own values, then the references' weighted sum for the keys it lacks."""
+def _known(food: Food) -> dict[str, float]:
+    """The food's own optional macros and micros, per 100 g (only known values)."""
+    macros = {key: getattr(food, key) for key in OPTIONAL_MACROS}
+    return {k: v for k, v in macros.items() if v is not None} | dict(food.micronutrients or {})
+
+
+def effective_values(food: Food | None, refs: list[Ref] | None) -> dict[str, float]:
+    """Per-100 g optional macros and micros: the food's own values, then the references' weighted sum for the
+    keys it lacks."""
     if food is None:
         return {}
-    micros = dict(food.micronutrients or {})
+    own = _known(food)
     borrowed: dict[str, float] = defaultdict(float)
     for ref in refs or []:
-        for key, value in (ref.food.micronutrients or {}).items():
-            if key not in micros:
+        for key, value in _known(ref.food).items():
+            if key not in own:
                 borrowed[key] += value * ref.grams_per_g
-    return micros | {k: round(v, 4) for k, v in borrowed.items()}
+    return own | {k: round(v, 4) for k, v in borrowed.items()}
 
 
 def set_refs(session: Session, food: Food, refs: list[tuple[int, float]], status: MicrosStatus) -> None:

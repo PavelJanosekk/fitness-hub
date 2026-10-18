@@ -3,10 +3,12 @@
 from sqlmodel import Session, select
 
 from app.models.nutrition import Food, FoodMicroRef, FoodSource, MicrosStatus
-from app.services.nutrition.micro_refs import apply_mapping, effective_micros, needs_mapping, refs_for, set_refs
+from app.services.nutrition.micro_refs import apply_mapping, effective_values, needs_mapping, refs_for, set_refs
 
 
-def food(session: Session, source: FoodSource, external_id: str | None = None, micros: dict | None = None) -> Food:
+def food(
+    session: Session, source: FoodSource, external_id: str | None = None, micros: dict | None = None, **fields
+) -> Food:
     row = Food(
         source=source,
         external_id=external_id,
@@ -16,6 +18,7 @@ def food(session: Session, source: FoodSource, external_id: str | None = None, m
         carbs_g=10,
         fat_g=2,
         micronutrients=micros or {},
+        **fields,
     )
     session.add(row)
     session.commit()
@@ -23,9 +26,9 @@ def food(session: Session, source: FoodSource, external_id: str | None = None, m
 
 
 def test_mapping_file_sets_refs_and_reports_unknown_ids(session: Session) -> None:
-    chicken = food(session, FoodSource.usda, "usda:171077", {"iron_mg": 0.4, "zinc_mg": 0.8})
-    broccoli = food(session, FoodSource.usda, "usda:170379", {"iron_mg": 0.7, "vitamin_c_mg": 89.2})
-    dish = food(session, FoodSource.kaloricke_tabulky, "kt:dish", {"calcium_mg": 95.0})
+    chicken = food(session, FoodSource.usda, "usda:171077", {"iron_mg": 0.4, "zinc_mg": 0.8}, salt_g=0.3)
+    broccoli = food(session, FoodSource.usda, "usda:170379", {"iron_mg": 0.7, "vitamin_c_mg": 89.2}, fiber_g=2.6)
+    dish = food(session, FoodSource.kaloricke_tabulky, "kt:dish", {"calcium_mg": 95.0}, salt_g=1.0)
     noodles = food(session, FoodSource.kaloricke_tabulky, "kt:shirataki")
     mine = food(session, FoodSource.kaloricke_tabulky, "kt:mine")
     set_refs(session, mine, [(broccoli.id, 1)], MicrosStatus.manual)  # type: ignore[list-item]
@@ -46,9 +49,9 @@ def test_mapping_file_sets_refs_and_reports_unknown_ids(session: Session) -> Non
     assert [(r.food.id, r.grams_per_g) for r in refs[dish.id]] == [(chicken.id, 0.6), (broccoli.id, 0.2)]  # type: ignore[index]
     assert noodles.id not in refs and [r.food.id for r in refs[mine.id]] == [broccoli.id]  # type: ignore[index]
     assert (dish.micros_status, noodles.micros_status, mine.micros_status) == ("mapped", "unmatched", "manual")
-    # Own calcium wins; iron and zinc are weighted sums over the refs that know them
-    assert effective_micros(dish, refs[dish.id]) == {  # type: ignore[index]
-        "calcium_mg": 95.0, "iron_mg": 0.38, "zinc_mg": 0.48, "vitamin_c_mg": 17.84,
+    # Own calcium and salt win; the rest are weighted sums over the refs that know them
+    assert effective_values(dish, refs[dish.id]) == {  # type: ignore[index]
+        "salt_g": 1.0, "calcium_mg": 95.0, "fiber_g": 0.52, "iron_mg": 0.38, "zinc_mg": 0.48, "vitamin_c_mg": 17.84,
     }  # fmt: skip
 
 
