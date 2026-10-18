@@ -63,14 +63,23 @@ def test_run_steps_are_not_counted_twice_and_a_watch_logged_gym_session_is_one_s
         session.add(StepBucket(source=source, bucket_start=start, steps=steps))
     session.add(
         Activity(
-            external_id="strava:1", source="strava", start_time=at(10), activity_type="Run",
-            distance_meters=5000, duration_seconds=1800, calories=450,
+            external_id="strava:1",
+            source="strava",
+            start_time=at(10),
+            activity_type="Run",
+            distance_meters=5000,
+            duration_seconds=1800,
+            calories=450,
         )
     )
     session.add(
         Activity(
-            external_id="strava:2", source="strava", start_time=at(16, 5), activity_type="WeightTraining",
-            distance_meters=0, duration_seconds=3000,
+            external_id="strava:2",
+            source="strava",
+            start_time=at(16, 5),
+            activity_type="WeightTraining",
+            distance_meters=0,
+            duration_seconds=3000,
         )
     )
     workout = Workout(name="Chest tri", started_at=at(16), ended_at=at(17))
@@ -79,8 +88,12 @@ def test_run_steps_are_not_counted_twice_and_a_watch_logged_gym_session_is_one_s
     session.flush()
     session.add(
         WorkoutSet(
-            workout_id=workout.id, exercise_id=next(iter(exercises.values())), exercise_order=1, set_order=1,
-            weight_kg=60, reps=8,
+            workout_id=workout.id,
+            exercise_id=next(iter(exercises.values())),
+            exercise_order=1,
+            set_order=1,
+            weight_kg=60,
+            reps=8,
         )
     )
     session.commit()
@@ -102,12 +115,20 @@ def test_estimates_without_device_calories(client: TestClient, session: Session,
     session.add_all(
         [
             Activity(
-                external_id="strava:3", source="strava", start_time=at(7), activity_type="Run",
-                distance_meters=10000, duration_seconds=3600,
+                external_id="strava:3",
+                source="strava",
+                start_time=at(7),
+                activity_type="Run",
+                distance_meters=10000,
+                duration_seconds=3600,
             ),
             Activity(  # 15 km/h: leisure riding
-                external_id="strava:4", source="strava", start_time=at(12), activity_type="Ride",
-                distance_meters=15000, duration_seconds=3600,
+                external_id="strava:4",
+                source="strava",
+                start_time=at(12),
+                activity_type="Ride",
+                distance_meters=15000,
+                duration_seconds=3600,
             ),
         ]
     )

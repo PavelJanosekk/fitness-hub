@@ -59,6 +59,8 @@ class Board(BaseModel):
     today: dt.date
     start: dt.date
     habits: list[BoardHabit]
+    paused: list[dt.date] = []  # days that count for nothing (E22 pause)
+    forgiven: list[dt.date] = []  # the forgiven missed day of each month
 
 
 class DayState(BaseModel):

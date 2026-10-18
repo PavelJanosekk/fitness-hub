@@ -200,9 +200,7 @@ def estimate_days(session: Session, start: dt.date, end: dt.date) -> list[Energy
     buckets = _merged_buckets(session, lo, hi)
     bucket_days = {local_date(b) for b in buckets}
     steps_by_day = dict(
-        session.exec(
-            select(DailyMetric.date, DailyMetric.steps).where(col(DailyMetric.date).between(start, end))
-        ).all()
+        session.exec(select(DailyMetric.date, DailyMetric.steps).where(col(DailyMetric.date).between(start, end))).all()
     )
     stride_m = profile.height_cm / 100 * STRIDE_PER_HEIGHT if profile and profile.height_cm else DEFAULT_STRIDE_M
 

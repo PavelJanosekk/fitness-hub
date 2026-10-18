@@ -7,7 +7,9 @@ rules of both in sync:
 - a weekly habit is met in an ISO week with at least `weekly_target` done days; its streak counts met weeks the
   same way (the current week only once it is met);
 - the routine of a day = active non-bonus daily habits; bonus habits only add points;
-- a routine week counts toward the routine streak at >= ROUTINE_WEEK_PCT % of its scheduled daily ticks.
+- a routine week counts toward the routine streak at >= ROUTINE_WEEK_PCT % of its scheduled daily ticks;
+- skipped days (a pause, or the one forgiven missed day per month, E22) count for nothing: they neither break nor
+  extend a streak and are left out of rates and the week %; a fully paused week is skipped the same way.
 """
 
 import datetime as dt
@@ -21,6 +23,7 @@ from app.models.body import DailyMetric
 from app.models.gym import Workout, WorkoutSet
 from app.models.habits import AutoRule, Habit, HabitFrequency, HabitLog
 from app.models.nutrition import NutritionProfile
+from app.models.rpg import RpgPause
 from app.models.running import Activity
 from app.services.metrics import intake_by_day
 from app.timeutils import day_bounds, local_date, today
@@ -56,6 +59,12 @@ class HabitDays:
     habit: Habit
     manual: set[dt.date] = field(default_factory=set)
     auto: dict[dt.date, str] = field(default_factory=dict)
+    paused: set[dt.date] = field(default_factory=set)  # shared by every habit of one board
+    forgiven: set[dt.date] = field(default_factory=set)  # shared too: one missed day per month
+
+    @property
+    def skip(self) -> set[dt.date]:
+        return self.paused | self.forgiven
 
     @property
     def done(self) -> set[dt.date]:
@@ -171,7 +180,36 @@ def load_board(
             if key not in rule_cache:
                 rule_cache[key] = auto_days(session, AutoRule(habit.auto_rule), habit.auto_threshold, start, end)
             days.auto = {d: label for d, label in rule_cache[key].items() if is_active(habit, d)}
-    return list(board.values())
+    result = list(board.values())
+    pauses = session.exec(select(RpgPause.start_date, RpgPause.end_date)).all()
+    paused, forgiven = exceptions(result, list(pauses), start, end)
+    for days in result:
+        days.paused, days.forgiven = paused, forgiven
+    return result
+
+
+def exceptions(
+    board: list[HabitDays], pauses: list[tuple[dt.date, dt.date | None]], start: dt.date, on: dt.date
+) -> tuple[set[dt.date], set[dt.date]]:
+    """Paused days in [start, on], and the forgiven day of each month: its first finished, unpaused day with the
+    routine below ROUTINE_WEEK_PCT % (today is still open, so it is never forgiven)."""
+    paused: set[dt.date] = set()
+    for first, last in pauses:
+        day = max(first, start)
+        while day <= min(last or on, on):
+            paused.add(day)
+            day += dt.timedelta(days=1)
+    forgiven: set[dt.date] = set()
+    months: set[tuple[int, int]] = set()
+    day = start
+    while day < on:
+        if day not in paused and (day.year, day.month) not in months:
+            done, scheduled = routine_day(board, day)
+            if scheduled and done / scheduled * 100 < ROUTINE_WEEK_PCT:
+                forgiven.add(day)
+                months.add((day.year, day.month))
+        day += dt.timedelta(days=1)
+    return paused, forgiven
 
 
 def set_day(session: Session, habit: Habit, day: dt.date, done: bool) -> None:
@@ -200,63 +238,80 @@ def week_count(done: set[dt.date], monday: dt.date) -> int:
     return sum(1 for offset in range(7) if monday + dt.timedelta(days=offset) in done)
 
 
+def _week_skipped(skip: set[dt.date], monday: dt.date) -> bool:
+    return all(monday + dt.timedelta(days=offset) in skip for offset in range(7))
+
+
 def current_streak(days: HabitDays, on: dt.date) -> int:
-    """Consecutive done days (daily) or met weeks (weekly) up to `on`; an unfinished day/week does not break it."""
-    habit, done = days.habit, days.done
+    """Consecutive done days (daily) or met weeks (weekly) up to `on`; an unfinished day/week does not break it,
+    skipped days (pause, forgiven) are stepped over."""
+    habit, done, skip = days.habit, days.done, days.skip
+    streak = 0
     if habit.frequency == HabitFrequency.weekly:
         week = week_start(on)
         if week_count(done, week) < habit.weekly_target:
             week -= dt.timedelta(weeks=1)
-        streak = 0
-        while week >= week_start(habit.start_date) and week_count(done, week) >= habit.weekly_target:
-            streak += 1
+        while week >= week_start(habit.start_date):
+            if week_count(done, week) >= habit.weekly_target:
+                streak += 1
+            elif not _week_skipped(skip, week):
+                break
             week -= dt.timedelta(weeks=1)
         return streak
     day = on if on in done else on - dt.timedelta(days=1)
-    streak = 0
-    while day >= habit.start_date and day in done:
-        streak += 1
+    while day >= habit.start_date:
+        if day in done:
+            streak += 1
+        elif day not in skip:
+            break
         day -= dt.timedelta(days=1)
     return streak
 
 
 def best_streak(days: HabitDays, on: dt.date) -> int:
-    habit, done = days.habit, days.done
+    habit, done, skip = days.habit, days.done, days.skip
     best = run = 0
     if habit.frequency == HabitFrequency.weekly:
         week = week_start(habit.start_date)
         while week <= week_start(on):
-            run = run + 1 if week_count(done, week) >= habit.weekly_target else 0
+            if week_count(done, week) >= habit.weekly_target:
+                run += 1
+            elif not _week_skipped(skip, week):
+                run = 0
             best = max(best, run)
             week += dt.timedelta(weeks=1)
         return best
-    previous = None
-    for day in sorted(d for d in done if habit.start_date <= d <= on):
-        run = run + 1 if previous is not None and day - previous == dt.timedelta(days=1) else 1
+    day = habit.start_date
+    while day <= on:
+        if day in done:
+            run += 1
+        elif day not in skip:
+            run = 0
         best = max(best, run)
-        previous = day
+        day += dt.timedelta(days=1)
     return best
 
 
 def completion(days: HabitDays, start: dt.date, end: dt.date) -> tuple[int, int]:
     """(done, scheduled) days for daily habits or met/elapsed weeks for weekly ones, while the habit was active.
 
-    The current week only counts once it is met, so an ongoing week never drags the rate down.
+    The current week only counts once it is met, so an ongoing week never drags the rate down; skipped days
+    (and fully skipped weeks) only count when done anyway.
     """
-    habit, done = days.habit, days.done
+    habit, done, skip = days.habit, days.done, days.skip
     if habit.frequency == HabitFrequency.weekly:
         met = scheduled = 0
         week = week_start(max(start, habit.start_date))
         while week <= end:
             if is_active(habit, max(week, habit.start_date)):
                 is_met = week_count(done, week) >= habit.weekly_target
-                if is_met or week < week_start(end):
+                if is_met or (week < week_start(end) and not _week_skipped(skip, week)):
                     scheduled += 1
                     met += is_met
             week += dt.timedelta(weeks=1)
         return met, scheduled
     active = [start + dt.timedelta(days=i) for i in range((end - start).days + 1)]
-    active = [d for d in active if is_active(habit, d)]
+    active = [d for d in active if is_active(habit, d) and (d in done or d not in skip)]
     return sum(1 for d in active if d in done), len(active)
 
 
@@ -270,26 +325,38 @@ def routine_day(board: Iterable[HabitDays], day: dt.date) -> tuple[int, int]:
     return sum(1 for days in routine if day in days.done), len(routine)
 
 
+def routine_week_pct(board: list[HabitDays], monday: dt.date, on: dt.date) -> float | None:
+    """Percent of the routine done in one ISO week up to `on`, skipped days left out; None if nothing counted."""
+    skip = board[0].skip if board else set()
+    done = scheduled = 0
+    for offset in range(7):
+        day = monday + dt.timedelta(days=offset)
+        if day > on:
+            break
+        if day in skip:
+            continue
+        d, s = routine_day(board, day)
+        done, scheduled = done + d, scheduled + s
+    return done / scheduled * 100 if scheduled else None
+
+
 def routine_week_streak(board: list[HabitDays], on: dt.date) -> int:
-    """Consecutive ISO weeks with >= ROUTINE_WEEK_PCT % of the routine done; the current week once it is there."""
-
-    def week_pct(monday: dt.date) -> float | None:
-        done = scheduled = 0
-        for offset in range(7):
-            day = monday + dt.timedelta(days=offset)
-            if day > on:
-                break
-            d, s = routine_day(board, day)
-            done, scheduled = done + d, scheduled + s
-        return done / scheduled * 100 if scheduled else None
-
+    """Consecutive ISO weeks with >= ROUTINE_WEEK_PCT % of the routine done; the current week once it is there.
+    Weeks with nothing to count (all paused) are stepped over."""
+    if not board:
+        return 0
+    first = week_start(min(d.habit.start_date for d in board))
     week = week_start(on)
-    pct = week_pct(week)
+    pct = routine_week_pct(board, week, on)
     if pct is None or pct < ROUTINE_WEEK_PCT:
         week -= dt.timedelta(weeks=1)
     streak = 0
-    while (pct := week_pct(week)) is not None and pct >= ROUTINE_WEEK_PCT:
-        streak += 1
+    while week >= first:
+        pct = routine_week_pct(board, week, on)
+        if pct is not None:
+            if pct < ROUTINE_WEEK_PCT:
+                break
+            streak += 1
         week -= dt.timedelta(weeks=1)
     return streak
 

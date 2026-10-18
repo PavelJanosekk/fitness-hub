@@ -302,7 +302,8 @@ def test_habit_summary_rates_streaks_and_routine(empty: Session) -> None:
     habits = {h["title"]: h for h in result["habits"]}
     assert habits["Postel"]["current_streak"] == 6 and habits["Postel"]["done_today"] is False
     assert (habits["Postel"]["done"], habits["Postel"]["scheduled"]) == (6, 7)
-    assert habits["Anki"]["best_streak"] == 1 and habits["Anki"]["last_done"] == "2026-10-14"
+    # 13. 10. (routine at 50 %) is October's forgiven day, so Anki's 12. and 14. join into one streak
+    assert habits["Anki"]["best_streak"] == 2 and habits["Anki"]["last_done"] == "2026-10-14"
     # the window only holds the current week, which is still open: no rate yet
     assert habits["Koupelna"]["scheduled"] == 0 and "rate_pct" not in habits["Koupelna"]
     assert habits["Koupelna"]["done_this_week"] == 0

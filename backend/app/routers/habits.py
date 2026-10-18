@@ -59,6 +59,8 @@ def board(session: SessionDep, start: dt.date | None = None) -> Board:
             )
             for d in days
         ],
+        paused=sorted(days[0].paused) if days else [],
+        forgiven=sorted(days[0].forgiven) if days else [],
     )
 
 

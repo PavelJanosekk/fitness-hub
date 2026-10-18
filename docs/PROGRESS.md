@@ -124,7 +124,8 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 
 ### Phase 7: RPG layer (E22) — TODO
 Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Steps, each committed:
-- [ ] 7.1 XP ledger (gains, penalties, forgiven day per month, pause periods) + character level/titles + XP history with reasons
+- [x] 7.1a Backend: live XP ledger (`services/rpg.py`), pauses (migration 0013), forgiven/paused days in habit streaks + board, `/api/rpg` (character, history, pauses), tests
+- [ ] 7.1b Frontend: character card on Přehled, Hrdina page (XP history with reasons, pauses), Rutina shows forgiven/paused days; deploy
 - [ ] 7.2 Skills (levels, radar chart, rusting with level loss)
 - [ ] 7.3 Bosses: marathon 2. 5. 2027 + half marathon 3. 4. 2027 (HP from the plan, heals on skipped runs)
 - [ ] 7.4 Weekly quests (from real plans) + badges
@@ -239,3 +240,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-18 (11):** Pushed `dev` to origin (2943cb3). RPG concept discussed and accepted as binding (E22, hard mode with level loss, reasons, no tokens, 1 forgiven day/month, pause); Phase 7 TODO added. Not implemented yet.
 - **2026-10-18 (13):** E23 Gym charts: backend `services/gym_stats.py` + 2 endpoints (4 new tests, 258 total), frontend `components/gym/GymStats.tsx` and the Trénink / Grafy tabs. Checked on the dev data in all three themes (CDP screenshots via the shared headless Chrome on :9222; a second Chrome on the host network cannot bind 9222, and captures of the full-height page only finish at deviceScaleFactor 1). The real data shows what the radar is for: over 26 weeks legs got 2 % of sets (quads 3 vs hamstrings 3), front delts 4.7× rear delts. Built in an isolated worktree stack (uvicorn on the dev network + Vite :5175, read-only on the dev DB), removed afterwards. Deployed to prod the same day at the user's request (backup `data/backups/manual-pre-e23-2026-10-18-1347.dump`, no migration; both endpoints answer on prod).
 - **2026-10-18 (14):** E24 run charts: `services/run_stats.py` (Daniels VDOT checked against his tables: 10K 50:03 = 40, 5K 19:57 = 50, marathon 3:49:45 = 40) + `/api/running/stats` (3 new tests), `components/running/RunStats.tsx`, shared `components/charts/CalendarHeatmap.tsx` (Gym uses it too). Checked on dev data in minimal and zen. Same isolated worktree stack as E23, removed afterwards. Deployed to prod the same day at the user's request (backup `data/backups/manual-pre-e24-2026-10-18-1437.dump`, no migration); prod has 165 runs, 115 with EF and 116 with zone data.
+- **2026-10-18 (12):** 7.1a backend: live XP ledger with gains, multiplier, day/week penalties, forgiven day per month, pauses, level up/down entries; habit streaks/rates/week % step over paused and forgiven days; `/api/rpg/character|history|pauses`; migration 0013. 269 tests. On a copy of the real data: level 11 Vytrvalec, 15 738 XP, 14. 10. forgiven.

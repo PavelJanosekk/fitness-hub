@@ -36,6 +36,7 @@ from app.models.nutrition import (  # noqa: E402
     NutritionProfile,
     RecipeComponent,
 )
+from app.models.rpg import RpgPause  # noqa: E402
 from app.models.running import Activity, ActivityMetrics, ActivityStream, TrainingPlanItem  # noqa: E402
 
 __all__ = [
@@ -63,6 +64,7 @@ __all__ = [
     "NutritionProfile",
     "Race",
     "RecipeComponent",
+    "RpgPause",
     "StepBucket",
     "TrainingDay",
     "TrainingPlanItem",

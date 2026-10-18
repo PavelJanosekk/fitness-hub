@@ -139,6 +139,21 @@ Sunday summary in RPG tone (XP, quests, penalties and why, what is neglected, ad
 ### Small touches
 Level-up animation, boss-defeat confetti, XP history chart by week.
 
+### Implementation notes (7.1, `services/rpg.py`, `/api/rpg`)
+- The ledger is **computed live** from history on every request (no stored XP), so late ticks, Strava syncs and
+  edits rewrite it consistently; only pauses are stored (`rpg_pauses`, migration 0013).
+- Gains count from the **first data point in the whole history** (gym since 2025, runs since 2021), so the level
+  starts where the real training history puts it; penalties only exist on days/weeks with a routine.
+- A "missed day" (forgiveness) = a finished, unpaused day with the routine below 60 %; the first one of each
+  calendar month is forgiven. Daily habit ticks of one day are one entry ("Návyky: …").
+- Gains so far: habits, weekly habit target, perfect day, gym working sets, PRs, runs (+ long run), food logged,
+  protein target, sleep; multiplier bonus as its own entry. Planned-quality-session bonus and non-run activities
+  are not counted yet.
+- Week evaluation happens on Sunday once the week is over; a week with nothing to count (all paused / no
+  routine yet) is neutral. Level changes are entries too ("Postup / Pokles na level N").
+- Level curve: `100 × level^1.5` XP per level; titles at 1 Učeň, 5 Poutník, 10 Vytrvalec, 15 Maratonec,
+  20 Železný, 25 Mistr, 30 Legenda (tune).
+
 ### Implementation order
 1. XP ledger + character level + titles + XP history with reasons (incl. penalties, forgiveness, pause).
 2. Skills + radar + rusting.
