@@ -73,11 +73,24 @@ class FoodValues(BaseModel):
     micronutrients: dict[str, float] = Field(default_factory=dict)
 
 
+class MicroRefIn(BaseModel):
+    """A USDA food the food borrows unknown values from (E26): grams of it per gram of the food."""
+
+    ref_food_id: int
+    grams_per_g: float = Field(gt=0, le=5)
+
+
+class MicroRefRead(MicroRefIn):
+    name: str
+
+
 class FoodCreate(FoodValues):
     name_cs: str = Field(min_length=1, max_length=200)
     brand: str | None = Field(default=None, max_length=120)
     ean: str | None = Field(default=None, pattern=r"^[0-9]{6,14}$")
     portions: list[PortionRead] = Field(default_factory=list)
+    # From /foods/autofill; None = map in the background (E26)
+    micro_refs: list[MicroRefIn] | None = Field(default=None, max_length=20)
 
 
 class FoodUpdate(BaseModel):
@@ -95,6 +108,8 @@ class FoodUpdate(BaseModel):
     fiber_g: float | None = Field(default=None, ge=0, le=100)
     salt_g: float | None = Field(default=None, ge=0, le=100)
     micronutrients: dict[str, float] | None = None
+    # Replaces the references; the food becomes `manual` and the mapper leaves it alone (E26)
+    micro_refs: list[MicroRefIn] | None = Field(default=None, max_length=20)
 
 
 class FoodRead(BaseModel):
@@ -120,6 +135,27 @@ class FoodRead(BaseModel):
     micronutrients: dict[str, float]
     portions: list[PortionRead] = Field(default_factory=list)
     use_count: int = 0
+    micros_status: str | None = None
+    micro_refs: list[MicroRefRead] = Field(default_factory=list)
+    # Per-100 g values the food doesn't know itself, from its references (optional macros and micros)
+    borrowed: dict[str, float] = Field(default_factory=dict)
+
+
+class AutofillRequest(BaseModel):
+    name_cs: str = Field(min_length=1, max_length=200)
+    brand: str | None = Field(default=None, max_length=120)
+
+
+class AutofillRead(BaseModel):
+    """Suggested values for a new food: label data from OFF, a USDA food, or an AI estimate (E26)."""
+
+    name_cs: str
+    brand: str | None
+    source: Literal["openfoodfacts", "usda", "estimate"]
+    source_label: str | None  # the OFF product or USDA food the values come from
+    values: dict[str, float | None]  # kcal, protein_g, ... per 100 g
+    micronutrients: dict[str, float]
+    micro_refs: list[MicroRefRead]
 
 
 class ItemUpsert(BaseModel):

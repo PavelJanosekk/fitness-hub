@@ -1,6 +1,6 @@
 """Periodic background jobs, started from the FastAPI lifespan.
 
-A few asyncio loops instead of a scheduler library: two jobs don't need cron syntax or persistence.
+A few asyncio loops instead of a scheduler library: these jobs don't need cron syntax or persistence.
 Requires a single Uvicorn worker, otherwise every worker would run the jobs.
 """
 
@@ -15,6 +15,8 @@ from sqlmodel import Session
 from app.config import settings
 from app.database import engine
 from app.services.coach_kb import KnowledgeBaseError, sync_knowledge_base
+from app.services.gemini_service import AINotConfiguredError, get_client
+from app.services.nutrition import mapper
 from app.services.strava_client import StravaNotConfiguredError, StravaNotConnectedError, sync_activities
 from app.services.workouts import auto_finish_stale
 
@@ -23,6 +25,7 @@ log = logging.getLogger(__name__)
 AUTO_FINISH_EVERY = dt.timedelta(minutes=10)
 STRAVA_SYNC_EVERY = dt.timedelta(minutes=30)
 KB_SYNC_EVERY = dt.timedelta(hours=6)
+MICROS_MAPPER_EVERY = dt.timedelta(minutes=20)
 
 
 def auto_finish_job() -> None:
@@ -53,6 +56,17 @@ def kb_sync_job() -> None:
             log.info("knowledge base: %s", result)
 
 
+def micros_mapper_job() -> None:
+    """New foods (KT import, OFF, web estimates, custom) get their USDA micronutrient references (E26)."""
+    try:
+        client = get_client()
+    except AINotConfiguredError:
+        return
+    with Session(engine) as session:
+        if mapped := mapper.run(session, client):
+            log.info("micros mapper: %d food(s) mapped", mapped)
+
+
 async def _every(interval: dt.timedelta, job: Callable[[], None], first_delay: dt.timedelta) -> None:
     await asyncio.sleep(first_delay.total_seconds())
     while True:
@@ -68,6 +82,7 @@ def start() -> list[asyncio.Task[None]]:
         asyncio.create_task(_every(AUTO_FINISH_EVERY, auto_finish_job, first_delay=dt.timedelta(seconds=5))),
         asyncio.create_task(_every(STRAVA_SYNC_EVERY, strava_sync_job, first_delay=dt.timedelta(minutes=1))),
         asyncio.create_task(_every(KB_SYNC_EVERY, kb_sync_job, first_delay=dt.timedelta(seconds=20))),
+        asyncio.create_task(_every(MICROS_MAPPER_EVERY, micros_mapper_job, first_delay=dt.timedelta(minutes=2))),
     ]
 
 

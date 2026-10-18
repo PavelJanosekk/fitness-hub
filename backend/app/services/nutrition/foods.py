@@ -3,8 +3,9 @@
 from sqlalchemy import func, or_
 from sqlmodel import Session, col, select
 
-from app.models.nutrition import Food, FoodPortion, FoodSource, MealLogItem
-from app.schemas.nutrition import FoodCreate, FoodRead, FoodUpdate, PortionRead
+from app.models.nutrition import Food, FoodPortion, FoodSource, MealLogItem, MicrosStatus
+from app.schemas.nutrition import FoodCreate, FoodRead, FoodUpdate, MicroRefIn, MicroRefRead, PortionRead
+from app.services.nutrition.micro_refs import Ref, effective_values, refs_for, set_refs
 from app.services.nutrition.nutrients import MICRO_KEYS
 from app.services.nutrition.resolver import normalize
 from app.timeutils import now_utc
@@ -23,7 +24,14 @@ def use_counts(session: Session, food_ids: list[int]) -> dict[int, int]:
     return {food_id: count for food_id, count in rows if food_id is not None}
 
 
-def read_food(session: Session, food: Food, use_count: int | None = None, with_portions: bool = False) -> FoodRead:
+def read_food(
+    session: Session,
+    food: Food,
+    use_count: int | None = None,
+    with_portions: bool = False,
+    refs: list[Ref] | None = None,
+) -> FoodRead:
+    """`refs` None = load them; pass the batch-loaded list (possibly empty) when reading many foods."""
     portions = []
     if with_portions:
         rows = session.exec(
@@ -32,8 +40,19 @@ def read_food(session: Session, food: Food, use_count: int | None = None, with_p
         portions = [PortionRead(label=p.label, grams=p.grams) for p in rows]
     if use_count is None:
         use_count = use_counts(session, [food.id]).get(food.id, 0) if food.id else 0  # type: ignore[list-item]
+    if refs is None:
+        refs = refs_for(session, [food.id]).get(food.id, []) if food.id else []  # type: ignore[list-item]
+    own = effective_values(food, None)
+    borrowed = {k: v for k, v in effective_values(food, refs).items() if k not in own}
+    micro_refs = [MicroRefRead(ref_food_id=r.food.id, name=r.food.name, grams_per_g=r.grams_per_g) for r in refs]  # type: ignore[arg-type]
     return FoodRead.model_validate(food, from_attributes=True).model_copy(
-        update={"name": food.name, "portions": portions, "use_count": use_count}
+        update={
+            "name": food.name,
+            "portions": portions,
+            "use_count": use_count,
+            "micro_refs": micro_refs,
+            "borrowed": borrowed,
+        }
     )
 
 
@@ -63,16 +82,30 @@ def search_foods(
             statement = statement.where(or_(eaten > 0, Food.source != FoodSource.usda))
         statement = statement.order_by(eaten.desc(), col(Food.name_cs).nulls_last(), col(Food.name_en))
     foods = session.exec(statement.offset(offset).limit(limit)).all()
-    counts = use_counts(session, [f.id for f in foods if f.id is not None])
-    return [read_food(session, f, counts.get(f.id or 0, 0)) for f in foods]
+    ids = [f.id for f in foods if f.id is not None]
+    counts, refs = use_counts(session, ids), refs_for(session, ids)
+    return [read_food(session, f, counts.get(f.id or 0, 0), refs=refs.get(f.id or 0, [])) for f in foods]
+
+
+def _apply_refs(session: Session, food: Food, refs: list[MicroRefIn], status: MicrosStatus) -> None:
+    valid = {
+        f.id
+        for f in session.exec(select(Food).where(col(Food.id).in_([r.ref_food_id for r in refs]))).all()
+        if f.source == FoodSource.usda
+    }
+    if missing := {r.ref_food_id for r in refs} - valid:
+        raise ValueError(f"not USDA foods: {sorted(missing)}")
+    set_refs(session, food, [(r.ref_food_id, r.grams_per_g) for r in refs], status)
 
 
 def create_food(session: Session, body: FoodCreate) -> Food:
-    values = body.model_dump(exclude={"portions"})
+    values = body.model_dump(exclude={"portions", "micro_refs"})
     values["micronutrients"] = {k: v for k, v in body.micronutrients.items() if k in MICRO_KEYS}
     food = Food(source=FoodSource.custom, **values)
     session.add(food)
     session.flush()
+    if body.micro_refs is not None:
+        _apply_refs(session, food, body.micro_refs, MicrosStatus.mapped if body.micro_refs else MicrosStatus.unmatched)
     for portion in body.portions:
         session.add(FoodPortion(food_id=food.id, label=portion.label, grams=portion.grams))  # type: ignore[arg-type]
     session.commit()
@@ -81,7 +114,9 @@ def create_food(session: Session, body: FoodCreate) -> Food:
 
 def update_food(session: Session, food: Food, body: FoodUpdate) -> Food:
     """Edits apply to the whole history: items reference the food, nothing is snapshotted (C8)."""
-    changes = body.model_dump(exclude_unset=True)
+    changes = body.model_dump(exclude_unset=True, exclude={"micro_refs"})
+    if body.micro_refs is not None:
+        _apply_refs(session, food, body.micro_refs, MicrosStatus.manual)
     if (micros := changes.get("micronutrients")) is not None:
         changes["micronutrients"] = {k: v for k, v in micros.items() if k in MICRO_KEYS}
     for key, value in changes.items():

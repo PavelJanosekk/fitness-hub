@@ -7,7 +7,19 @@ from collections.abc import Iterator
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Path,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from kaloricketabulky.sdk import KaloricketabulkyClient
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
@@ -18,6 +30,8 @@ from app.database import SessionDep, engine
 from app.models.nutrition import Food, FoodSource, MealLog, MealLogItem, MealType, NutritionProfile
 from app.routers.ai_coach import ChatRequest, GeminiDep, audio_part, run_gemini
 from app.schemas.nutrition import (
+    AutofillRead,
+    AutofillRequest,
     CandidateIn,
     DayIntake,
     FoodCreate,
@@ -31,9 +45,10 @@ from app.schemas.nutrition import (
     Totals,
 )
 from app.services.gemini_service import Tier
-from app.services.nutrition import kt_import, off
+from app.services.nutrition import kt_import, mapper, off
 from app.services.nutrition import quick_add as quick_add_meal
 from app.services.nutrition.assistant import NutritionTurn, nutrition_turn
+from app.services.nutrition.autofill import AutofillUnavailableError, autofill
 from app.services.nutrition.foods import create_food, read_food, search_foods, update_food
 from app.services.nutrition.meals import MealEntry, save_meal, upsert_item
 from app.services.nutrition.resolver import Candidate, MealItemInput, confirm_aliases, materialize
@@ -188,19 +203,39 @@ def get_food(food_id: int, session: SessionDep) -> FoodRead:
     return read_food(session, _food(session, food_id), with_portions=True)
 
 
+@router.post("/foods/autofill", response_model=AutofillRead)
+def post_autofill(body: AutofillRequest, session: SessionDep, client: GeminiDep, http: HttpDep) -> AutofillRead:
+    """Suggested values for a new food from its name (E26); nothing is saved."""
+    try:
+        return autofill(session, client, http, body.name_cs.strip(), (body.brand or "").strip() or None)
+    except AutofillUnavailableError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"Autofill unavailable: {exc}") from None
+
+
 @router.post("/foods", response_model=FoodRead, status_code=status.HTTP_201_CREATED)
-def post_food(body: FoodCreate, session: SessionDep) -> FoodRead:
+def post_food(body: FoodCreate, session: SessionDep, background: BackgroundTasks) -> FoodRead:
+    """Without `micro_refs` the food gets its micronutrient references in the background (E26)."""
     try:
         food = create_food(session, body)
     except IntegrityError:
         session.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "A food with this barcode already exists") from None
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
+    if food.micros_status is None:
+        background.add_task(mapper.map_in_background, [food.id])  # type: ignore[list-item]
     return read_food(session, food, with_portions=True)
 
 
 @router.patch("/foods/{food_id}", response_model=FoodRead)
 def patch_food(food_id: int, body: FoodUpdate, session: SessionDep) -> FoodRead:
-    return read_food(session, update_food(session, _food(session, food_id), body), with_portions=True)
+    try:
+        food = update_food(session, _food(session, food_id), body)
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
+    return read_food(session, food, with_portions=True)
 
 
 @router.delete("/foods/{food_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -280,6 +315,7 @@ def confirm_draft(body: MealDraftConfirm, session: SessionDep) -> MealRead:
                     status.HTTP_422_UNPROCESSABLE_CONTENT, f"Cannot use {candidate.ref}: {exc}"
                 ) from None
             confirm_aliases(session, item.input, food)
+            mapper.map_from_query(session, food, item.input.usda_query_en)  # a new OFF / web food: free mapping
             entries.append(MealEntry(item.input.user_phrase, food, item.amount_g))
         save_meal(
             session, meal_id=body.id, day=day, meal_type=body.meal_type, entries=entries, raw_input=body.raw_input

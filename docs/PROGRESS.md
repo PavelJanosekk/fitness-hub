@@ -116,7 +116,7 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [ ] 5.6b Barcode scanning: **deferred by the user** (needs `@zxing/browser` for iOS Safari)
 - [x] 5.7a E26 backend: migration 0014 `food_micro_refs` (+ `foods.micros_status`), live micros from refs in the summary, `micro_refs` CLI to apply a mapping file, tests
 - [ ] 5.7b Apply the agent's mapping of the KT foods (dev, then prod after a backup). Mapping file: `data/imports/micros_refs_kt.txt` (238 mapped, 2 unmatched; each checked against the food's macros). Verified on a copy of the 2026-10-18 backup (DB `fitness_db_micros`): micro and fibre coverage ~100 % on real days. Optional macros (fibre, sugar, sat. fat, salt) are borrowed too. **Prod: pending deploy.**
-- [ ] 5.7c Gemini mapper for new foods (background job, daily cap) + `POST /foods/autofill`, tests
+- [x] 5.7c Gemini mapper for new foods (`mapper.py`: scheduler job every 20 min + right after POST /foods, `MICROS_MAPPER_DAILY_REQUESTS` cap, 15 foods per call; confirmed drafts map free from the item's `usda_query_en`) + `POST /foods/autofill` (OFF → USDA → AI estimate, plus references), `micro_refs` on food create/edit (edit = `manual`), tests
 - [ ] 5.7d Frontend: micros and their references in the food sheet (edit refs), Doplnit automaticky in the new-food form
 
 ### Phase 6: Habits module "Rutina" (E20)

@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     gemini_model_lite: str | None = None
     # Comma-separated models tried in order when an assistant's model is out of quota (429) or overloaded (503)
     gemini_model_fallbacks: str | None = None
+    # Gemini calls per day the micronutrient mapper (E26) may spend on new foods (lite model, 15 foods per call)
+    micros_mapper_daily_requests: int = 10
 
     # KalorickéTabulky history import (Phase 5.5): credentials only ever live in .env
     kaloricketabulky_email: str | None = None
