@@ -24,6 +24,7 @@ from app.models.body import (  # noqa: E402
 from app.models.chat import ChatConversation, ChatMessage  # noqa: E402
 from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingDay, TrainingWeek  # noqa: E402
 from app.models.gym import Exercise, Workout, WorkoutSet, WorkoutTemplate  # noqa: E402
+from app.models.habits import Habit, HabitLog  # noqa: E402
 from app.models.integrations import IntegrationToken  # noqa: E402
 from app.models.nutrition import (  # noqa: E402
     Food,
@@ -51,6 +52,8 @@ __all__ = [
     "Food",
     "FoodAlias",
     "FoodPortion",
+    "Habit",
+    "HabitLog",
     "HealthRecord",
     "HealthSourceStatus",
     "IntegrationToken",

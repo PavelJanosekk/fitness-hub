@@ -35,7 +35,7 @@ reflected): finished gym workout, Strava activity, gym or Strava, steps ≥ N, s
 protein ≥ daily target. A manual tick still works as an override (e.g. training without the watch).
 "Cvičení" becomes "gym or Strava" automatically.
 
-## Proposed data model
+## Data model (migration 0012)
 - `habits`: `id` int PK (created online, like exercises), `title`, `frequency` (`daily`/`weekly`), `weekly_target`
   int default 1, `skill` enum nullable, `points` int default 1, `is_bonus` bool, `auto_rule` enum nullable,
   `auto_threshold` float nullable, `sort_order` int, `start_date` date, `archived_at` timestamptz nullable,
@@ -43,12 +43,17 @@ protein ≥ daily target. A manual tick still works as an override (e.g. trainin
 - `habit_logs`: `habit_id` FK (cascade) + `date`, PK on both, `created_at` timestamptz.
 - Migration `0012` (tables + one-time seed).
 
-## Proposed API (`/api/habits`)
-- `GET /api/habits/board?from=` → habits (incl. archived, for history) + manual done dates + auto done dates.
-- `PUT /api/habits/{id}/days/{date}` `{done}` — idempotent, offline-queued.
-- `POST /api/habits`, `PATCH /api/habits/{id}`, `POST /api/habits/reorder`, `DELETE /api/habits/{id}` (archive;
-  `?hard=true` deletes with history).
-- Coach tools: `get_habit_summary(days=30)` (rate, current/best streak, weekday pattern, routine-week streak),
+## API (`/api/habits`, implemented in 6.1)
+- `GET /api/habits/board?start=` → `{today, start, habits: [habit + done: [dates ticked by hand] + auto: {date: label}]}`;
+  archived habits included for history; `start` defaults to the earliest `start_date`.
+- `PUT /api/habits/{id}/days/{date}` `{done}` — idempotent, offline-queued. Rejects days more than 1 day ahead; ticking a
+  day before `start_date` moves `start_date` back.
+- `POST /api/habits` (appended at the end; daily forces `weekly_target` 1, weekly forces `is_bonus` false, the threshold
+  is kept only for steps / sleep / protein), `PATCH /api/habits/{id}` (incl. `archived: true|false`),
+  `PUT /api/habits/order` `{ids}` (every habit once), `DELETE /api/habits/{id}` (hard delete with history).
+- Auto rules (`services/habits.py`): gym = workout with a completed set; activity = any but `Walk`; steps default 10 000;
+  sleep default 7 h; protein = threshold or the nutrition profile target (none → never auto).
+- Coach tools (6.2): `get_habit_summary(days=30)` (rate, current/best streak, weekday pattern, routine-week streak),
   `set_habits_done(...)`.
 
 ## Proposed UI (decision H1)
