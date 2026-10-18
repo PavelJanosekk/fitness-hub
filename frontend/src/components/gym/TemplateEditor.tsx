@@ -1,7 +1,8 @@
-import { ChevronDown, ChevronLeft, ChevronUp, Trash2, X } from "lucide-react";
+import { ChevronLeft, GripVertical, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { type Exercise, type SetType, type Template, useDeleteTemplate, useSaveTemplate } from "../../api/gym";
 import { formatNumber } from "../../lib/format";
+import { moveItem, useDragReorder } from "../../lib/useDragReorder";
 import { uuid } from "../../lib/uuid";
 import { Card } from "../Layout";
 import { Button, DecimalInput, Sheet, parseDecimal } from "../ui";
@@ -30,12 +31,7 @@ export function TemplateEditor({ template, exercises, onClose }: { template: Tem
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const patchExercise = (index: number, patch: (e: DraftExercise) => DraftExercise) => setItems((prev) => prev.map((e, i) => (i === index ? patch(e) : e)));
-  const move = (index: number, delta: -1 | 1) =>
-    setItems((prev) => {
-      const next = [...prev];
-      [next[index], next[index + delta]] = [next[index + delta], next[index]];
-      return next;
-    });
+  const reorder = useDragReorder((from, to) => setItems((prev) => moveItem(prev, from, to)));
 
   const canSave = name.trim() !== "" && items.length > 0 && items.every((e) => e.sets.length > 0) && !save.isPending;
   const submit = () =>
@@ -79,66 +75,65 @@ export function TemplateEditor({ template, exercises, onClose }: { template: Tem
         />
 
         {items.map((item, index) => (
-          <Card key={`${item.exercise_id}-${index}`} className="p-3">
-            <div className="mb-2 flex items-center justify-between gap-1 px-1">
-              <div className="min-w-0">
-                <h2 className="truncate font-semibold">{item.name}</h2>
-                <span className="text-xs text-zinc-500">{GROUP_LABELS[item.muscle_group] ?? ""}</span>
-              </div>
-              <div className="flex shrink-0 text-zinc-400">
-                <IconButton label="Posunout nahoru" disabled={index === 0} onClick={() => move(index, -1)}>
-                  <ChevronUp size={18} />
-                </IconButton>
-                <IconButton label="Posunout dolů" disabled={index === items.length - 1} onClick={() => move(index, 1)}>
-                  <ChevronDown size={18} />
-                </IconButton>
-                <IconButton label="Odebrat cvik" onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}>
-                  <Trash2 size={16} />
-                </IconButton>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {item.sets.map((set, setIndex) => (
-                <div key={setIndex} className="flex items-center gap-2 rounded-xl bg-zinc-800/50 p-2">
-                  <span className="w-14 shrink-0 text-xs text-zinc-400">
-                    Série {setIndex + 1}
-                    {SET_TYPE_LABEL[set.set_type] && <span className="block text-[10px] text-zinc-500">{SET_TYPE_LABEL[set.set_type]}</span>}
-                  </span>
-                  <DecimalInput
-                    ariaLabel={`kg, série ${setIndex + 1}`}
-                    placeholder="kg"
-                    value={set.weight}
-                    onChange={(weight) => patchExercise(index, (e) => ({ ...e, sets: e.sets.map((s, j) => (j === setIndex ? { ...s, weight } : s)) }))}
-                    className="text-center"
-                  />
-                  <input
-                    aria-label={`opakování, série ${setIndex + 1}`}
-                    inputMode="numeric"
-                    placeholder="opak."
-                    value={set.reps}
-                    onChange={(e) => {
-                      const reps = e.target.value.replace(/\D/g, "");
-                      patchExercise(index, (x) => ({ ...x, sets: x.sets.map((s, j) => (j === setIndex ? { ...s, reps } : s)) }));
-                    }}
-                    className="min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-center text-lg tabular-nums outline-none focus:border-emerald-500"
-                  />
-                  <IconButton
-                    label="Odebrat sérii"
-                    disabled={item.sets.length === 1}
-                    onClick={() => patchExercise(index, (e) => ({ ...e, sets: e.sets.filter((_, j) => j !== setIndex) }))}
-                  >
-                    <X size={16} />
+          <div key={`${item.exercise_id}-${index}`} {...reorder.itemProps(index)} className="rounded-2xl data-dragging:bg-zinc-950 data-dragging:shadow-2xl">
+            <Card className="p-3">
+              <div className="mb-2 flex items-center justify-between gap-1">
+                <button type="button" aria-label="Přetáhnout cvik" {...reorder.handleProps(index)} className="-ml-2 flex size-11 shrink-0 items-center justify-center rounded-lg text-zinc-500 select-none active:bg-zinc-700">
+                  <GripVertical size={18} />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate font-semibold">{item.name}</h2>
+                  <span className="text-xs text-zinc-500">{GROUP_LABELS[item.muscle_group] ?? ""}</span>
+                </div>
+                <div className="flex shrink-0 text-zinc-400">
+                  <IconButton label="Odebrat cvik" onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}>
+                    <Trash2 size={16} />
                   </IconButton>
                 </div>
-              ))}
-            </div>
-            <button
-              onClick={() => patchExercise(index, (e) => ({ ...e, sets: [...e.sets, { ...(e.sets.at(-1) ?? { weight: "", reps: "" }), set_type: "normal" }] }))}
-              className="mt-2 w-full rounded-xl py-2.5 text-sm text-emerald-400 active:bg-zinc-800"
-            >
-              + Přidat sérii
-            </button>
-          </Card>
+              </div>
+              <div className="space-y-2">
+                {item.sets.map((set, setIndex) => (
+                  <div key={setIndex} className="flex items-center gap-2 rounded-xl bg-zinc-800/50 p-2">
+                    <span className="w-14 shrink-0 text-xs text-zinc-400">
+                      Série {setIndex + 1}
+                      {SET_TYPE_LABEL[set.set_type] && <span className="block text-[10px] text-zinc-500">{SET_TYPE_LABEL[set.set_type]}</span>}
+                    </span>
+                    <DecimalInput
+                      ariaLabel={`kg, série ${setIndex + 1}`}
+                      placeholder="kg"
+                      value={set.weight}
+                      onChange={(weight) => patchExercise(index, (e) => ({ ...e, sets: e.sets.map((s, j) => (j === setIndex ? { ...s, weight } : s)) }))}
+                      className="text-center"
+                    />
+                    <input
+                      aria-label={`opakování, série ${setIndex + 1}`}
+                      inputMode="numeric"
+                      placeholder="opak."
+                      value={set.reps}
+                      onChange={(e) => {
+                        const reps = e.target.value.replace(/\D/g, "");
+                        patchExercise(index, (x) => ({ ...x, sets: x.sets.map((s, j) => (j === setIndex ? { ...s, reps } : s)) }));
+                      }}
+                      className="min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-center text-lg tabular-nums outline-none focus:border-emerald-500"
+                    />
+                    <IconButton
+                      label="Odebrat sérii"
+                      disabled={item.sets.length === 1}
+                      onClick={() => patchExercise(index, (e) => ({ ...e, sets: e.sets.filter((_, j) => j !== setIndex) }))}
+                    >
+                      <X size={16} />
+                    </IconButton>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => patchExercise(index, (e) => ({ ...e, sets: [...e.sets, { ...(e.sets.at(-1) ?? { weight: "", reps: "" }), set_type: "normal" }] }))}
+                className="mt-2 w-full rounded-xl py-2.5 text-sm text-emerald-400 active:bg-zinc-800"
+              >
+                + Přidat sérii
+              </button>
+            </Card>
+          </div>
         ))}
 
         <Button variant="ghost" className="w-full" onClick={() => setPicking(true)}>

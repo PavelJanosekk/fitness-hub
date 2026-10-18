@@ -198,3 +198,4 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
   - O3 verified on real days (see Open items).
   - The first dev import didn't match KT (1,711 vs 1,780 kcal): the user's own recipes change composition daily and expose no ingredients, hence E16 (exact per-day values on imported items). A re-run matches KT exactly on 16.10. (1,780.4 kcal, P 179.0, C 95.5, F 71.8).
   - A test caught a rounding bug (sodium/calcium rounded in g before the mg conversion). 203 tests.
+- **2026-10-18:** Gym: drag-and-drop reordering of exercises (grip handle) in the template editor and the active workout, replacing the up/down arrows. Own pointer-events hook `lib/useDragReorder.ts` (no new dependency) with edge auto-scroll; reordering an active workout re-sends the completed sets whose `exercise_order` changed. Verified with a scripted drag in headless Chrome.

@@ -1,5 +1,5 @@
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, CloudOff, Minus, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronRight, CloudOff, GripVertical, Minus, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   type Exercise,
@@ -33,6 +33,7 @@ import { WorkoutDetail } from "../components/gym/WorkoutDetail";
 import { Button, Pager, Segmented, Sheet, parseDecimal } from "../components/ui";
 import { type ActiveWorkout, type LocalExercise, type LocalSet, saveActiveWorkout, useActiveWorkout } from "../lib/activeWorkout";
 import { formatDay, formatNumber, formatTime } from "../lib/format";
+import { moveItem, useDragReorder } from "../lib/useDragReorder";
 import { uuid } from "../lib/uuid";
 
 /** Sync helpers: every call is an idempotent PUT/DELETE queued in order and persisted while offline. */
@@ -362,6 +363,14 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
     ]);
   };
 
+  const moveExercise = (from: number, to: number) => {
+    const exercises = moveItem(workout.exercises, from, to);
+    update(exercises);
+    // Completed sets carry their exercise_order: re-send those whose exercise changed position
+    for (let i = Math.min(from, to); i <= Math.max(from, to); i++) exercises[i].sets.forEach((_, s) => syncSet(i, s, exercises));
+  };
+  const reorder = useDragReorder(moveExercise);
+
   const finish = () => {
     // Every completed set once more before the finish (idempotent PUTs, same queue): repairs any set whose
     // earlier write was dropped, because the local copy is gone after this
@@ -400,29 +409,34 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
 
       <div className="space-y-3">
         {workout.exercises.map((exercise, exerciseIndex) => (
-          <Card key={`${exercise.exercise_id}-${exerciseIndex}`} className="p-3">
-            <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
-              <h2 className="font-semibold">{exercise.name}</h2>
-              <span className="text-xs text-zinc-500">{GROUP_LABELS[exercise.muscle_group] ?? ""}</span>
-            </div>
-            <div className="space-y-2">
-              {exercise.sets.map((set, setIndex) => (
-                <SetRow
-                  key={set.id}
-                  index={setIndex}
-                  set={set}
-                  ghost={exercise.last?.sets[setIndex]}
-                  onChange={(patch) => changeSet(exerciseIndex, setIndex, patch)}
-                  onCommit={() => syncSet(exerciseIndex, setIndex)}
-                  onToggle={() => toggleComplete(exerciseIndex, setIndex)}
-                  onRemove={() => removeSet(exerciseIndex, setIndex)}
-                />
-              ))}
-            </div>
-            <button onClick={() => addSet(exerciseIndex)} className="mt-2 w-full rounded-xl py-2.5 text-sm text-emerald-400 active:bg-zinc-800">
-              + Přidat sérii
-            </button>
-          </Card>
+          <div key={`${exercise.exercise_id}-${exerciseIndex}`} {...reorder.itemProps(exerciseIndex)} className="rounded-2xl data-dragging:bg-zinc-950 data-dragging:shadow-2xl">
+            <Card className="p-3">
+              <div className="mb-2 flex items-center gap-1">
+                <button type="button" aria-label="Přetáhnout cvik" {...reorder.handleProps(exerciseIndex)} className="-ml-2 flex size-11 shrink-0 items-center justify-center rounded-lg text-zinc-500 select-none active:bg-zinc-700">
+                  <GripVertical size={18} />
+                </button>
+                <h2 className="min-w-0 flex-1 font-semibold">{exercise.name}</h2>
+                <span className="shrink-0 pr-1 text-xs text-zinc-500">{GROUP_LABELS[exercise.muscle_group] ?? ""}</span>
+              </div>
+              <div className="space-y-2">
+                {exercise.sets.map((set, setIndex) => (
+                  <SetRow
+                    key={set.id}
+                    index={setIndex}
+                    set={set}
+                    ghost={exercise.last?.sets[setIndex]}
+                    onChange={(patch) => changeSet(exerciseIndex, setIndex, patch)}
+                    onCommit={() => syncSet(exerciseIndex, setIndex)}
+                    onToggle={() => toggleComplete(exerciseIndex, setIndex)}
+                    onRemove={() => removeSet(exerciseIndex, setIndex)}
+                  />
+                ))}
+              </div>
+              <button onClick={() => addSet(exerciseIndex)} className="mt-2 w-full rounded-xl py-2.5 text-sm text-emerald-400 active:bg-zinc-800">
+                + Přidat sérii
+              </button>
+            </Card>
+          </div>
         ))}
 
         <Button variant="ghost" className="w-full" onClick={() => setPicking(true)}>
