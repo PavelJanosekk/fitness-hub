@@ -4,7 +4,7 @@ import { useDeleteWorkout, useExercises, useWorkout, type WorkoutSummary } from 
 import { formatDay, formatNumber, formatTime } from "../../lib/format";
 import { Card } from "../Layout";
 import { Button, Sheet } from "../ui";
-import { GROUP_LABELS } from "./ExercisePicker";
+import { GROUP_LABELS } from "./exercises";
 import { PrBadge } from "./PersonalRecords";
 
 const SET_TYPE_LABEL = { normal: "", warmup: "zahřívací", drop: "drop", failure: "do selhání" } as const;

@@ -1,8 +1,8 @@
 import datetime as dt
 import uuid
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
 from app.models.gym import MuscleGroup, SetType
 
@@ -11,14 +11,18 @@ class ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# Stripped before the length check, so "  " is rejected instead of saved as an empty name
+ExerciseName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+
+
 class ExerciseCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
+    name: ExerciseName
     muscle_group: MuscleGroup
     equipment: str | None = None
 
 
 class ExerciseUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=120)
+    name: ExerciseName | None = None
     muscle_group: MuscleGroup | None = None
     equipment: str | None = None
 

@@ -45,9 +45,19 @@ def list_exercises(session: SessionDep) -> list[Exercise]:
     return list(session.exec(select(Exercise).order_by(col(Exercise.name))).all())
 
 
+def _ensure_name_free(session: Session, name: str, exercise_id: int | None = None) -> None:
+    """Names are unique ignoring case, so "pull up" can't become a second Pull Up."""
+    query = select(Exercise.id).where(func.lower(Exercise.name) == name.lower())
+    if exercise_id is not None:
+        query = query.where(Exercise.id != exercise_id)
+    if session.exec(query).first() is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Exercise with this name already exists")
+
+
 @router.post("/exercises", response_model=ExerciseRead, status_code=status.HTTP_201_CREATED)
 def create_exercise(body: ExerciseCreate, session: SessionDep) -> Exercise:
-    exercise = Exercise(name=body.name.strip(), muscle_group=body.muscle_group, equipment=body.equipment)
+    _ensure_name_free(session, body.name)
+    exercise = Exercise(name=body.name, muscle_group=body.muscle_group, equipment=body.equipment)
     session.add(exercise)
     try:
         session.commit()
@@ -63,6 +73,8 @@ def update_exercise(exercise_id: int, body: ExerciseUpdate, session: SessionDep)
     exercise = session.get(Exercise, exercise_id)
     if exercise is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Exercise not found")
+    if body.name is not None:
+        _ensure_name_free(session, body.name, exercise_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(exercise, field, value)
     session.add(exercise)

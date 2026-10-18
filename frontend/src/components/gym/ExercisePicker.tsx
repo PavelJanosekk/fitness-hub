@@ -1,30 +1,17 @@
-import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Plus, Search } from "lucide-react";
+import { useState } from "react";
 import { type Exercise, useExercises } from "../../api/gym";
-import { Sheet } from "../ui";
-
-export const GROUP_LABELS: Record<string, string> = {
-  chest: "Hrudník",
-  back: "Záda",
-  legs: "Nohy",
-  shoulders: "Ramena",
-  arms: "Paže",
-  core: "Core",
-  full_body: "Celé tělo",
-  cardio: "Kardio",
-};
-
-const normalize = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+import { Chips, Sheet } from "../ui";
+import { ExerciseSheet } from "./ExerciseSheet";
+import { GROUP_LABELS, useExerciseFilter } from "./exercises";
 
 export function ExercisePicker({ onPick, onClose }: { onPick: (exercise: Exercise) => void; onClose: () => void }) {
   const exercises = useExercises();
-  const [query, setQuery] = useState("");
-  const [group, setGroup] = useState<string | null>(null);
-  const groups = Object.keys(GROUP_LABELS).filter((g) => exercises.data?.some((e) => e.muscle_group === g));
-  const filtered = useMemo(() => {
-    const needle = normalize(query.trim());
-    return (exercises.data ?? []).filter((e) => (group === null || e.muscle_group === group) && normalize(e.name).includes(needle));
-  }, [exercises.data, query, group]);
+  const { query, setQuery, group, setGroup, groups, filtered } = useExerciseFilter(exercises.data);
+  // A new exercise replaces the list while it is being created; saving it picks it right away
+  const [creating, setCreating] = useState(false);
+
+  if (creating) return <ExerciseSheet exercise={null} initialName={query.trim()} initialGroup={group} onClose={() => setCreating(false)} onSaved={onPick} />;
   return (
     <Sheet title="Přidat cvik" onClose={onClose} tall>
       <div className="sticky top-0 z-10 -mx-4 -mt-1 bg-zinc-900 px-4 pb-2 backdrop-blur-xl">
@@ -32,18 +19,7 @@ export function ExercisePicker({ onPick, onClose }: { onPick: (exercise: Exercis
           <Search size={18} className="text-zinc-500" />
           <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Hledat" className="min-h-11 w-full bg-transparent outline-none" />
         </label>
-        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="Partie">
-          {[null, ...groups].map((g) => (
-            <button
-              key={g ?? "all"}
-              aria-pressed={group === g}
-              onClick={() => setGroup(g)}
-              className={`min-h-9 shrink-0 rounded-full px-3 text-sm ${group === g ? "bg-emerald-500 font-medium text-on-accent" : "bg-zinc-800 text-zinc-300 active:bg-zinc-700"}`}
-            >
-              {g === null ? "Vše" : GROUP_LABELS[g]}
-            </button>
-          ))}
-        </div>
+        <Chips label="Partie" options={groups.map((g) => [g, GROUP_LABELS[g]] as const)} value={group} onChange={setGroup} allLabel="Vše" />
       </div>
       <ul className="divide-y divide-zinc-800">
         {filtered.map((e) => (
@@ -55,7 +31,12 @@ export function ExercisePicker({ onPick, onClose }: { onPick: (exercise: Exercis
           </li>
         ))}
       </ul>
-      {exercises.isSuccess && filtered.length === 0 && <p className="py-6 text-center text-sm text-zinc-500">Žádný cvik nenalezen.</p>}
+      {exercises.isSuccess && filtered.length === 0 && <p className="pt-6 pb-2 text-center text-sm text-zinc-500">Žádný cvik nenalezen.</p>}
+      {exercises.isSuccess && (
+        <button type="button" onClick={() => setCreating(true)} className="mt-2 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl text-sm text-emerald-400 active:bg-zinc-800">
+          <Plus size={16} /> {query.trim() ? `Vytvořit cvik „${query.trim()}“` : "Nový cvik"}
+        </button>
+      )}
     </Sheet>
   );
 }

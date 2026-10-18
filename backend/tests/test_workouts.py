@@ -235,3 +235,32 @@ def test_exercise_muscle_group_can_be_corrected(client: TestClient, exercises: d
 
     assert response.status_code == 200
     assert response.json()["muscle_group"] == "legs"
+
+
+def test_exercise_names_are_stripped_and_unique_ignoring_case(client: TestClient, exercises: dict[str, int]) -> None:
+    body = {"name": "  Cable Fly  ", "muscle_group": "chest", "equipment": "cable"}
+    created = client.post("/api/exercises", json=body)
+
+    assert created.status_code == 201
+    assert created.json()["name"] == "Cable Fly"
+    assert client.post("/api/exercises", json={"name": "pull up", "muscle_group": "back"}).status_code == 409
+    assert client.post("/api/exercises", json={"name": "   ", "muscle_group": "back"}).status_code == 422
+
+
+def test_exercise_can_be_renamed_but_not_onto_another(client: TestClient, exercises: dict[str, int]) -> None:
+    exercise_id = exercises["Back Extension"]
+
+    renamed = client.patch(f"/api/exercises/{exercise_id}", json={"name": " Hyperextension ", "equipment": "machine"})
+    # Changing only the case of its own name is not a conflict
+    recased = client.patch(f"/api/exercises/{exercise_id}", json={"name": "hyperextension"})
+    conflict = client.patch(f"/api/exercises/{exercise_id}", json={"name": "PULL UP"})
+
+    assert renamed.status_code == 200
+    assert renamed.json() == {
+        "id": exercise_id,
+        "name": "Hyperextension",
+        "muscle_group": "back",
+        "equipment": "machine",
+    }
+    assert recased.json()["name"] == "hyperextension"
+    assert conflict.status_code == 409

@@ -128,6 +128,44 @@ export function Segmented<T extends string | number>({
   );
 }
 
+/** One row of pill buttons; `null` is "all" when `allLabel` is given. */
+export function Chips<T extends string>({
+  options,
+  value,
+  onChange,
+  allLabel,
+  label,
+  wrap = false,
+}: {
+  options: readonly (readonly [T, string])[];
+  value: T | null;
+  onChange: (value: T | null) => void;
+  allLabel?: string;
+  label: string;
+  wrap?: boolean;
+}) {
+  const items: (readonly [T | null, string])[] = allLabel ? [[null, allLabel], ...options] : [...options];
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className={wrap ? "flex flex-wrap gap-1.5" : "-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"}
+    >
+      {items.map(([key, text]) => (
+        <button
+          key={key ?? "all"}
+          type="button"
+          aria-pressed={value === key}
+          onClick={() => onChange(key)}
+          className={`min-h-9 shrink-0 rounded-full px-3 text-sm ${value === key ? "bg-emerald-500 font-medium text-on-accent" : "bg-zinc-800 text-zinc-300 active:bg-zinc-700"}`}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Prev/next with "2 / 5" between; renders nothing for a single page. */
 export function Pager({ page, pages, onChange }: { page: number; pages: number; onChange: (page: number) => void }) {
   if (pages <= 1) return null;

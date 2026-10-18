@@ -44,6 +44,16 @@ export function saveActiveWorkout(workout: ActiveWorkout | null) {
   listeners.forEach((listener) => listener());
 }
 
+/** An edited exercise keeps its new name and muscle group in the workout in progress too. */
+export function updateActiveExercise(exercise: { id: number; name: string; muscle_group: string }) {
+  const workout = read();
+  if (!workout?.exercises.some((e) => e.exercise_id === exercise.id)) return;
+  saveActiveWorkout({
+    ...workout,
+    exercises: workout.exercises.map((e) => (e.exercise_id === exercise.id ? { ...e, name: exercise.name, muscle_group: exercise.muscle_group } : e)),
+  });
+}
+
 export function useActiveWorkout(): ActiveWorkout | null {
   return useSyncExternalStore(
     (listener) => {

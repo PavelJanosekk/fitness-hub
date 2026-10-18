@@ -6,7 +6,8 @@ import { moveItem, useDragReorder } from "../../lib/useDragReorder";
 import { uuid } from "../../lib/uuid";
 import { Card } from "../Layout";
 import { Button, Sheet, parseDecimal } from "../ui";
-import { ExercisePicker, GROUP_LABELS } from "./ExercisePicker";
+import { ExercisePicker } from "./ExercisePicker";
+import { GROUP_LABELS } from "./exercises";
 import { AddSetButton, SetLabel, TableHeader, cellInput, selectAll } from "./SetTable";
 
 type DraftSet = { set_type: SetType; weight: string; reps: string };

@@ -1,4 +1,5 @@
 import { type Mutation, type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { updateActiveExercise } from "../lib/activeWorkout";
 import { ApiError, api } from "./client";
 
 export type Exercise = { id: number; name: string; muscle_group: string; equipment: string | null };
@@ -68,6 +69,26 @@ export const useHistory = () =>
     queryFn: () => api<WorkoutSummary[]>("/api/workouts?limit=200"),
     select: (rows) => rows.map((w) => ({ ...w, prs: w.prs ?? [] })),
   });
+export type ExerciseInput = { name: string; muscle_group: string; equipment: string | null };
+
+/** Create or edit an exercise. Needs the server (it assigns the id), so it fails at once instead of queueing. */
+export function useSaveExercise() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    retry: 0,
+    mutationFn: ({ id, ...body }: ExerciseInput & { id?: number }) =>
+      id ? api<Exercise>(`/api/exercises/${id}`, { method: "PATCH", body }) : api<Exercise>("/api/exercises", { method: "POST", body }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData<Exercise[]>(gymKeys.exercises, (list) =>
+        [...(list ?? []).filter((e) => e.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      // Templates and history show exercise names from the server
+      queryClient.invalidateQueries({ queryKey: ["workouts"] });
+      updateActiveExercise(saved);
+    },
+  });
+}
+
 export function useSaveTemplate() {
   const queryClient = useQueryClient();
   return useMutation({

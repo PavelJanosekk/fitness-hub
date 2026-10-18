@@ -1,6 +1,7 @@
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, CloudOff, GripVertical, Pencil } from "lucide-react";
+import { Check, ChevronRight, CloudOff, GripVertical, List, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import {
   type Exercise,
   fetchLastPerformance,
@@ -173,7 +174,14 @@ function StartView() {
 
   return (
     <>
-      <PageHeader title="Gym" />
+      <PageHeader
+        title="Gym"
+        action={
+          <Link to="/gym/exercises" className="flex items-center gap-1.5 rounded-full p-2 text-sm text-zinc-400 active:bg-zinc-800">
+            <List size={18} /> Cviky
+          </Link>
+        }
+      />
       <div className="space-y-3">
         {active.data && (
           <Card className="border-emerald-700">
