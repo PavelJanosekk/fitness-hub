@@ -5,7 +5,7 @@
 1. ✅ `tailscale serve` switched (2026-10-17): https://biggyserver.tailfff1d3.ts.net → prod 8010, `:8443` → dev Vite 5173. The iPhone's Tailscale was offline (last seen 2 days ago) at that point.
 2. ✅ iPhone: PWA installed, voice works. Keep an eye on the GymLogger in real use.
 3. Integrations: ✅ Strava, ✅ Health Connect. **TODO later:** the iOS Shortcut (the user will do it with guidance).
-4. **Habits module ("Rutina") proposed** in `docs/habits-module-spec.md` (draft + mockup); waiting for the user's answers to H1–H4 before implementing.
+4. **Habits module ("Rutina", E20) in progress** — spec `docs/habits-module-spec.md`, step checklist under Phase 6 below.
 5. Phase 5 done except deferred barcode scanning. The user starts the KT history import in Nastavení (prod). The user still has to put the KT credentials into `.env` before 5.5.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
@@ -32,6 +32,7 @@
 | E17 | 2026-10-17 | **Run page redesign.** Volume chart on top (10 weeks, km vs plan). Current week = header + progress bar + list of its runs (done = check + greyed, Strava link, tap jumps to the run in "Poslední běhy"). "Plán po týdnech" = expandable tiles (no bars), 4 per page. Planned runs come from the day-by-day schedule lines in `04_timeline_plan.md` (code blocks under a dated heading, weekday must match the date) → `training_days` (migration 0009, replaced on every sync), paired with actual runs by date; weeks without a schedule fall back to long run + quality + easy remainder derived from the weekly table. `/api/running/weeks` now returns `days` and `runs` per week. Confirmed by the user. |
 | E18 | 2026-10-17 | **Gym page rework.** Templates are now a hand-managed entity (`workout_templates`, migration 0010, seeded once from history: names done ≥3 times) with create/edit/delete in the UI; starting one pre-fills its kg × reps. Unfinished workouts can be discarded (server delete, queued in the gym scope). History is paged, rows open a read-only detail, PR badges are computed server-side (heaviest weight → else Epley 1RM → else reps for bodyweight; needs an earlier workout; warm-ups excluded). Template query key bumped to `v2` because the phone's persisted cache holds the old shape. Confirmed by the user. |
 | E19 | 2026-10-18 | **Switchable themes** (user request): the current look stays as *Minimalistický* (default), plus *Moderní* (design left to the agent: midnight glass cards over a violet/cyan/pink aurora, violet gradient accent, SF Pro Rounded, floating pill tab bar) and *Zen* ("Japanese zen living room": washi paper beige, sumi ink, matcha/sage accent, earth-tone status colors, serif headings, faint ensō, hanko seal after page titles, a dark wooden band under the iOS status bar because `black-translucent` keeps its text white). Switcher in Nastavení → Vzhled, stored per device in localStorage (`fitness-hub-theme`), applied before first paint by an inline script in `index.html`. Mechanism: `<html data-theme>` remaps the Tailwind palette names the pages already use (zinc = neutral roles, emerald = accent, amber/red/sky/violet = status) plus `ui-*` component classes for shape; charts get one validated palette per theme. Sheets are portaled to `<body>` because glass cards (backdrop-filter) would trap `fixed` children. |
+| E20 | 2026-10-18 | **Habits module "Rutina"** (`docs/habits-module-spec.md`, user answers H1–H4): 6th tab "Rutina" (Den / Měsíc) + a "Dnešní rutina" card on Přehled; auto-completion rules from app data in v1; weekly targets (×/week) and points + bonus; seeded once with the user's own sheet list in Czech. All review fixes R1–R12 apply (idempotent PUT per habit/day, PK (habit_id, date), streak/start/archive rules, skill enum, coach tools `get_habit_summary` + `set_habits_done`). RPG layer later. |
 | E20 | 2026-10-18 | **Gemini model fallback** (user request: the coach failed once `gemini-3.7-flash` used its 20 free requests/day; every AFC tool round is one request). `GEMINI_MODEL_FALLBACKS` (comma-separated) is tried in order after the assistant's own model on 429 or 503, for both assistants. A turn that already ran a writing tool (`log_*`) is not re-run, so nothing is logged twice: the user gets the 429. Live check 2026-10-18: 3.7-flash and 3.5-flash exhausted, 2.5-flash retired (404), 3.8-flash answered with tools, 3.1-flash-lite answered (once 503 under load). |
 | E14 | 2026-10-17 | **Separate dev stack.** Prod is compose project `fitness-hub` (existing DB volume with the real data, backups) and stays up on 8010. Dev is project `fitness-hub-dev` with its own DB seeded from the newest prod backup, the scheduler off, Strava tokens wiped, backend on 8020 and Vite on 5173. `./dev` wraps the dev compose command. tailscale serve: :443 → prod, :8443 → dev Vite. |
 
@@ -49,7 +50,7 @@
 | O4 | ✅ E3: bulk seed | Before Phase 5 |
 | O5 | ✅ Live list checked: fast = `gemini-3.7-flash` (works with tool calls + typed args; served as 3.8-flash). **The key is on the free tier: Pro = 0 quota.** Smart tier = same Flash with high thinking until billing is enabled. Free-tier data may be used by Google; paid tier not. User: no paid calls for now | Phase 2 |
 | O6 | ✅ `tailscale serve` (E13) | Phase 4 |
-| O7 | Habits module decisions H1–H4 (`docs/habits-module-spec.md`) | Before the habits module |
+| O7 | ✅ Habits module decisions H1–H4 → E20 | Before the habits module |
 
 ## Phase checklist
 
@@ -107,6 +108,15 @@ Work in small steps; after each step **commit + push + tick here** (the user ask
 - [x] 5.5 KT importer: `kaloricketabulky-sdk==0.1.1` (+ `env-proxy==1.7.0`; reviewed, >14 days), migration 0008 (`meal_logs.source`, `kt_import_state`), throttled resumable background job (auto-resumes after restart), weights fill empty days, days logged in the app skipped; Settings card. Dev run matched KT 1:1
 - [x] 5.6a Frontend: "Jídlo" tab (5th nav item; day switcher, kcal/macro bars vs targets, assistant text + voice with meal draft cards, meals with inline grams + delete, manual add from the food DB, micros grid dimmed under 70 % coverage, targets sheet) + `/nutrition/foods` database page (search, source filter, edit/create/delete)
 - [ ] 5.6b Barcode scanning: **deferred by the user** (needs `@zxing/browser` for iOS Safari)
+
+### Phase 6: Habits module "Rutina" (E20)
+`docs/habits-module-spec.md`. Steps, each committed:
+- [ ] 6.1 Backend: models + migration 0012 (tables + one-time seed of the user's list), `services/habits.py` (board, day state, streaks, rates, auto rules), `/api/habits` router, tests
+- [ ] 6.2 Coach tools `get_habit_summary`, `set_habits_done` + habit list in the coach prompt, tests
+- [ ] 6.3 Frontend: API + persisted offline mutations, `lib/habits.ts` derivations, Rutina tab (Den view), nav 6th tab
+- [ ] 6.4 Frontend: Měsíc view (calendar heatmap, matrix, charts)
+- [ ] 6.5 Frontend: edit mode (reorder, archive) + add/edit sheet; Přehled card
+- [ ] 6.6 Verify on dev (tests, typecheck, headless screenshots in all themes), deploy to prod (backup first)
 
 ## Backlog (ideas, not accepted)
 - D1 `Exercise.secondary_muscles` for better volume analysis

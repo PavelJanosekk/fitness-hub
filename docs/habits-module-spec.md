@@ -1,7 +1,6 @@
-# Habits / routine module ("Rutina") — DRAFT, awaiting decisions
+# Habits / routine module ("Rutina")
 
-Status: **proposal** (2026-10-18). Nothing here is binding until the open decisions (H1–H4) are answered and
-recorded in `docs/PROGRESS.md`. Visual mockup (private claude.ai canvas): https://claude.ai/artifact/TA62pfjToHJyZKVbUtaQQN
+Status: **accepted** (2026-10-18, decision E20 in `docs/PROGRESS.md`): H1 a, H2 yes, H3 both, H4 the user's list. Visual mockup (private claude.ai canvas): https://claude.ai/artifact/TA62pfjToHJyZKVbUtaQQN
 (1 Den, 2 Měsíc, 3 Přidat/upravit, 4 Přehled card, 5 RPG concept).
 
 ## Goal (user, 2026-10-18)
@@ -63,12 +62,11 @@ protein ≥ daily target. A manual tick still works as an override (e.g. trainin
 - **Edit mode**: drag reorder, archive, add/edit sheet (name, daily/weekly, ×/week, skill, points, bonus, auto rule).
 - Small celebration on a perfect day. Persisted query key versioned from day one.
 
-## Open decisions
-- **H1** Navigation: 6th tab "Rutina" + Přehled card (recommended) / Přehled card only / Rutina replaces Kouč in
-  the tab bar.
-- **H2** Auto-completion rules in v1 (recommended) or later.
-- **H3** Weekly targets + points/bonus (recommended) / points only / plain checkboxes.
-- **H4** Seed: the user's sheet list in Czech (recommended) / Gemini's defaults / empty.
+## Decisions (answered 2026-10-18 → E20)
+- **H1** Navigation → **6th tab "Rutina" + Přehled card**.
+- **H2** Auto-completion rules → **in v1**.
+- **H3** → **weekly targets and points + bonus**.
+- **H4** Seed → **the user's sheet list in Czech**.
 
 ## RPG layer — ideas for later (not accepted)
 Everything below can be computed retroactively from habit logs + existing workouts, runs, meals and steps, so v1
