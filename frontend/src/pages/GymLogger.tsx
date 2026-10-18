@@ -28,7 +28,7 @@ import { VoiceRecorder } from "../components/VoiceRecorder";
 import { errorText } from "./AiCoach";
 import { RestTimer, PRESETS, restPreset, setRestPreset, startRest } from "../components/RestTimer";
 import { ExercisePicker } from "../components/gym/ExercisePicker";
-import { AddSetButton, SetLabel, TableHeader, cellInput } from "../components/gym/SetTable";
+import { AddSetButton, SetLabel, TableHeader, cellInput, selectAll } from "../components/gym/SetTable";
 import { PrBadges } from "../components/gym/PersonalRecords";
 import { TemplateEditor } from "../components/gym/TemplateEditor";
 import { WorkoutDetail } from "../components/gym/WorkoutDetail";
@@ -539,6 +539,7 @@ function SetRow({
         value={set.weight}
         onChange={(e) => onChange({ weight: e.target.value.replace(/[^\d.,]/g, "") })}
         onBlur={() => onCommit()}
+        onFocus={selectAll}
         className={cellInput(set.completed)}
       />
       <input
@@ -548,6 +549,7 @@ function SetRow({
         value={set.reps}
         onChange={(e) => onChange({ reps: e.target.value.replace(/\D/g, "") })}
         onBlur={() => onCommit()}
+        onFocus={selectAll}
         className={cellInput(set.completed)}
       />
       <button

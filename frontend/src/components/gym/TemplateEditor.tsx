@@ -7,7 +7,7 @@ import { uuid } from "../../lib/uuid";
 import { Card } from "../Layout";
 import { Button, Sheet, parseDecimal } from "../ui";
 import { ExercisePicker, GROUP_LABELS } from "./ExercisePicker";
-import { AddSetButton, SetLabel, TableHeader, cellInput } from "./SetTable";
+import { AddSetButton, SetLabel, TableHeader, cellInput, selectAll } from "./SetTable";
 
 type DraftSet = { set_type: SetType; weight: string; reps: string };
 type DraftExercise = { exercise_id: number; name: string; muscle_group: string; sets: DraftSet[] };
@@ -112,6 +112,7 @@ export function TemplateEditor({ template, exercises, onClose }: { template: Tem
                       placeholder="kg"
                       value={set.weight}
                       onChange={(e) => patchSet(index, setIndex, { weight: e.target.value.replace(/[^\d.,]/g, "") })}
+                      onFocus={selectAll}
                       className={cellInput()}
                     />
                     <input
@@ -120,6 +121,7 @@ export function TemplateEditor({ template, exercises, onClose }: { template: Tem
                       placeholder="opak."
                       value={set.reps}
                       onChange={(e) => patchSet(index, setIndex, { reps: e.target.value.replace(/\D/g, "") })}
+                      onFocus={selectAll}
                       className={cellInput()}
                     />
                     <button
