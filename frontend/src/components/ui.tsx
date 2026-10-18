@@ -20,19 +20,27 @@ export function Button({
   );
 }
 
-/** Text input that opens the decimal keypad on phones and accepts a Czech decimal comma. */
+/** Select the whole value on focus, so typing replaces it (deferred: iOS Safari drops a selection made in focus). */
+export const selectAll = (e: React.FocusEvent<HTMLInputElement>) => {
+  const input = e.currentTarget;
+  setTimeout(() => input.setSelectionRange(0, input.value.length), 0);
+};
+
+/** Text input that opens the decimal keypad on phones and accepts a Czech decimal comma; focus selects the value. */
 export function DecimalInput({
   value,
   onChange,
   placeholder,
   ariaLabel,
   className = "",
+  autoFocus = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   ariaLabel: string;
   className?: string;
+  autoFocus?: boolean;
 }) {
   return (
     <input
@@ -40,6 +48,8 @@ export function DecimalInput({
       inputMode="decimal"
       aria-label={ariaLabel}
       placeholder={placeholder}
+      autoFocus={autoFocus}
+      onFocus={selectAll}
       value={value}
       onChange={(e) => onChange(e.target.value.replace(/[^\d.,]/g, ""))}
       className={`min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-lg tabular-nums outline-none focus:border-emerald-500 ${className}`}

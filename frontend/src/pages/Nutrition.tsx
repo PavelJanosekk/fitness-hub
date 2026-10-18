@@ -235,7 +235,7 @@ function ItemRow({ item, mealType, date }: { item: MealItem; mealType: MealType;
       {item.food_id ? (
         editing !== null ? (
           <form onSubmit={(e) => (e.preventDefault(), commit())} className="w-20">
-            <DecimalInput ariaLabel="Gramy" value={editing} onChange={setEditing} className="!min-h-9 text-right !text-base" />
+            <DecimalInput ariaLabel="Gramy" value={editing} onChange={setEditing} autoFocus className="!min-h-9 text-right !text-base" />
           </form>
         ) : (
           <button onClick={() => setEditing(String(item.amount_g ?? "").replace(".", ","))} className="rounded px-1.5 py-1 tabular-nums text-zinc-400 active:bg-zinc-800">

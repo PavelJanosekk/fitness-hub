@@ -1,4 +1,4 @@
-import { type FocusEvent, useState } from "react";
+import { useState } from "react";
 import type { SetType } from "../../api/gym";
 import { Button, Sheet } from "../ui";
 
@@ -15,10 +15,7 @@ export const cellInput = (completed = false) =>
   `h-9 w-full min-w-0 rounded-lg ${completed ? "bg-transparent" : "bg-zinc-800"} text-center text-base font-semibold tabular-nums outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-sm placeholder:font-normal placeholder:text-zinc-600`;
 
 /** Select the whole value on focus so typing replaces it; deferred because iOS resets the selection after focus. */
-export const selectAll = (e: FocusEvent<HTMLInputElement>) => {
-  const input = e.currentTarget;
-  setTimeout(() => input.setSelectionRange(0, input.value.length), 0);
-};
+export { selectAll } from "../ui";
 
 export function TableHeader({ columns, className }: { columns: string[]; className: string }) {
   return (
