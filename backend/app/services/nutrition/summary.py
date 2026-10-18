@@ -2,7 +2,7 @@
 
 Coverage = share of the day's kcal that comes from items whose food has a value for that nutrient. A low
 coverage means "unknown", not "deficient": quick-add items and foods without micros (KT, many OFF products)
-lower it. A food without a micro borrows it from its micros reference food, scaled by the ratio (C10).
+lower it. A food without a micro borrows it from its USDA references (E26, `micro_refs.py`).
 """
 
 import datetime as dt
@@ -10,7 +10,6 @@ import uuid
 
 from pydantic import BaseModel
 from sqlalchemy import or_
-from sqlalchemy.orm import aliased
 from sqlmodel import Session, col, exists, select
 
 from app.models.gym import Workout
@@ -18,6 +17,7 @@ from app.models.nutrition import Food, MealLog, MealLogItem, MealType, Nutrition
 from app.models.running import Activity
 from app.schemas.nutrition import MealItemRead, MealRead
 from app.services.nutrition import ITEM_MACROS, item_values
+from app.services.nutrition.micro_refs import Ref, effective_micros, refs_for
 from app.services.nutrition.nutrients import ALL, MICRO_KEYS
 from app.timeutils import day_bounds
 
@@ -41,23 +41,13 @@ class DaySummary(BaseModel):
     nutrients: list[NutrientTotal]
 
 
-def food_micros(food: Food | None, reference: Food | None) -> dict[str, float]:
-    if food is None:
-        return {}
-    micros = dict(food.micronutrients or {})
-    if reference is not None and food.micros_reference_ratio:
-        for key, value in (reference.micronutrients or {}).items():
-            micros.setdefault(key, round(value * food.micros_reference_ratio, 4))
-    return micros
-
-
-def _item_nutrients(item: MealLogItem, food: Food | None, reference: Food | None) -> dict[str, float | None]:
+def _item_nutrients(item: MealLogItem, food: Food | None, refs: list[Ref] | None) -> dict[str, float | None]:
     """Every tracked nutrient for one item; a quick-add item knows only its manual macros."""
     values: dict[str, float | None] = dict.fromkeys((n.key for n in ALL), None) | item_values(item, food)
     if food is None or item.amount_g is None:
         return values
     scale = item.amount_g / 100
-    micros = food_micros(food, reference)
+    micros = effective_micros(food, refs)
     for nutrient in ALL:
         if nutrient.key in ITEM_MACROS:
             continue
@@ -66,13 +56,11 @@ def _item_nutrients(item: MealLogItem, food: Food | None, reference: Food | None
     return values
 
 
-def _rows(session: Session, day: dt.date) -> list[tuple[MealLog, MealLogItem, Food | None, Food | None]]:
-    reference = aliased(Food)
+def _rows(session: Session, day: dt.date) -> list[tuple[MealLog, MealLogItem, Food | None]]:
     statement = (
-        select(MealLog, MealLogItem, Food, reference)
+        select(MealLog, MealLogItem, Food)
         .join(MealLogItem, col(MealLogItem.meal_log_id) == MealLog.id)
         .outerjoin(Food, col(Food.id) == MealLogItem.food_id)
-        .outerjoin(reference, col(reference.id) == Food.micros_reference_food_id)
         .where(MealLog.logged_date == day)
         .order_by(col(MealLog.created_at))
     )
@@ -97,7 +85,7 @@ def read_item(item: MealLogItem, food: Food | None) -> MealItemRead:
 
 def day_meals(session: Session, day: dt.date) -> list[MealRead]:
     meals: dict[uuid.UUID, MealRead] = {}
-    for meal, item, food, _ in _rows(session, day):
+    for meal, item, food in _rows(session, day):
         read = meals.setdefault(
             meal.id,
             MealRead(id=meal.id, logged_date=meal.logged_date, meal_type=meal.meal_type, notes=meal.notes, items=[]),
@@ -129,7 +117,8 @@ def _targets(profile: NutritionProfile | None, training_day: bool) -> dict[str, 
 
 def day_summary(session: Session, day: dt.date) -> DaySummary:
     rows = _rows(session, day)
-    per_item = [_item_nutrients(item, food, ref) for _, item, food, ref in rows]
+    refs = refs_for(session, (food.id for _, _, food in rows if food is not None))  # type: ignore[misc]
+    per_item = [_item_nutrients(item, food, refs.get(food.id) if food else None) for _, item, food in rows]  # type: ignore[arg-type]
     day_kcal = sum(values["kcal"] or 0 for values in per_item)
     training_day = is_training_day(session, day)
     targets = _targets(session.get(NutritionProfile, 1), training_day)

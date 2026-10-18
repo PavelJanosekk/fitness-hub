@@ -10,8 +10,9 @@ from sqlmodel import Session, select
 
 from app.main import app
 from app.models.gym import Workout
-from app.models.nutrition import Food, FoodAlias, FoodSource
+from app.models.nutrition import Food, FoodAlias, FoodSource, MicrosStatus
 from app.routers.nutrition import get_http
+from app.services.nutrition.micro_refs import set_refs
 from app.timeutils import day_bounds
 
 D = dt.date(2026, 10, 10)
@@ -65,20 +66,21 @@ def test_items_upsert_join_the_meal_and_edit_in_place(client: TestClient, sessio
 
 def test_summary_reports_coverage_and_borrows_reference_micros(client: TestClient, session: Session) -> None:
     chicken = food(session, micros={"iron_mg": 1.0, "vitamin_c_mg": 0.0}, kcal=200, name_en="Chicken")
-    ham = food(
-        session, FoodSource.openfoodfacts, kcal=100, name_cs="Šunka", micros_reference_food_id=chicken.id,
-        micros_reference_ratio=0.5,
-    )  # fmt: skip
+    pepper = food(session, micros={"iron_mg": 2.0, "vitamin_c_mg": 100.0}, kcal=30, name_en="Pepper")
+    ham = food(session, FoodSource.openfoodfacts, micros={"vitamin_c_mg": 5.0}, kcal=100, name_cs="Šunka")
+    set_refs(session, ham, [(chicken.id, 0.5), (pepper.id, 0.25)], MicrosStatus.mapped)
+    session.commit()
     plain = food(session, FoodSource.kaloricke_tabulky, kcal=100, name_cs="Chléb")  # no micros at all
     put_item(client, chicken.id, 100)  # 200 kcal, iron 1.0
-    put_item(client, ham.id, 100)  # 100 kcal, iron 0.5 borrowed
+    put_item(client, ham.id, 100)  # 100 kcal, iron 0.5 + 0.5 borrowed, its own vitamin C wins
     put_item(client, plain.id, 100)  # 100 kcal, iron unknown
     client.post("/api/nutrition/quick-add", json={"id": str(uuid.uuid4()), "date": D.isoformat(), "kcal": 100})
 
     summary = client.get("/api/nutrition/summary", params={"date": D.isoformat()}).json()
 
     iron = nutrient(summary, "iron_mg")
-    assert (iron["amount"], iron["coverage"], iron["target"]) == (1.5, 0.6, 14)
+    assert (iron["amount"], iron["coverage"], iron["target"]) == (2.0, 0.6, 14)
+    assert nutrient(summary, "vitamin_c_mg")["amount"] == 5.0
     assert nutrient(summary, "kcal")["amount"] == 500
     assert nutrient(summary, "fiber_g") | {"label": None} == {
         "key": "fiber_g", "label": None, "unit": "g", "amount": None, "coverage": 0.0, "target": 25, "percent": None,

@@ -29,6 +29,7 @@ from app.models.integrations import IntegrationToken  # noqa: E402
 from app.models.nutrition import (  # noqa: E402
     Food,
     FoodAlias,
+    FoodMicroRef,
     FoodPortion,
     KTImportState,
     MealLog,
@@ -52,6 +53,7 @@ __all__ = [
     "Exercise",
     "Food",
     "FoodAlias",
+    "FoodMicroRef",
     "FoodPortion",
     "Habit",
     "HabitLog",

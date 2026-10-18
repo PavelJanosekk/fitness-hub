@@ -29,6 +29,14 @@ class FoodSource(StrEnum):
     recipe = "recipe"  # values derived from recipe_components / recipe_yield_g
 
 
+class MicrosStatus(StrEnum):
+    """Where a food stands with micronutrient references (E26). Null = not tried yet (USDA foods never need it)."""
+
+    mapped = "mapped"  # references set automatically (agent mapping file, Gemini mapper)
+    unmatched = "unmatched"  # tried, nothing in USDA fits (e.g. shirataki)
+    manual = "manual"  # the user edited the references: the mapper never touches it again
+
+
 class Sex(StrEnum):
     male = "male"
     female = "female"
@@ -44,6 +52,7 @@ class Food(SQLModel, table=True):
     __tablename__ = "foods"
     __table_args__ = (
         one_of("source", FoodSource),
+        one_of("micros_status", MicrosStatus),
         CheckConstraint("name_cs IS NOT NULL OR name_en IS NOT NULL", name="has_name"),
         CheckConstraint("kcal >= 0 AND protein_g >= 0 AND carbs_g >= 0 AND fat_g >= 0", name="macros_non_negative"),
     )
@@ -66,9 +75,8 @@ class Food(SQLModel, table=True):
     fiber_g: float | None = None
     salt_g: float | None = None
     micronutrients: dict[str, float] = Field(default_factory=dict, sa_type=JSONB)
-    # Micros estimated from another food, e.g. 92 % chicken ham → USDA chicken * 0.92 (C10)
-    micros_reference_food_id: int | None = Field(default=None, foreign_key="foods.id", ondelete="SET NULL")
-    micros_reference_ratio: float | None = None
+    # Micros the food doesn't know itself come from its FoodMicroRef rows (E26)
+    micros_status: str | None = None
     recipe_yield_g: float | None = None  # cooked weight of a recipe
     created_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
     updated_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
@@ -76,6 +84,21 @@ class Food(SQLModel, table=True):
     @property
     def name(self) -> str:
         return self.name_cs or self.name_en or ""
+
+
+class FoodMicroRef(SQLModel, table=True):
+    """A USDA food a food borrows micronutrients from (E26, generalizing C10): 92 % chicken ham → USDA chicken
+    0.92; a home recipe → its ingredients. `grams_per_g` = grams of the reference in one gram of the food."""
+
+    __tablename__ = "food_micro_refs"
+    __table_args__ = (
+        CheckConstraint("grams_per_g > 0 AND grams_per_g <= 5", name="grams_per_g_range"),
+        CheckConstraint("food_id <> ref_food_id", name="not_self"),
+    )
+
+    food_id: int = Field(foreign_key="foods.id", ondelete="CASCADE", primary_key=True)
+    ref_food_id: int = Field(foreign_key="foods.id", ondelete="CASCADE", primary_key=True, index=True)
+    grams_per_g: float
 
 
 class FoodAlias(SQLModel, table=True):
