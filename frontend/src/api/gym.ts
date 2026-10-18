@@ -57,6 +57,9 @@ export const gymKeys = {
   history: ["workouts", "history", "v2"] as const, // v2: summaries gained `prs`; older persisted ones lack it
   workout: (id: string) => ["workouts", id] as const,
   last: (exerciseId: number) => ["exercises", exerciseId, "last"] as const,
+  // Under "workouts" / "exercises", so finishing a workout or editing a set refreshes the charts too
+  stats: ["workouts", "stats", "v1"] as const,
+  progression: (exerciseId: number) => ["exercises", exerciseId, "progression", "v1"] as const,
 };
 
 export const useExercises = () =>
@@ -69,6 +72,42 @@ export const useHistory = () =>
     queryFn: () => api<WorkoutSummary[]>("/api/workouts?limit=200"),
     select: (rows) => rows.map((w) => ({ ...w, prs: w.prs ?? [] })),
   });
+export type StatsDay = { date: string; workouts: number; sets: number; volume_kg: number };
+export type StatsWeek = {
+  week_start: string;
+  workouts: number;
+  sets: Record<string, number>;
+  volume_kg: Record<string, number>;
+  muscles: Record<string, number>;
+  unclassified_sets: number;
+};
+export type StatsExercise = { exercise_id: number; name: string; muscle_group: string; sessions: number; last_date: string };
+export type GymStats = { days: StatsDay[]; weeks: StatsWeek[]; exercises: StatsExercise[] };
+export type PrKind = PersonalRecord["kind"];
+export type ProgressionSession = {
+  workout_id: string;
+  date: string;
+  sets: number;
+  volume_kg: number;
+  max_weight: number | null;
+  max_weight_reps: number | null;
+  e1rm: number | null;
+  e1rm_set: string | null;
+  max_reps: number | null;
+  pr: PrKind[];
+};
+export type ExerciseProgression = { exercise_id: number; name: string; weighted: boolean; sessions: ProgressionSession[] };
+
+export const STATS_WEEKS = 26;
+export const useGymStats = () =>
+  useQuery({ queryKey: gymKeys.stats, queryFn: () => api<GymStats>(`/api/workouts/stats?weeks=${STATS_WEEKS}`) });
+export const useProgression = (exerciseId: number | null) =>
+  useQuery({
+    queryKey: gymKeys.progression(exerciseId ?? 0),
+    queryFn: () => api<ExerciseProgression>(`/api/exercises/${exerciseId}/progression`),
+    enabled: exerciseId !== null,
+  });
+
 export type ExerciseInput = { name: string; muscle_group: string; equipment: string | null };
 
 /** Create or edit an exercise. Needs the server (it assigns the id), so it fails at once instead of queueing. */

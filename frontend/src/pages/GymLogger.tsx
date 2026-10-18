@@ -1,7 +1,7 @@
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, CloudOff, GripVertical, List, Pencil } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import {
   type Exercise,
   fetchLastPerformance,
@@ -89,6 +89,13 @@ function templateSets(sets: TemplateSet[], last: LastPerformance | null): LocalS
 
 const HISTORY_PAGE_SIZE = 8;
 
+// The charts (recharts) load only when the Grafy tab is opened
+const GymStats = lazy(() => import("../components/gym/GymStats").then((m) => ({ default: m.GymStats })));
+const VIEWS = [
+  ["log", "Trénink"],
+  ["stats", "Grafy"],
+] as const;
+
 export function GymLogger() {
   const workout = useActiveWorkout();
   return (
@@ -111,6 +118,8 @@ function StartView() {
   const [viewing, setViewing] = useState<WorkoutSummary | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [historyPage, setHistoryPage] = useState(0);
+  const [params, setParams] = useSearchParams();
+  const view = params.get("v") === "stats" ? "stats" : "log";
 
   const discardOpen = (id: string) => {
     discard({ id });
@@ -183,83 +192,92 @@ function StartView() {
         }
       />
       <div className="space-y-3">
-        {active.data && (
-          <Card className="border-emerald-700">
-            <h2 className="font-semibold">Rozdělaný trénink</h2>
-            <p className="mb-3 text-sm text-zinc-400">
-              {active.data.name} · od {formatDay(active.data.started_at)} {formatTime(active.data.started_at)} · {active.data.sets.length} sérií
-            </p>
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <Button onClick={() => resume(active.data!)}>Pokračovat</Button>
-              <Button variant="danger" onClick={() => setConfirmDiscard(true)}>
-                Zahodit
-              </Button>
-            </div>
-          </Card>
-        )}
+        <Segmented options={VIEWS} value={view} onChange={(v) => setParams(v === "stats" ? { v } : {}, { replace: true })} />
+        {view === "stats" ? (
+          <Suspense fallback={<p className="text-zinc-500">Načítám…</p>}>
+            <GymStats />
+          </Suspense>
+        ) : (
+          <>
+            {active.data && (
+              <Card className="border-emerald-700">
+                <h2 className="font-semibold">Rozdělaný trénink</h2>
+                <p className="mb-3 text-sm text-zinc-400">
+                  {active.data.name} · od {formatDay(active.data.started_at)} {formatTime(active.data.started_at)} · {active.data.sets.length} sérií
+                </p>
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                  <Button onClick={() => resume(active.data!)}>Pokračovat</Button>
+                  <Button variant="danger" onClick={() => setConfirmDiscard(true)}>
+                    Zahodit
+                  </Button>
+                </div>
+              </Card>
+            )}
 
-        <Card>
-          <h2 className="mb-2 font-semibold">Začít trénink</h2>
-          <div className="space-y-1.5">
-            {templates.data?.map((t) => (
-              <div key={t.id} className="flex items-stretch gap-1 rounded-xl bg-zinc-800/70">
-                <button disabled={starting} onClick={() => start(t.name, t)} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left active:bg-zinc-700">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="truncate font-medium">{t.name}</span>
-                      <span className="shrink-0 text-xs text-zinc-500">
-                        {t.exercises.length} cviků · {t.exercises.reduce((n, e) => n + e.sets.length, 0)} sérií
-                      </span>
-                    </div>
-                    <div className="truncate text-xs text-zinc-400">{t.exercises.map((e) => e.name).join(", ")}</div>
+            <Card>
+              <h2 className="mb-2 font-semibold">Začít trénink</h2>
+              <div className="space-y-1.5">
+                {templates.data?.map((t) => (
+                  <div key={t.id} className="flex items-stretch gap-1 rounded-xl bg-zinc-800/70">
+                    <button disabled={starting} onClick={() => start(t.name, t)} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left active:bg-zinc-700">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2">
+                          <span className="truncate font-medium">{t.name}</span>
+                          <span className="shrink-0 text-xs text-zinc-500">
+                            {t.exercises.length} cviků · {t.exercises.reduce((n, e) => n + e.sets.length, 0)} sérií
+                          </span>
+                        </div>
+                        <div className="truncate text-xs text-zinc-400">{t.exercises.map((e) => e.name).join(", ")}</div>
+                      </div>
+                      <ChevronRight size={18} className="shrink-0 text-zinc-500" />
+                    </button>
+                    <button
+                      aria-label={`Upravit šablonu ${t.name}`}
+                      onClick={() => setEditing(t)}
+                      className="flex w-11 shrink-0 items-center justify-center rounded-xl text-zinc-400 active:bg-zinc-700"
+                    >
+                      <Pencil size={16} />
+                    </button>
                   </div>
-                  <ChevronRight size={18} className="shrink-0 text-zinc-500" />
-                </button>
-                <button
-                  aria-label={`Upravit šablonu ${t.name}`}
-                  onClick={() => setEditing(t)}
-                  className="flex w-11 shrink-0 items-center justify-center rounded-xl text-zinc-400 active:bg-zinc-700"
-                >
-                  <Pencil size={16} />
-                </button>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <Button variant="ghost" disabled={starting} onClick={() => start("Trénink")}>
-              Prázdný trénink
-            </Button>
-            <Button variant="ghost" className="px-2 whitespace-nowrap" onClick={() => setEditing("new")}>
-              + Nová šablona
-            </Button>
-          </div>
-        </Card>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button variant="ghost" disabled={starting} onClick={() => start("Trénink")}>
+                  Prázdný trénink
+                </Button>
+                <Button variant="ghost" className="px-2 whitespace-nowrap" onClick={() => setEditing("new")}>
+                  + Nová šablona
+                </Button>
+              </div>
+            </Card>
 
-        <Card>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="font-semibold">Historie</h2>
-            <Pager page={shownPage} pages={pages} onChange={setHistoryPage} />
-          </div>
-          <ul className="divide-y divide-zinc-800">
-            {workouts.slice(shownPage * HISTORY_PAGE_SIZE, (shownPage + 1) * HISTORY_PAGE_SIZE).map((w) => (
-              <li key={w.id}>
-                <button onClick={() => setViewing(w)} className="flex w-full items-center gap-2 py-2.5 text-left text-sm active:bg-zinc-800/50">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium">{w.name}</div>
-                    <div className="text-xs text-zinc-400">
-                      {formatDay(w.started_at)} · {w.set_count} sérií
-                      {w.duration_min !== null && ` · ${w.duration_min} min${w.ended_by === "user" ? "" : " (odhad)"}`}
-                    </div>
-                    <PrBadges prs={w.prs} />
-                  </div>
-                  <div className="shrink-0 tabular-nums text-zinc-300">{formatNumber(w.total_volume_kg)} kg</div>
-                  <ChevronRight size={16} className="shrink-0 text-zinc-600" />
-                </button>
-              </li>
-            ))}
-          </ul>
-          {history.isSuccess && workouts.length === 0 && <p className="py-4 text-sm text-zinc-500">Zatím žádný trénink.</p>}
-        </Card>
+            <Card>
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="font-semibold">Historie</h2>
+                <Pager page={shownPage} pages={pages} onChange={setHistoryPage} />
+              </div>
+              <ul className="divide-y divide-zinc-800">
+                {workouts.slice(shownPage * HISTORY_PAGE_SIZE, (shownPage + 1) * HISTORY_PAGE_SIZE).map((w) => (
+                  <li key={w.id}>
+                    <button onClick={() => setViewing(w)} className="flex w-full items-center gap-2 py-2.5 text-left text-sm active:bg-zinc-800/50">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium">{w.name}</div>
+                        <div className="text-xs text-zinc-400">
+                          {formatDay(w.started_at)} · {w.set_count} sérií
+                          {w.duration_min !== null && ` · ${w.duration_min} min${w.ended_by === "user" ? "" : " (odhad)"}`}
+                        </div>
+                        <PrBadges prs={w.prs} />
+                      </div>
+                      <div className="shrink-0 tabular-nums text-zinc-300">{formatNumber(w.total_volume_kg)} kg</div>
+                      <ChevronRight size={16} className="shrink-0 text-zinc-600" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {history.isSuccess && workouts.length === 0 && <p className="py-4 text-sm text-zinc-500">Zatím žádný trénink.</p>}
+            </Card>
+          </>
+        )}
       </div>
 
       {confirmDiscard && active.data && (
