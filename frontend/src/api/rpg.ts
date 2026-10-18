@@ -47,7 +47,13 @@ export type Boss = {
   events: BossEvent[];
 };
 
+export type Quest = { key: string; title: string; target: number; unit: string; progress: number; xp: number; done_on: string | null };
+export type QuestWeek = { week_start: string; quests: Quest[]; all_bonus_xp: number; all_done: boolean };
+export type Badge = { key: string; title: string; description: string; unlocked_on: string | null; progress: string | null };
+
 export const rpgKeys = {
+  quests: ["rpg", "quests", "v1"] as const,
+  badges: ["rpg", "badges", "v1"] as const,
   boss: ["rpg", "boss", "v1"] as const,
   character: ["rpg", "character", "v1"] as const,
   history: (days: number) => ["rpg", "history", "v1", days] as const,
@@ -60,6 +66,8 @@ export const useCharacter = () =>
 export const useXpHistory = (days: number) =>
   useQuery({ queryKey: rpgKeys.history(days), queryFn: () => api<XpDay[]>(`/api/rpg/history?days=${days}`), staleTime: 0 });
 export const useBoss = () => useQuery({ queryKey: rpgKeys.boss, queryFn: () => api<Boss | null>("/api/rpg/boss"), staleTime: 0 });
+export const useQuests = () => useQuery({ queryKey: rpgKeys.quests, queryFn: () => api<QuestWeek>("/api/rpg/quests"), staleTime: 0 });
+export const useBadges = () => useQuery({ queryKey: rpgKeys.badges, queryFn: () => api<Badge[]>("/api/rpg/badges") });
 export const usePauses = () => useQuery({ queryKey: rpgKeys.pauses, queryFn: () => api<Pause[]>("/api/rpg/pauses") });
 
 /** Start, end or delete a pause. Online only; paused days change streaks, so habits refetch too. */

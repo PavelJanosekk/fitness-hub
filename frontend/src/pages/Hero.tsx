@@ -4,6 +4,7 @@ import { type Pause as PauseRow, useCharacter, usePauses, useSavePause, useXpHis
 import { PageHeader, Card } from "../components/Layout";
 import { LevelBadge, signed, XpBar } from "../components/rpg/CharacterCard";
 import { BossCard } from "../components/rpg/BossCard";
+import { BadgesCard, QuestsCard } from "../components/rpg/QuestsCard";
 import { SkillsCard } from "../components/rpg/SkillsCard";
 import { Button, Sheet } from "../components/ui";
 import { addDays, formatDay, formatDayMonth, formatNumber, isoDate } from "../lib/format";
@@ -45,9 +46,13 @@ export function Hero() {
           </Card>
         )}
 
+        <QuestsCard />
+
         <BossCard />
 
         {c?.skills?.length ? <SkillsCard skills={c.skills} /> : null}
+
+        <BadgesCard />
 
         <PauseCard />
 
