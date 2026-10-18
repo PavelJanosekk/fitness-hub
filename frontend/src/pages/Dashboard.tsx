@@ -1,10 +1,16 @@
 import { Check, CloudOff, Footprints, Moon, Settings } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router";
+import { lazy, Suspense, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { newEntryId, useDayIntake, useEnergy, useMetrics, useQuickAddKcal, useSaveWeight, useStepsBreakdown, useWeekly } from "../api/queries";
-import { EnergyChart, KcalChart, WeeklyGymChart, WeeklyRunChart, WeightChart } from "../components/charts/DashboardCharts";
+import { useCharacter } from "../api/rpg";
+import type { MetricDay } from "../api/types";
+import { EnergyChart, WeeklyGymChart, WeeklyRunChart, WeightChart } from "../components/charts/DashboardCharts";
+import { useHabitDays } from "../components/habits/parts";
 import { RoutineCard } from "../components/habits/RoutineCard";
+import { BossCard } from "../components/rpg/BossCard";
 import { CharacterCard } from "../components/rpg/CharacterCard";
+import { BadgesCard, QuestsCard } from "../components/rpg/QuestsCard";
+import { SkillsCard } from "../components/rpg/SkillsCard";
 import { Card, PageHeader } from "../components/Layout";
 import { Button, DecimalInput, parseDecimal, Segmented, Sheet } from "../components/ui";
 import { addDays, formatNumber, isoDate } from "../lib/format";
@@ -26,14 +32,25 @@ const METHOD_LABELS: Record<string, string> = {
   manual: "zadáno ručně",
 };
 
+const VIEWS = [
+  ["hero", "Hrdina"],
+  ["fitness", "Fitness"],
+  ["food", "Strava"],
+  ["habits", "Rutina"],
+] as const;
+type View = (typeof VIEWS)[number][0];
+
+// Chart-heavy tabs load on demand; Hrdina is the default and loads with the page
+const NutritionCharts = lazy(() => import("../components/charts/NutritionCharts").then((m) => ({ default: m.NutritionCharts })));
+const StepsCard = lazy(() => import("../components/charts/StepsCard").then((m) => ({ default: m.StepsCard })));
+const MonthView = lazy(() => import("../components/habits/MonthView").then((m) => ({ default: m.MonthView })));
+
 export function Dashboard() {
+  const [params, setParams] = useSearchParams();
+  const view: View = VIEWS.find(([key]) => key === params.get("v"))?.[0] ?? "hero";
   const [range, setRange] = useState<30 | 90>(30);
-  const [showSteps, setShowSteps] = useState(false);
   const metrics = useMetrics(range);
-  const weekly = useWeekly(12);
-  const energy = useEnergy(addDays(isoDate(), -(range - 1)), isoDate());
   const days = metrics.data ?? [];
-  const todayMetric = days.at(-1);
   const lastWeight = [...days].reverse().find((d) => d.weight_7d_avg !== null);
 
   return (
@@ -48,53 +65,106 @@ export function Dashboard() {
       />
 
       <div className="space-y-3">
-        <CharacterCard />
-        <RoutineCard />
-        <TodayCard weight7d={lastWeight?.weight_7d_avg ?? null} />
-
-        <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => setShowSteps(true)} className="text-left">
-            <StatTile icon={<Footprints size={16} />} label="Kroky dnes" value={formatNumber(todayMetric?.steps)} hint="detail ›" />
-          </button>
-          <StatTile icon={<Moon size={16} />} label="Spánek" value={todayMetric?.sleep_hours ? `${formatNumber(todayMetric.sleep_hours, 1)} h` : "–"} />
-        </div>
-
-        <Card>
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="font-semibold">Váha</h2>
-            <Segmented options={RANGES} value={range} onChange={setRange} />
-          </div>
-          {days.some((d) => d.weight_kg !== null) ? <WeightChart data={days} /> : <Empty text="Zatím žádná váha. Zapiš ji nahoře." />}
-        </Card>
-
-        <Card>
-          <h2 className="mb-3 font-semibold">Příjem energie</h2>
-          {days.some((d) => d.calories_in !== null) ? <KcalChart data={days} /> : <Empty text="Zatím žádný zapsaný příjem." />}
-        </Card>
-
-        <Card>
-          <h2 className="mb-3 font-semibold">Aktivně spálené kalorie (odhad)</h2>
-          {energy.data?.some((d) => d.active_kcal !== null) ? (
-            <EnergyChart data={energy.data} />
-          ) : (
-            <Empty text={energy.data ? "Pro odhad zapiš váhu nahoře." : "Načítám…"} />
+        <Segmented options={VIEWS} value={view} onChange={(v) => setParams(v === "hero" ? {} : { v }, { replace: true })} />
+        <Suspense fallback={<p className="text-zinc-500">Načítám…</p>}>
+          {view === "hero" && <HeroTab weight7d={lastWeight?.weight_7d_avg ?? null} />}
+          {view === "fitness" && <FitnessTab days={days} range={range} onRange={setRange} />}
+          {view === "food" && (
+            <>
+              <RangeRow range={range} onRange={setRange} />
+              <NutritionCharts days={days} />
+            </>
           )}
-        </Card>
-
-        <Card>
-          <h2 className="mb-3 font-semibold">Gym: pracovní série za týden</h2>
-          {weekly.data?.some((w) => w.gym_workouts) ? <WeeklyGymChart weeks={weekly.data} /> : <Empty text="Za posledních 12 týdnů žádný trénink." />}
-        </Card>
-
-        <Card>
-          <h2 className="mb-3 font-semibold">Běh: km za týden</h2>
-          {weekly.data?.some((w) => w.runs) ? <WeeklyRunChart weeks={weekly.data} /> : <Empty text="Běhy se objeví po propojení Stravy." />}
-        </Card>
+          {view === "habits" && <HabitsTab />}
+        </Suspense>
       </div>
+    </>
+  );
+}
+
+/** Default tab: the character and what moves it today. */
+function HeroTab({ weight7d }: { weight7d: number | null }) {
+  const { data: c } = useCharacter();
+  return (
+    <>
+      <CharacterCard />
+      <RoutineCard />
+      <TodayCard weight7d={weight7d} />
+      <QuestsCard />
+      <BossCard />
+      {c?.skills?.length ? <SkillsCard skills={c.skills} /> : null}
+      <BadgesCard />
+    </>
+  );
+}
+
+function RangeRow({ range, onRange }: { range: 30 | 90; onRange: (r: 30 | 90) => void }) {
+  return (
+    <div className="flex justify-end">
+      <Segmented options={RANGES} value={range} onChange={onRange} />
+    </div>
+  );
+}
+
+function FitnessTab({ days, range, onRange }: { days: MetricDay[]; range: 30 | 90; onRange: (r: 30 | 90) => void }) {
+  const [showSteps, setShowSteps] = useState(false);
+  const weekly = useWeekly(12);
+  const energy = useEnergy(addDays(isoDate(), -(range - 1)), isoDate());
+  const todayMetric = days.at(-1);
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        <button onClick={() => setShowSteps(true)} className="text-left">
+          <StatTile icon={<Footprints size={16} />} label="Kroky dnes" value={formatNumber(todayMetric?.steps)} hint="detail ›" />
+        </button>
+        <StatTile icon={<Moon size={16} />} label="Spánek" value={todayMetric?.sleep_hours ? `${formatNumber(todayMetric.sleep_hours, 1)} h` : "–"} />
+      </div>
+
+      <StepsCard />
+
+      <Card>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="font-semibold">Váha</h2>
+          <Segmented options={RANGES} value={range} onChange={onRange} />
+        </div>
+        {days.some((d) => d.weight_kg !== null) ? <WeightChart data={days} /> : <Empty text="Zatím žádná váha. Zapiš ji na záložce Hrdina." />}
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 font-semibold">Aktivně spálené kalorie (odhad)</h2>
+        {energy.data?.some((d) => d.active_kcal !== null) ? (
+          <EnergyChart data={energy.data} />
+        ) : (
+          <Empty text={energy.data ? "Pro odhad zapiš váhu." : "Načítám…"} />
+        )}
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 font-semibold">Gym: pracovní série za týden</h2>
+        {weekly.data?.some((w) => w.gym_workouts) ? <WeeklyGymChart weeks={weekly.data} /> : <Empty text="Za posledních 12 týdnů žádný trénink." />}
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 font-semibold">Běh: km za týden</h2>
+        {weekly.data?.some((w) => w.runs) ? <WeeklyRunChart weeks={weekly.data} /> : <Empty text="Běhy se objeví po propojení Stravy." />}
+      </Card>
+      <p className="px-1 text-xs text-zinc-500">
+        Podrobné grafy jsou v záložkách Grafy na stránkách <Link to="/gym?v=stats" className="text-emerald-400">Gym</Link> a{" "}
+        <Link to="/run?v=stats" className="text-emerald-400">Běh</Link>.
+      </p>
 
       {showSteps && <StepsSheet onClose={() => setShowSteps(false)} />}
     </>
   );
+}
+
+/** The Rutina month charts (calendar, matrix, trend, rates); a day opens in the Rutina tab. */
+function HabitsTab() {
+  const { board, habits } = useHabitDays();
+  const navigate = useNavigate();
+  if (board.isPending) return <p className="text-zinc-500">Načítám…</p>;
+  if (!habits.length) return <Empty text="Zatím žádné rutiny. Přidej je na stránce Rutina." />;
+  return <MonthView habits={habits} today={isoDate()} onOpenDay={(d) => navigate(`/habits?d=${d}`)} />;
 }
 
 function TodayCard({ weight7d }: { weight7d: number | null }) {
