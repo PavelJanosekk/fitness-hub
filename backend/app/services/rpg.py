@@ -12,6 +12,12 @@ Day by day from the first data point to today:
 - a finished week below 60 %: -max(100, 10 % of that week's XP) and the streak (multiplier) resets;
 - paused days count for nothing.
 
+Debuffs (7.5):
+- tired: the week after a week below 60 % earns x0.8 (the cut is its own entry) until that week's routine, counted
+  so far, is back at 60 %;
+- cursed habit: a daily routine habit missed 3+ times in a finished week is cursed the next week: every day it is
+  done pays its XP again (double), every finished day it is missed costs its XP.
+
 Skills (7.2): every entry is attributed to skills (`XpEntry.skills`). A skill that gained nothing for
 RUST_START_DAYS rusts: from RUST_LOSS_DAYS on it loses RUST_SHARE of its XP every week (a ledger entry, so the total
 and the level drop too); paused days and days before the routine's first day don't count as idle.
@@ -55,6 +61,8 @@ WEEK_PENALTY_MIN = 100
 WEEK_PENALTY_SHARE = 0.10
 MULTIPLIER_STEP = 0.1  # per 2 qualifying weeks in a row
 MULTIPLIER_MAX = 1.5
+TIRED_FACTOR = 0.8
+CURSE_MISSES = 3
 RUST_START_DAYS = 14  # idle days until a skill shows as rusting
 RUST_LOSS_DAYS = 21  # idle days until it starts losing XP, then every further week
 RUST_SHARE = 0.10
@@ -81,6 +89,7 @@ KIND_SKILL = {
     "multiplier": "discipline",
     "day_penalty": "discipline",
     "week_penalty": "discipline",
+    "tired": "discipline",
 }
 HABIT_SKILL_NAMES = {"body": "Tělo", "nutrition": "Výživa", "home": "Domov", "discipline": "Disciplína", "mind": "Mysl"}
 TITLES = [
@@ -128,6 +137,8 @@ class Ledger:
     forgiven: set[dt.date] = field(default_factory=set)
     skills: dict[str, SkillState] = field(default_factory=dict)
     quests: list["qs.Quest"] = field(default_factory=list)  # this week's
+    tired: bool = False  # the tired debuff is active today
+    cursed: list[str] = field(default_factory=list)  # this week's cursed habits
 
 
 # --- Levels ----------------------------------------------------------------------------------
@@ -362,11 +373,22 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
     streak, week_xp, total = 0, 0, 0
     multiplier = 1.0
     level = level_of(0)
+    failed_last_week, tired = False, False
+    cursed: list[hs.HabitDays] = []
     day = first_day
     while day <= on:
+        entries: list[XpEntry] = []
         if day.weekday() == 0:
             multiplier = multiplier_for(streak)
-        entries: list[XpEntry] = []
+            tired, failed_last_week = failed_last_week, False
+            cursed = _cursed(board, day, skip=paused | forgiven)
+            if tired:
+                entries.append(
+                    XpEntry(day, 0, "tired", "Únava: po týdnu pod 60 % jde XP ×0,8, dokud nebude týden na 60 %")
+                )
+            for item in cursed:
+                text = f"Prokletý návyk: {item.habit.title} (minulý týden vynechán {CURSE_MISSES}× a víc)"
+                entries.append(XpEntry(day, 0, "curse", text))
         if day in paused:
             if day - dt.timedelta(days=1) not in paused:
                 entries.append(XpEntry(day, 0, "pause", "Pauza: dny se nepočítají"))
@@ -377,6 +399,22 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
             if base > 0 and multiplier > 1:
                 bonus = round(base * (multiplier - 1))
                 entries.append(XpEntry(day, bonus, "multiplier", f"Násobič týdenní série {_mult(multiplier)}"))
+            if base > 0 and tired:
+                cut = round(base * (1 - TIRED_FACTOR))
+                entries.append(XpEntry(day, -cut, "tired", f"Únava ×{TIRED_FACTOR:.1f}".replace(".", ",")))
+            for item in cursed:
+                xp = item.habit.points * HABIT_XP
+                if day in item.done:
+                    text = f"Prokletý návyk splněn: {item.habit.title} (XP ×2)"
+                    entries.append(XpEntry(day, xp, "curse_done", text, habit_skills(item.habit.skill, xp)))
+                elif day < on and day not in forgiven and hs.is_active(item.habit, day):
+                    text = f"Prokletý návyk vynechán: {item.habit.title}"
+                    entries.append(XpEntry(day, -xp, "curse_missed", text, habit_skills(item.habit.skill, -xp)))
+            if tired:
+                so_far = hs.routine_week_pct(board, hs.week_start(day), day)
+                if so_far is not None and so_far >= hs.ROUTINE_WEEK_PCT:
+                    tired = False  # recovered: from tomorrow on
+                    entries.append(XpEntry(day, 0, "tired_end", f"Únava pryč: týden zatím na {round(so_far)} %"))
             done, scheduled = hs.routine_day(board, day)
             if day < on and scheduled:
                 pct = done / scheduled * 100
@@ -405,6 +443,7 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
                         text += f", série {streak} končí"
                     entries.append(XpEntry(day, -penalty, "week_penalty", text))
                     streak = 0
+                    failed_last_week = True
             week_xp = 0
 
         if day not in paused:
@@ -422,4 +461,19 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
     ledger.total = total
     ledger.week_streak = streak
     ledger.multiplier = multiplier
+    ledger.tired = tired and on not in paused
+    ledger.cursed = [item.habit.title for item in cursed]
     return ledger
+
+
+def _cursed(board: list[hs.HabitDays], monday: dt.date, skip: set[dt.date]) -> list[hs.HabitDays]:
+    """Daily routine habits missed CURSE_MISSES+ times in the week before `monday` (skipped days don't count)."""
+    week = [monday - dt.timedelta(days=7 - i) for i in range(7)]
+    return [
+        item
+        for item in board
+        if item.habit.frequency == HabitFrequency.daily
+        and not item.habit.is_bonus
+        and item.habit.archived_at is None
+        and sum(1 for d in week if hs.is_active(item.habit, d) and d not in item.done and d not in skip) >= CURSE_MISSES
+    ]

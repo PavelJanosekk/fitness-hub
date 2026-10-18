@@ -314,3 +314,33 @@ def test_badges(client: TestClient, empty: Session) -> None:
     assert badges["marathon"]["unlocked_on"] == "2026-10-13"
     assert badges["workouts_100"]["unlocked_on"] is None and badges["workouts_100"]["progress"] == "0 / 100"
     assert badges["streak_30"]["progress"].startswith("nejlepší")
+
+
+def test_tired_week_after_a_failed_one_until_back_at_60(empty: Session) -> None:
+    # week 5.-11.: nothing (below 60 %); week 12.-18.: done from Wednesday on
+    habit(empty, "A", d(5), [d(14), d(15), d(16), d(17), d(18)])
+    run(empty, d(12), 10)  # 50 XP on the tired Monday
+
+    ledger = rpg.build_ledger(empty, MONDAY)
+
+    assert ("tired", 0) in kinds(ledger, d(12))  # the debuff starts
+    assert ("tired", -10) in kinds(ledger, d(12))  # 50 XP x0.8
+    # 12. (forgiven? no: October's forgiven day is 5. 10.), 13. missed, 14.-16. done: 3 of 5 = 60 % on 16.
+    assert any(kind == "tired_end" for kind, _ in kinds(ledger, d(16)))
+    assert not any(kind == "tired" for kind, _ in kinds(ledger, d(17)))
+
+
+def test_cursed_habit_pays_double_and_costs_when_missed(empty: Session) -> None:
+    # missed 8.-11.: 8. is October's forgiven day, the other 3 misses curse it for the next week
+    a = habit(empty, "Anki", d(5), [d(5), d(6), d(7)])
+    habit(empty, "Postel", d(5), [d(5) + dt.timedelta(days=i) for i in range(14)])
+    empty.add_all([HabitLog(habit_id=a.id, date=d(12)), HabitLog(habit_id=a.id, date=d(14))])
+    empty.commit()
+
+    ledger = rpg.build_ledger(empty, MONDAY)
+
+    assert ("curse", 0) in kinds(ledger, d(12))
+    assert ("curse_done", 10) in kinds(ledger, d(12))
+    assert ("curse_missed", -10) in kinds(ledger, d(13))
+    assert ("curse_missed", -10) in kinds(ledger, d(15))
+    assert rpg.build_ledger(empty, d(16)).cursed == ["Anki"]

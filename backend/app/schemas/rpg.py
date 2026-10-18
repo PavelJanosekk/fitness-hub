@@ -35,6 +35,8 @@ class Character(BaseModel):
     forgiven_this_month: dt.date | None  # the month's forgiven day, once used
     paused: bool
     skills: list[Skill] = []
+    tired: bool = False  # debuff: XP x0.8 until this week is back at 60 %
+    cursed: list[str] = []  # this week's cursed habits
 
 
 class XpEntryRead(BaseModel):

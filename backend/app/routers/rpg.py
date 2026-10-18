@@ -55,6 +55,8 @@ def character(session: SessionDep) -> Character:
         forgiven_this_month=forgiven[0] if forgiven else None,
         paused=ledger.paused_today,
         skills=[_skill(ledger, key, name, source) for key, name, source in rpg.SKILLS],
+        tired=ledger.tired,
+        cursed=ledger.cursed,
     )
 
 
