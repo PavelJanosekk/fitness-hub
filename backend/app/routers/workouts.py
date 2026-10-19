@@ -26,7 +26,7 @@ from app.schemas.gym import (
     WorkoutTemplateIn,
     WorkoutTemplateRead,
 )
-from app.services import gym_stats
+from app.services import gym_stats, overload
 from app.services import workouts as svc
 from app.services.strong_import import (
     DEFAULT_REMAP_RULES,
@@ -60,7 +60,7 @@ def _ensure_name_free(session: Session, name: str, exercise_id: int | None = Non
 @router.post("/exercises", response_model=ExerciseRead, status_code=status.HTTP_201_CREATED)
 def create_exercise(body: ExerciseCreate, session: SessionDep) -> Exercise:
     _ensure_name_free(session, body.name)
-    exercise = Exercise(name=body.name, muscle_group=body.muscle_group, equipment=body.equipment)
+    exercise = Exercise(**body.model_dump())
     session.add(exercise)
     try:
         session.commit()
@@ -92,8 +92,9 @@ def update_exercise(exercise_id: int, body: ExerciseUpdate, session: SessionDep)
 
 @router.get("/exercises/{exercise_id}/last-performance", response_model=LastPerformance)
 def last_performance(exercise_id: int, session: SessionDep) -> LastPerformance:
-    """Sets from the most recent finished workout containing this exercise (ghost values)."""
-    if session.get(Exercise, exercise_id) is None:
+    """Sets from the most recent finished workout containing this exercise (ghost values) and the next target (E33)."""
+    exercise = session.get(Exercise, exercise_id)
+    if exercise is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Exercise not found")
     workout = session.exec(
         select(Workout)
@@ -114,6 +115,7 @@ def last_performance(exercise_id: int, session: SessionDep) -> LastPerformance:
         workout_id=workout.id,
         workout_started_at=workout.started_at,
         sets=[LastPerformanceSet.model_validate(s) for s in sets],
+        target=overload.exercise_target(session, exercise),
     )
 
 

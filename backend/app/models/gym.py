@@ -44,12 +44,24 @@ class EndedBy(StrEnum):
 
 class Exercise(SQLModel, table=True):
     __tablename__ = "exercises"
-    __table_args__ = (one_of("muscle_group", MuscleGroup),)
+    __table_args__ = (
+        one_of("muscle_group", MuscleGroup),
+        CheckConstraint(
+            "(rep_min IS NULL OR rep_min >= 1) AND (rep_max IS NULL OR rep_max >= 1) "
+            "AND (weight_step IS NULL OR weight_step > 0) AND (sets_max IS NULL OR sets_max >= 1)",
+            name="progression_settings",
+        ),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
     muscle_group: str
     equipment: str | None = None
+    # Progression targets (E33); null = the default for the equipment (services/overload.py)
+    rep_min: int | None = None
+    rep_max: int | None = None
+    weight_step: float | None = None
+    sets_max: int | None = None
 
 
 class Workout(SQLModel, table=True):

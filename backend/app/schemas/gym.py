@@ -1,8 +1,8 @@
 import datetime as dt
 import uuid
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.models.gym import MuscleGroup, SetType
 
@@ -15,13 +15,28 @@ class ORMModel(BaseModel):
 ExerciseName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 
 
-class ExerciseCreate(BaseModel):
+class ProgressionSettings(BaseModel):
+    """Per-exercise settings of the overload targets (E33); null = the default for the equipment."""
+
+    rep_min: int | None = Field(default=None, ge=1, le=50)
+    rep_max: int | None = Field(default=None, ge=1, le=50)
+    weight_step: float | None = Field(default=None, gt=0, le=50)
+    sets_max: int | None = Field(default=None, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def _range_in_order(self) -> Self:
+        if self.rep_min is not None and self.rep_max is not None and self.rep_max < self.rep_min:
+            raise ValueError("rep_max must not be below rep_min")
+        return self
+
+
+class ExerciseCreate(ProgressionSettings):
     name: ExerciseName
     muscle_group: MuscleGroup
     equipment: str | None = None
 
 
-class ExerciseUpdate(BaseModel):
+class ExerciseUpdate(ProgressionSettings):
     name: ExerciseName | None = None
     muscle_group: MuscleGroup | None = None
     equipment: str | None = None
@@ -32,6 +47,10 @@ class ExerciseRead(ORMModel):
     name: str
     muscle_group: MuscleGroup
     equipment: str | None
+    rep_min: int | None
+    rep_max: int | None
+    weight_step: float | None
+    sets_max: int | None
 
 
 class SetIn(BaseModel):
@@ -127,11 +146,35 @@ class LastPerformanceSet(ORMModel):
     rpe: float | None
 
 
+class TargetSet(BaseModel):
+    set_type: SetType
+    weight_kg: float | None
+    reps: int | None
+    changed: bool = False  # the set this session's step added or changed
+
+
+class ProgressionTarget(BaseModel):
+    """What to lift next time to keep progressing (E33): the last session's sets with one step applied."""
+
+    # comeback / deload: lighter after a break or a stall; lighter: below the rep range; weight: + step at the top of
+    # the range; sets: one more set; reps: +1 rep on the weakest set
+    kind: Literal["comeback", "deload", "lighter", "weight", "sets", "reps"]
+    weight_kg: float  # the working weight of the target (0 = no load)
+    sets: list[TargetSet]  # every planned set in order, warm-ups and other weights as last time
+    stalled_sessions: int  # sessions in a row at the last working weight without beating its best
+    days_since: int  # since the last session
+    rep_min: int
+    rep_max: int
+    weight_step: float
+    sets_max: int
+
+
 class LastPerformance(BaseModel):
     exercise_id: int
     workout_id: uuid.UUID | None = None
     workout_started_at: dt.datetime | None = None
     sets: list[LastPerformanceSet] = []
+    target: ProgressionTarget | None = None
 
 
 class TemplateSet(BaseModel):

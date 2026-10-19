@@ -344,6 +344,10 @@ def test_exercise_can_be_renamed_but_not_onto_another(client: TestClient, exerci
         "name": "Hyperextension",
         "muscle_group": "back",
         "equipment": "machine",
+        "rep_min": None,
+        "rep_max": None,
+        "weight_step": None,
+        "sets_max": None,
     }
     assert recased.json()["name"] == "hyperextension"
     assert conflict.status_code == 409
