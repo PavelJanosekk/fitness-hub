@@ -79,6 +79,8 @@ class WorkoutIn(BaseModel):
     ended_at: AwareDatetime | None = None
     notes: str | None = None
     sets: list[NestedSetIn] | None = None
+    # Editing a finished workout sends its whole set list: sets missing from `sets` are deleted
+    replace_sets: bool = False
 
 
 class WorkoutRead(ORMModel):

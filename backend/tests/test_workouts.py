@@ -224,6 +224,89 @@ def test_deleting_a_set_is_idempotent(client: TestClient, exercises: dict[str, i
     assert client.delete(f"/api/workouts/sets/{set_id}").status_code == 204
 
 
+def test_editing_a_finished_workout_replaces_its_sets(client: TestClient, exercises: dict[str, int]) -> None:
+    bench, pull_up = exercises["Bench Press (Barbell)"], exercises["Pull Up"]
+    workout_id, kept, dropped, added = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    put_workout(client, workout_id, ended_at=T0 + dt.timedelta(hours=1))
+    put_set(client, workout_id, kept, bench, completed_at=T0)
+    put_set(client, workout_id, dropped, bench, set_order=2, completed_at=T0)
+    edited_at = T0 - dt.timedelta(days=2)
+    body = {
+        "name": "Push",
+        "started_at": edited_at.isoformat(),
+        "ended_at": (edited_at + dt.timedelta(minutes=50)).isoformat(),
+        "replace_sets": True,
+        "sets": [
+            {
+                "id": str(kept),
+                "exercise_id": bench,
+                "exercise_order": 1,
+                "set_order": 1,
+                "weight_kg": 85,
+                "reps": 6,
+                "completed_at": edited_at.isoformat(),
+            },
+            {
+                "id": str(added),
+                "exercise_id": pull_up,
+                "exercise_order": 2,
+                "set_order": 1,
+                "weight_kg": 0,
+                "reps": 10,
+                "completed_at": edited_at.isoformat(),
+            },
+        ],
+    }
+
+    response = client.put(f"/api/workouts/{workout_id}", json=body)
+
+    assert response.status_code == 200, response.text
+    edited = response.json()
+    assert edited["name"] == "Push" and edited["ended_by"] == "user"
+    assert [(s["id"], s["weight_kg"], s["reps"]) for s in edited["sets"]] == [(str(kept), 85, 6), (str(added), 0, 10)]
+    assert all(dt.datetime.fromisoformat(s["completed_at"]) == edited_at for s in edited["sets"])
+
+
+def test_past_workout_can_be_logged_in_one_request(client: TestClient, exercises: dict[str, int]) -> None:
+    workout_id = uuid.uuid4()
+    started = T0 - dt.timedelta(days=30)
+    body = {
+        "name": "Legs",
+        "started_at": started.isoformat(),
+        "ended_at": (started + dt.timedelta(hours=1)).isoformat(),
+        "replace_sets": True,
+        "sets": [
+            {
+                "id": str(uuid.uuid4()),
+                "exercise_id": exercises["Pull Up"],
+                "exercise_order": 1,
+                "set_order": 1,
+                "weight_kg": 0,
+                "reps": 8,
+                "completed_at": started.isoformat(),
+            },
+        ],
+    }
+
+    assert client.put(f"/api/workouts/{workout_id}", json=body).status_code == 200
+    summary = next(w for w in client.get("/api/workouts").json() if w["id"] == str(workout_id))
+    assert summary["set_count"] == 1 and summary["duration_min"] == 60
+
+
+def test_replacing_sets_cannot_steal_another_workouts_set(client: TestClient, exercises: dict[str, int]) -> None:
+    other, mine, set_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    put_workout(client, other)
+    put_set(client, other, set_id, exercises["Pull Up"])
+    put_workout(client, mine)
+    body = {
+        "replace_sets": True,
+        "sets": [{"id": str(set_id), "exercise_id": exercises["Pull Up"], "exercise_order": 1, "set_order": 1}],
+    }
+
+    assert client.put(f"/api/workouts/{mine}", json=body).status_code == 409
+    assert len(client.get(f"/api/workouts/{other}").json()["sets"]) == 1
+
+
 def test_duplicate_exercise_name_conflicts(client: TestClient, exercises: dict[str, int]) -> None:
     response = client.post("/api/exercises", json={"name": "Pull Up", "muscle_group": "back"})
 

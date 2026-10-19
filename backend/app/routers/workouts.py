@@ -194,7 +194,7 @@ def get_workout(workout_id: uuid.UUID, session: SessionDep) -> WorkoutRead:
 @router.put("/workouts/{workout_id}", response_model=WorkoutRead)
 def upsert_workout(workout_id: uuid.UUID, body: WorkoutIn, session: SessionDep) -> WorkoutRead:
     """Idempotent create-or-update (client UUID). On update only fields present in the body change."""
-    fields = body.model_dump(exclude_unset=True, exclude={"sets"})
+    fields = body.model_dump(exclude_unset=True, exclude={"sets", "replace_sets"})
     workout = session.get(Workout, workout_id)
     if workout is None:
         if not body.name or not body.started_at:
@@ -205,6 +205,12 @@ def upsert_workout(workout_id: uuid.UUID, body: WorkoutIn, session: SessionDep) 
     for field, value in fields.items():
         setattr(workout, field, value)
     session.add(workout)
+    if body.replace_sets:
+        keep = {nested.id for nested in body.sets or []}
+        for stale in session.exec(select(WorkoutSet).where(WorkoutSet.workout_id == workout_id)).all():
+            if stale.id not in keep:
+                session.delete(stale)
+        session.flush()
     for nested in body.sets or []:
         _apply_set(session, workout_id, nested.id, nested)
     session.commit()
