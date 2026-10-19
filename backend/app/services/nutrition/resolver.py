@@ -1,10 +1,11 @@
-"""Food resolution for dictated meals (nutrition spec §4 + Amendments C6/C7, decision E4).
+"""Food resolution for dictated meals (nutrition spec §4 + Amendments C6/C7, decisions E4/E30).
 
 For each item Gemini extracted: a confirmed alias, the known-food id from the prompt, or an exact name match on a
 confirmed food resolves it outright. Otherwise candidates are gathered (local foods by Czech name, USDA by the
 English query, OFF for branded products), a Chooser picks one with a confidence, and the meal becomes a draft for
-1-tap confirmation. Aliases are written only when the user confirms (`confirm_aliases`), so a wrong automatic
-pick never becomes a permanent mapping.
+1-tap confirmation. An item nothing fits (or a dish picked without confidence) gets the smart lookup: a recipe
+computed from USDA foods, else a per-100 g estimate. Aliases are written only when the user confirms
+(`confirm_aliases`), so a wrong automatic pick never becomes a permanent mapping.
 """
 
 import re
@@ -17,9 +18,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import exists, func, or_
 from sqlmodel import Session, col, select
 
-from app.models.nutrition import Food, FoodAlias, FoodSource, MealLogItem
+from app.models.nutrition import Food, FoodAlias, FoodPortion, FoodSource, MealLogItem
 from app.services.nutrition import off
 from app.services.nutrition.nutrients import MACROS
+from app.services.nutrition.recipes import PORTION_LABEL, save_recipe
 
 # Sources the user created or imported from their own diary: confirmed by definition
 USER_SOURCES = (FoodSource.custom, FoodSource.kaloricke_tabulky, FoodSource.recipe)
@@ -28,6 +30,7 @@ PENALIZED_CATEGORIES = {"Baby Foods", "Fast Foods", "Restaurant Foods", "America
 STOPWORDS = {"and", "or", "of", "the", "a", "in", "to", "for"}
 POOL = 40
 MAX_CANDIDATES = 8
+LOOKUP_BELOW = 0.6  # a dish picked with less confidence than this gets the smart lookup (E30)
 
 
 class MealItemInput(BaseModel):
@@ -42,13 +45,20 @@ class MealItemInput(BaseModel):
     is_branded: bool = Field(default=False, description="A packaged/branded product rather than a basic food")
     brand_search_query: str | None = Field(default=None, description="Product search text for branded items")
     food_id: int | None = Field(default=None, description="Id from the known-foods list when it is that food")
+    is_dish: bool = Field(
+        default=False, description="A prepared dish the user didn't split into ingredients (Bún chả, svíčková, pizza)"
+    )
+    portions: float | None = Field(
+        default=None, gt=0, le=20, description="Number of portions when the user gave portions instead of a weight"
+    )
 
 
 @dataclass
 class Candidate:
-    """A possible food: an existing row, or an OFF product / web estimate that becomes one on confirmation."""
+    """A possible food: an existing row, or an OFF product / web estimate / computed recipe that becomes one on
+    confirmation."""
 
-    ref: str  # "food:<id>" | "off:<ean>" | "web"
+    ref: str  # "food:<id>" | "off:<ean>" | "web" | "recipe"
     name: str
     source: str
     per_100g: dict[str, float | None]  # macro columns
@@ -57,11 +67,13 @@ class Candidate:
     micronutrients: dict[str, float] = field(default_factory=dict)
     food: Food | None = None
     grounded: bool | None = None  # web estimates only: found on the web (True) or the model's own estimate
+    recipe: dict[str, Any] | None = None  # computed recipes only: `recipes.recipe_info`
 
     def to_dict(self) -> dict[str, Any]:
         out = {"ref": self.ref, "name": self.name, "source": self.source, "brand": self.brand}
         out |= {"per_100g": self.per_100g, "micronutrients": self.micronutrients}
-        return out | ({"grounded": self.grounded} if self.grounded is not None else {})
+        out |= {"grounded": self.grounded} if self.grounded is not None else {}
+        return out | ({"recipe": self.recipe} if self.recipe is not None else {})
 
 
 @dataclass
@@ -85,8 +97,9 @@ class Chooser(Protocol):
         """Per resolution: index into its candidates (None = none fits) and a confidence 0-1."""
         ...
 
-    def estimate(self, item: MealItemInput) -> Candidate | None:
-        """A per-100 g estimate from the web when no candidate exists (C5); None if unavailable."""
+    def lookup(self, session: Session, http: httpx.Client | None, item: MealItemInput) -> Candidate | None:
+        """The smart lookup for an item nothing fits (C5, E30): a computed recipe for a dish, else a per-100 g
+        estimate; None if unavailable."""
         ...
 
 
@@ -96,7 +109,7 @@ class TopScoreChooser:
     def choose(self, resolutions: list[Resolution]) -> list[tuple[int | None, float | None]]:
         return [(0 if r.candidates else None, None) for r in resolutions]
 
-    def estimate(self, item: MealItemInput) -> Candidate | None:
+    def lookup(self, session: Session, http: httpx.Client | None, item: MealItemInput) -> Candidate | None:
         return None
 
 
@@ -158,13 +171,18 @@ def _tokens(value: str) -> set[str]:
     return set(_words(value))
 
 
-def search_usda(session: Session, query: str, limit: int = MAX_CANDIDATES) -> list[tuple[Food, float]]:
+def search_usda(
+    session: Session, query: str, limit: int = MAX_CANDIDATES, include_hidden: bool = False
+) -> list[tuple[Food, float]]:
     """USDA foods for an English description: a trigram + full-text pool, re-ranked by how much of the query a
-    name covers (full-text alone drops words like "only"; trigrams alone favour short names)."""
+    name covers (full-text alone drops words like "only"; trigrams alone favour short names). Hidden foods (E28
+    duplicates, e.g. the 1:1 reference of a KT food) only as references: `include_hidden` for recipe ingredients."""
     wanted = _tokens(query)
     if not wanted:
         return []
-    usda = (Food.source == FoodSource.usda) & ~col(Food.hidden)  # hidden = duplicates (E28)
+    usda = Food.source == FoodSource.usda
+    if not include_hidden:
+        usda = usda & ~col(Food.hidden)
     trigram = func.similarity(func.lower(Food.name_en), query.lower())
     pool = {f.id: f for f in session.exec(select(Food).where(usda).order_by(trigram.desc()).limit(POOL))}
     tsquery = func.to_tsquery("english", " | ".join(sorted(wanted)))
@@ -260,15 +278,51 @@ def resolve_items(
         resolutions.append(resolution)
 
     open_ = [r for r in resolutions if not r.confirmed]
-    for resolution in open_:
-        if not resolution.candidates and (estimate := chooser.estimate(resolution.item)) is not None:
-            resolution.candidates = [estimate]
-    if open_:
-        for resolution, (index, confidence) in zip(open_, chooser.choose(open_), strict=True):
+    if choosable := [r for r in open_ if r.candidates]:
+        for resolution, (index, confidence) in zip(choosable, chooser.choose(choosable), strict=True):
             if index is not None and 0 <= index < len(resolution.candidates):
                 resolution.chosen = resolution.candidates[index]
             resolution.confidence = confidence
+    for resolution in open_:
+        if _needs_lookup(resolution) and (found := chooser.lookup(session, http, resolution.item)) is not None:
+            resolution.candidates = [found, *resolution.candidates]
+            resolution.chosen, resolution.confidence = found, None
+    for resolution in resolutions:
+        _apply_portions(session, resolution)
     return resolutions
+
+
+def _needs_lookup(resolution: Resolution) -> bool:
+    if resolution.chosen is None:
+        return True
+    confidence = resolution.confidence
+    return resolution.item.is_dish and (confidence is None or confidence < LOOKUP_BELOW)
+
+
+def portion_grams(session: Session, candidate: Candidate | None) -> float | None:
+    """One portion of a candidate: a computed recipe's, else the food's "porce" portion."""
+    if candidate is None:
+        return None
+    if candidate.recipe is not None:
+        return candidate.recipe.get("portion_g")
+    if candidate.food is None:
+        return None
+    return session.exec(
+        select(FoodPortion.grams).where(FoodPortion.food_id == candidate.food.id, FoodPortion.label == PORTION_LABEL)
+    ).first()
+
+
+def portion_amount(session: Session, item: MealItemInput, candidate: Candidate | None) -> float:
+    """For "1 porce bun cha" without grams: the portions times the candidate's own portion; else the item's amount."""
+    if item.portions and (grams := portion_grams(session, candidate)) is not None:
+        return round(min(item.portions * grams, 5000), 1)
+    return item.amount_g
+
+
+def _apply_portions(session: Session, resolution: Resolution) -> None:
+    amount = portion_amount(session, resolution.item, resolution.chosen)
+    if amount != resolution.item.amount_g:
+        resolution.item = resolution.item.model_copy(update={"amount_g": amount})
 
 
 def confirm_aliases(session: Session, item: MealItemInput, food: Food) -> None:
@@ -285,12 +339,16 @@ def confirm_aliases(session: Session, item: MealItemInput, food: Food) -> None:
 
 
 def materialize(session: Session, candidate: Candidate, item: MealItemInput) -> Food:
-    """The Food behind a confirmed candidate, creating it for an OFF product or a web estimate."""
+    """The Food behind a confirmed candidate, creating it for an OFF product, a web estimate or a computed recipe."""
     if candidate.ref.startswith("food:"):
         food = session.get(Food, int(candidate.ref.removeprefix("food:")))
         if food is None:
             raise LookupError(candidate.ref)
         return food
+    if candidate.ref == "recipe":
+        if not candidate.recipe:
+            raise ValueError("a recipe candidate needs its ingredients")
+        return save_recipe(session, item.canonical_name_cs, candidate.recipe)
     values = {k: v for k, v in candidate.per_100g.items() if v is not None}
     if candidate.ref.startswith("off:"):
         ean = candidate.ref.removeprefix("off:")

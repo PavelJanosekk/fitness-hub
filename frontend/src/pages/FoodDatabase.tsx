@@ -1,8 +1,18 @@
-import { ArrowLeft, Plus, Search, Sparkles } from "lucide-react";
+import { ArrowLeft, ExternalLink, Plus, Search, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { ApiError } from "../api/client";
-import { type Food, type FoodInput, SOURCE_LABELS, autofillFood, useDeleteFood, useFood, useFoods, useSaveFood } from "../api/nutrition";
+import {
+  type Food,
+  type FoodInput,
+  SOURCE_LABELS,
+  autofillFood,
+  siteName,
+  useDeleteFood,
+  useFood,
+  useFoods,
+  useSaveFood,
+} from "../api/nutrition";
 import { PageHeader } from "../components/Layout";
 import { MicroRefsEditor, NutrientValues, type RefDraft, refsBody, toRefDrafts } from "../components/nutrition/FoodMicros";
 import { SourceBadge } from "../components/nutrition/MealDraftCard";
@@ -96,6 +106,33 @@ function FoodSheet({ id, onClose }: { id: number | null; onClose: () => void }) 
   );
 }
 
+/** A dish computed from a recipe (E30): where it comes from and its USDA ingredients. */
+function RecipeDetails({ food }: { food: Food }) {
+  return (
+    <div className="rounded-xl bg-zinc-900/70 p-3 text-xs text-zinc-400">
+      <p className="mb-1 flex flex-wrap items-center gap-x-1.5 text-sm text-zinc-300">
+        Recept
+        {food.source_url ? (
+          <a href={food.source_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-sky-300">
+            {siteName(food.source_url)} <ExternalLink size={12} />
+          </a>
+        ) : (
+          <span className="text-zinc-500">· typický (AI)</span>
+        )}
+      </p>
+      <ul className="space-y-0.5">
+        {food.recipe_components.map((c) => (
+          <li key={c.food_id} className="flex gap-2">
+            <span className="min-w-0 flex-1 truncate">{c.name}</span>
+            <span className="shrink-0 tabular-nums">{formatNumber(c.amount_g)} g</span>
+          </li>
+        ))}
+      </ul>
+      {food.recipe_yield_g !== null && <p className="mt-1 text-zinc-500">Hotové jídlo {formatNumber(food.recipe_yield_g)} g · hodnoty spočítané z USDA</p>}
+    </div>
+  );
+}
+
 const toText = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value).replace(".", ","));
 
 const AUTOFILL_SOURCES = { openfoodfacts: "Open Food Facts", usda: "USDA", estimate: "odhad AI, zkontroluj" } as const;
@@ -144,7 +181,7 @@ function FoodForm({ food, onDone }: { food: Food | null; onDone: () => void }) {
     if (refsTouched && refsOut) body.micro_refs = refsOut;
     save.mutate(body, { onSuccess: onDone });
   };
-  const deleteError = remove.error instanceof ApiError && remove.error.status === 409 ? "Potravina je v zapsaných jídlech, nejde smazat." : null;
+  const deleteError = remove.error instanceof ApiError && remove.error.status === 409 ? "Potravina je v zapsaných jídlech nebo receptech, nejde smazat." : null;
 
   return (
     <div className="space-y-3">
@@ -155,6 +192,7 @@ function FoodForm({ food, onDone }: { food: Food | null; onDone: () => void }) {
           {food.ean && ` · EAN ${food.ean}`}
         </p>
       )}
+      {food && food.recipe_components?.length > 0 && <RecipeDetails food={food} />}
       <label className="block text-sm text-zinc-400">
         Název (česky)
         <input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-zinc-100 outline-none focus:border-emerald-500" />

@@ -84,6 +84,12 @@ class MicroRefRead(MicroRefIn):
     name: str
 
 
+class RecipeComponentRead(BaseModel):
+    food_id: int
+    name: str
+    amount_g: float
+
+
 class FoodCreate(FoodValues):
     name_cs: str = Field(min_length=1, max_length=200)
     brand: str | None = Field(default=None, max_length=120)
@@ -141,6 +147,10 @@ class FoodRead(BaseModel):
     micro_refs: list[MicroRefRead] = Field(default_factory=list)
     # Per-100 g values the food doesn't know itself, from its references (optional macros and micros)
     borrowed: dict[str, float] = Field(default_factory=dict)
+    # Recipes (C9, E30): ingredients in recipe grams, the finished weight, the web recipe it was computed from
+    recipe_components: list[RecipeComponentRead] = Field(default_factory=list)
+    recipe_yield_g: float | None = None
+    source_url: str | None = None
 
 
 class AutofillRequest(BaseModel):
@@ -170,16 +180,34 @@ class ItemUpsert(BaseModel):
     label: str | None = Field(default=None, max_length=200)
 
 
-class CandidateIn(BaseModel):
-    """A draft candidate as the server sent it (ref: "food:<id>", "off:<ean>" or "web")."""
+class RecipeIngredientIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    grams: float = Field(gt=0, le=5000)
+    food_id: int | None = None  # the USDA food; null = nothing fits (adds nothing)
+    food_name: str | None = None
+    assumed: bool = False
 
-    ref: str = Field(pattern=r"^(food:[0-9]+|off:[0-9]{6,14}|web)$")
+
+class RecipeIn(BaseModel):
+    """A computed recipe (E30); the server recomputes its values from the ingredient foods on confirmation."""
+
+    source_url: str | None = Field(default=None, max_length=2000)
+    yield_g: float = Field(gt=0, le=20000)
+    portion_g: float | None = Field(default=None, gt=0, le=5000)
+    ingredients: list[RecipeIngredientIn] = Field(min_length=1, max_length=60)
+
+
+class CandidateIn(BaseModel):
+    """A draft candidate as the server sent it (ref: "food:<id>", "off:<ean>", "web" or "recipe")."""
+
+    ref: str = Field(pattern=r"^(food:[0-9]+|off:[0-9]{6,14}|web|recipe)$")
     name: str = Field(min_length=1, max_length=200)
     source: str
     brand: str | None = None
     per_100g: dict[str, float | None]
     micronutrients: dict[str, float] = Field(default_factory=dict)
     grounded: bool | None = None
+    recipe: RecipeIn | None = None
 
 
 class ProfileUpdate(BaseModel):

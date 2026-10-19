@@ -81,6 +81,7 @@ class Food(SQLModel, table=True):
     # A duplicate or irrelevant food (E28): still a micros reference, but out of the food list and Czech search
     hidden: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()})
     recipe_yield_g: float | None = None  # cooked weight of a recipe
+    source_url: str | None = None  # the web recipe a looked-up dish was computed from (E30)
     created_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
     updated_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
 

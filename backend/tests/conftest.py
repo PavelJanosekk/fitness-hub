@@ -16,6 +16,7 @@ from app.database import get_session
 from app.main import app
 from app.models.gym import Exercise
 from app.seed import seed_exercises
+from app.services.nutrition import lookup
 
 # Background jobs would run against the dev database, not the test one
 settings.scheduler_enabled = False
@@ -47,6 +48,12 @@ def engine() -> Iterator[Engine]:
     test_engine = create_engine(TEST_DB_URL)
     yield test_engine
     test_engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def fresh_recipe_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The recipe search keeps a per-process cache and bot-check pause; every test starts without them."""
+    monkeypatch.setattr(lookup, "state", lookup.SearchState())
 
 
 @pytest.fixture

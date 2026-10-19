@@ -47,14 +47,22 @@ export type Macros = {
   fiber_g?: number | null;
   salt_g?: number | null;
 };
+/** A dish computed from a recipe (E30): USDA ingredients in recipe grams over the finished weight. */
+export type RecipeInfo = {
+  source_url: string | null; // the web recipe; null = a typical recipe written by the AI
+  yield_g: number;
+  portion_g: number;
+  ingredients: { name: string; grams: number; food_id: number | null; food_name: string | null; assumed: boolean }[];
+};
 export type Candidate = {
-  ref: string; // "food:<id>" | "off:<ean>" | "web"
+  ref: string; // "food:<id>" | "off:<ean>" | "web" | "recipe"
   name: string;
   source: FoodSource;
   brand: string | null;
   per_100g: Macros;
   micronutrients: Record<string, number>;
   grounded?: boolean; // web estimates: found on the web, or the model's own estimate
+  recipe?: RecipeInfo;
 };
 export type MealItemInput = {
   user_phrase: string;
@@ -64,6 +72,8 @@ export type MealItemInput = {
   is_branded?: boolean;
   brand_search_query?: string | null;
   food_id?: number | null;
+  is_dish?: boolean;
+  portions?: number | null;
 };
 export type DraftItem = {
   input: MealItemInput;
@@ -121,11 +131,27 @@ export type Food = Required<Macros> & {
   hidden: boolean; // E28: a duplicate kept only as a micros reference, out of lists and search
   micro_refs: MicroRef[];
   borrowed: Record<string, number>;
+  // Recipes (E30): ingredients in recipe grams, the finished weight, the web recipe they come from
+  recipe_components: { food_id: number; name: string; amount_g: number }[];
+  recipe_yield_g: number | null;
+  source_url: string | null;
 };
 export type MicroRef = { ref_food_id: number; name: string; grams_per_g: number };
-export type FoodInput = Partial<
-  Omit<Food, "id" | "name" | "source" | "use_count" | "category" | "is_raw" | "micros_status" | "micro_refs" | "borrowed" | "hidden">
-> & { micro_refs?: { ref_food_id: number; grams_per_g: number }[]; hidden?: boolean };
+type ReadOnlyFoodKeys =
+  | "id"
+  | "name"
+  | "source"
+  | "use_count"
+  | "category"
+  | "is_raw"
+  | "micros_status"
+  | "micro_refs"
+  | "borrowed"
+  | "hidden"
+  | "recipe_components"
+  | "recipe_yield_g"
+  | "source_url";
+export type FoodInput = Partial<Omit<Food, ReadOnlyFoodKeys>> & { micro_refs?: { ref_food_id: number; grams_per_g: number }[]; hidden?: boolean };
 export type NutrientInfo = { key: string; label: string; unit: string; micro: boolean; reference: number | null };
 export type Autofill = {
   name_cs: string;
@@ -153,8 +179,8 @@ export const nutritionKeys = {
   // v2: nutrients gained sources / unknown; persisted v1 entries lack them
   summary: (date: string) => ["nutrition", "summary-v2", date] as const,
   // v2: Food gained micro_refs / borrowed (E26); persisted v1 entries lack them
-  foods: (q: string, source: string) => ["nutrition", "foods-v2", q, source] as const,
-  food: (id: number) => ["nutrition", "food-v2", id] as const,
+  foods: (q: string, source: string) => ["nutrition", "foods-v3", q, source] as const,
+  food: (id: number) => ["nutrition", "food-v3", id] as const,
   // v2: gained reference (persisted with staleTime Infinity, so the key must change)
   nutrients: ["nutrition", "nutrients-v2"] as const,
   profile: ["nutrition", "profile"] as const,
@@ -236,6 +262,24 @@ export function useConfirmDraft() {
     }) => api<Meal>("/api/nutrition/drafts/confirm", { method: "POST", body }),
     onSettled: invalidate,
   });
+}
+
+/** "Dohledat recept" on a draft item (E30): the item as a dish, computed from a web or typical recipe. Online
+ * only, nothing is saved; the amount is the item's portions times the recipe's portion when it gave portions. */
+export function useLookupRecipe() {
+  return useMutation({
+    mutationFn: (input: MealItemInput) =>
+      api<{ candidate: Candidate; amount_g: number }>("/api/nutrition/lookup", { method: "POST", body: input }),
+  });
+}
+
+/** "toprecepty.cz" for a recipe link. */
+export function siteName(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 export function useSaveFood() {

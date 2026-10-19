@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from fakes import FakeGemini
 from fastapi.testclient import TestClient
@@ -12,9 +13,11 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.main import app
-from app.models.nutrition import Food, FoodAlias, FoodSource, MealLog, MealLogItem
+from app.models.nutrition import Food, FoodAlias, FoodSource, MealLog, MealLogItem, RecipeComponent
 from app.routers.ai_coach import gemini_client
+from app.routers.nutrition import get_http
 from app.services.nutrition.assistant import Pick, parse_estimate
+from app.services.nutrition.lookup import Ingredient, RecipePlan
 from app.services.nutrition.resolver import MealItemInput, normalize
 
 
@@ -23,6 +26,24 @@ def models(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "gemini_model_fast", "fast-model")
     monkeypatch.setattr(settings, "gemini_model_smart", None)
     monkeypatch.setattr(settings, "gemini_model_fallbacks", None)
+
+
+@pytest.fixture(autouse=True)
+def web() -> dict[str, str]:
+    """No real network: the recipe search and pages answer from this dict (url → html), everything else 404s."""
+    pages: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "html.duckduckgo.com":
+            links = "".join(f'<a class="result__a" href="{url}">r</a>' for url in pages)
+            return httpx.Response(200, text=links)
+        if (page := pages.get(str(request.url))) is not None:
+            return httpx.Response(200, headers={"content-type": "text/html"}, text=page)
+        return httpx.Response(404)
+
+    app.dependency_overrides[get_http] = lambda: httpx.Client(transport=httpx.MockTransport(handler))
+    yield pages
+    app.dependency_overrides.pop(get_http, None)
 
 
 @pytest.fixture
@@ -164,10 +185,7 @@ def test_nothing_found_asks_the_web_for_an_estimate(client: TestClient, session:
         '```json\n{"name": "Bramboráky", "kcal": 230, "protein_g": 4.1, "carbs_g": 25, "fat_g": 12.5, '
         '"fiber_g": null}\n```'
     )
-    gemini.generate_responses = [
-        SimpleNamespace(text=estimate),
-        SimpleNamespace(parsed=[Pick(item=0, choice=0, confidence=0.5)]),
-    ]
+    gemini.generate_responses = [SimpleNamespace(text=estimate)]  # no candidates: nothing to choose from
 
     [draft] = chat(client, "Bramboráky 150 g")["drafts"]
 
@@ -181,6 +199,98 @@ def test_nothing_found_asks_the_web_for_an_estimate(client: TestClient, session:
     search_call = gemini.generated[0]["config"]
     assert search_call.tools[0].google_search is not None and search_call.response_schema is None
     assert chosen["grounded"] is True
+
+
+RECIPE_PAGE = (
+    '<script type="application/ld+json">{"@type": "Recipe", "name": "Bún chả", "recipeYield": "2 porce", '
+    '"recipeIngredient": ["300 g bůčku", "200 g rýžových nudlí"]}</script>'
+)
+
+
+def bun_cha_plan() -> RecipePlan:
+    ingredients = [  # 800 g finished
+        Ingredient(
+            name_cs="bůček", usda_query_en="Pork, fresh, belly, raw", grams=300, grams_in_dish=250, assumed=False
+        ),
+        Ingredient(
+            name_cs="rýžové nudle", usda_query_en="Rice noodles, dry", grams=200, grams_in_dish=550, assumed=False
+        ),
+    ]
+    return RecipePlan(ingredients=ingredients, portions=2)
+
+
+def test_an_unknown_dish_is_computed_from_a_web_recipe_and_learned(
+    client: TestClient, session: Session, fake, web: dict[str, str]
+) -> None:
+    pork = food(session, name_en="Pork, fresh, belly, raw", kcal=518, protein_g=9.3, carbs_g=0, fat_g=53)
+    noodles = food(session, name_en="Rice noodles, dry", kcal=364, protein_g=6, carbs_g=80, fat_g=0.6)
+    food(session, name_en="Buns, cinnamon", kcal=400)  # the kind of look-alike the USDA search offers
+    web["https://www.toprecepty.cz/recept/bun-cha/"] = RECIPE_PAGE
+    dish = item("bun cha", "Bún chả", 400, is_dish=True, portions=1, usda_query_en="Buns, cinnamon")
+    gemini = fake(calls=[("log_meal_from_items", {"meal_type": "lunch", "items": [dish]})])
+    gemini.generate_responses = [
+        SimpleNamespace(parsed=[Pick(item=0, choice=0, confidence=0.3)]),
+        SimpleNamespace(parsed=bun_cha_plan()),
+    ]
+
+    [draft] = chat(client, "Na oběd jsem měl bun cha")["drafts"]
+
+    [entry] = draft["items"]
+    chosen = entry["chosen"]
+    assert (chosen["ref"], chosen["source"], chosen["per_100g"]["kcal"]) == ("recipe", "recipe", 285.25)
+    assert chosen["recipe"]["source_url"] == "https://www.toprecepty.cz/recept/bun-cha/"
+    assert entry["amount_g"] == 400  # 1 portion of 800 g / 2
+    assert entry["candidates"][0]["ref"] == "recipe"
+    assert "toprecepty.cz" in gemini.results[0]["items"][0]["recipe"]
+
+    body = {
+        "id": str(uuid.uuid4()),
+        "date": draft["date"],
+        "meal_type": draft["meal_type"],
+        "items": [{"input": entry["input"], "candidate": chosen, "amount_g": entry["amount_g"]}],
+    }
+    confirmed = client.post("/api/nutrition/drafts/confirm", json=body)
+
+    assert confirmed.status_code == 200, confirmed.text
+    saved = session.get(Food, confirmed.json()["items"][0]["food_id"])
+    assert saved is not None and (saved.source, saved.name_cs, saved.kcal) == ("recipe", "Bún chả", 285.25)
+    assert {c.ingredient_food_id for c in session.exec(select(RecipeComponent))} == {pork.id, noodles.id}
+    detail = client.get(f"/api/nutrition/foods/{saved.id}").json()
+    assert detail["source_url"] == "https://www.toprecepty.cz/recept/bun-cha/"
+    assert [(c["name"], c["amount_g"]) for c in detail["recipe_components"]] == [
+        ("Pork, fresh, belly, raw", 300),
+        ("Rice noodles, dry", 200),
+    ]
+    assert detail["portions"] == [{"label": "porce", "grams": 400}]
+
+    gemini.generated, gemini.results = [], []
+    chat(client, "Večer zase bun cha")  # learned: saved directly, no lookup
+    assert gemini.results[0]["status"] == "saved" and gemini.generated == []
+
+
+def test_lookup_route_computes_a_recipe_on_demand(client: TestClient, session: Session, fake) -> None:
+    food(session, name_en="Pork, fresh, belly, raw", kcal=518, protein_g=9.3, carbs_g=0, fat_g=53)
+    food(session, name_en="Rice noodles, dry", kcal=364, protein_g=6, carbs_g=80, fat_g=0.6)
+    gemini = fake()
+    gemini.generate_responses = [SimpleNamespace(parsed=bun_cha_plan())]
+    entry = item("bun cha", "Bún chả", 350, portions=2).model_dump()
+
+    response = client.post("/api/nutrition/lookup", json=entry)
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert (result["candidate"]["ref"], result["candidate"]["recipe"]["source_url"]) == ("recipe", None)
+    assert result["amount_g"] == 800  # 2 portions of 400 g
+    assert "Recept nemáme" in gemini.generated[0]["contents"]  # the search found nothing
+
+
+def test_lookup_route_reports_a_dish_it_cannot_compute(client: TestClient, fake) -> None:
+    gemini = fake()
+    gemini.generate_responses = [SimpleNamespace(parsed=bun_cha_plan())]  # no USDA foods in the test database
+
+    response = client.post("/api/nutrition/lookup", json=item("bun cha", "Bún chả", 350).model_dump())
+
+    assert response.status_code == 404
 
 
 def test_summary_tool_reports_nutrients_with_coverage(client: TestClient, session: Session, fake) -> None:
@@ -325,7 +435,6 @@ def test_estimate_falls_back_to_the_models_own_knowledge(client: TestClient, ses
     gemini.generate_responses = [
         RuntimeError("429: search grounding not in the free tier"),
         SimpleNamespace(text=known),
-        SimpleNamespace(parsed=[Pick(item=0, choice=0, confidence=0.4)]),
     ]
 
     [draft] = chat(client, "Bramboráky 150 g")["drafts"]

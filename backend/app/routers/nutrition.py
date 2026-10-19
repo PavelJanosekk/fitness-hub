@@ -50,10 +50,11 @@ from app.services.nutrition import quick_add as quick_add_meal
 from app.services.nutrition.assistant import NutritionTurn, nutrition_turn
 from app.services.nutrition.autofill import AutofillUnavailableError, autofill
 from app.services.nutrition.foods import create_food, read_food, search_foods, update_food
+from app.services.nutrition.lookup import lookup_dish
 from app.services.nutrition.meals import MealEntry, save_meal, upsert_item
 from app.services.nutrition.nutrients import ALL as ALL_NUTRIENTS
 from app.services.nutrition.nutrients import MICRO_KEYS
-from app.services.nutrition.resolver import Candidate, MealItemInput, confirm_aliases, materialize
+from app.services.nutrition.resolver import Candidate, MealItemInput, confirm_aliases, materialize, portion_amount
 from app.services.nutrition.summary import DaySummary, day_meals, day_summary, read_item
 from app.timeutils import now_utc, today
 
@@ -232,6 +233,22 @@ def post_autofill(body: AutofillRequest, session: SessionDep, client: GeminiDep,
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"Autofill unavailable: {exc}") from None
 
 
+class LookupRead(BaseModel):
+    candidate: dict[str, Any]  # a draft candidate (ref "recipe")
+    amount_g: float  # the item's amount, or its portions times the recipe's portion
+
+
+@router.post("/lookup", response_model=LookupRead)
+def lookup(body: MealItemInput, session: SessionDep, client: GeminiDep, http: HttpDep) -> LookupRead:
+    """Smart lookup on demand ("Dohledat recept" on a draft item, E30): the item as a dish, computed from a web
+    recipe (or a typical one) and USDA foods; nothing is saved. 404 when it can't be computed."""
+    item = body.model_copy(update={"is_dish": True})
+    candidate = run_gemini(lambda: lookup_dish(session, http, client, item))
+    if candidate is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No recipe could be computed")
+    return LookupRead(candidate=candidate.to_dict(), amount_g=portion_amount(session, body, candidate))
+
+
 @router.post("/foods", response_model=FoodRead, status_code=status.HTTP_201_CREATED)
 def post_food(body: FoodCreate, session: SessionDep, background: BackgroundTasks) -> FoodRead:
     """Without `micro_refs` the food gets its micronutrient references in the background (E26)."""
@@ -265,7 +282,7 @@ def delete_food(food_id: int, session: SessionDep) -> Response:
         session.commit()
     except IntegrityError:
         session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, "The food is used in logged meals") from None
+        raise HTTPException(status.HTTP_409_CONFLICT, "The food is used in logged meals or recipes") from None
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

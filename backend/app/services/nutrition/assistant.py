@@ -6,6 +6,7 @@ through a confirmed mapping; otherwise the meal comes back as a draft the user c
 
 import datetime as dt
 import json
+import logging
 import re
 import uuid
 from collections.abc import Callable
@@ -24,6 +25,7 @@ from app.models.chat import Assistant
 from app.models.nutrition import Food, FoodSource, MealLog, MealLogItem, MealType
 from app.services.conversations import get_conversation, load_history, store_turn
 from app.services.gemini_service import Tier, lite_model, run_assistant
+from app.services.nutrition.lookup import lookup_dish
 from app.services.nutrition.meals import MealEntry, save_meal
 from app.services.nutrition.nutrients import MACROS
 from app.services.nutrition.resolver import (
@@ -35,6 +37,8 @@ from app.services.nutrition.resolver import (
 )
 from app.services.nutrition.summary import day_summary
 from app.timeutils import local_date, now_utc
+
+log = logging.getLogger(__name__)
 
 KNOWN_FOODS = 150
 CZECH_WEEKDAYS = ("pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota", "neděle")
@@ -56,10 +60,14 @@ Zapisování jídla:
 - Balené výrobky (is_branded=true): ponech značku, vyplň brand_search_query (např. "Milko skyr bílý")
   a usda_query_en jako obecnou náhradu.
 - Odpovídá-li položka potravině ze seznamu známých potravin, vyplň její food_id.
+- Hotové jídlo, které uživatel nerozepíše na suroviny (Bún chả, svíčková, pizza, kebab): jedna položka
+  s is_dish=true a canonical_name_cs = název jídla ("Bún chả"). Když místo gramů řekne porce, talíř nebo kus,
+  dej portions (např. 1) a amount_g odhadni. Neznámé jídlo aplikace sama dohledá podle receptu.
 - meal_type urči z kontextu a denní doby. Den: zapisuj k dni, který má uživatel v aplikaci otevřený (uvedený níže);
   date předej jen tehdy, když uživatel výslovně řekne jiný den ("včera", "v sobotu").
 - Když nástroj vrátí "needs_confirmation", nic se neuložilo: stručně řekni, co navrhuješ, a uživatel to
-  v aplikaci potvrdí jedním ťuknutím.
+  v aplikaci potvrdí jedním ťuknutím. U položky s "recipe" řekni, že hodnoty jsou spočítané z receptu
+  (z webu, nebo typického, když web nic nenašel).
 
 Dotazy:
 - Na otázky o příjmu, makrech, vitamínech a minerálech VŽDY nejdřív zavolej get_daily_nutrition_summary.
@@ -137,6 +145,17 @@ class GeminiChooser:
                 out.append((pick.choice, pick.confidence))
         return out
 
+    def lookup(self, session: Session, http: httpx.Client | None, item: MealItemInput) -> Candidate | None:
+        """Smart lookup (E30): a dish is computed from a web (or typical) recipe; plain foods and dishes that can't
+        be computed get the per-100 g estimate."""
+        if item.is_dish:
+            try:
+                if (found := lookup_dish(session, http, self.client, item)) is not None:
+                    return found
+            except Exception as exc:  # quota, network, model errors: the estimate may still work
+                log.warning("recipe lookup for %r: %s", item.canonical_name_cs, exc)
+        return self.estimate(item)
+
     def estimate(self, item: MealItemInput) -> Candidate | None:
         """Per-100 g estimate in its own call (search grounding isn't combined with function tools, C5): from the
         web when grounding is available, else from the model's knowledge."""
@@ -192,6 +211,13 @@ def _compact(row: dict[str, Any]) -> dict[str, Any]:
 def _kcal(candidate: Candidate | None, grams: float) -> float | None:
     kcal = candidate.per_100g.get("kcal") if candidate else None
     return round(kcal * grams / 100, 1) if kcal is not None else None
+
+
+def _recipe_source(candidate: Candidate | None) -> str | None:
+    if candidate is None or candidate.recipe is None:
+        return None
+    url = candidate.recipe.get("source_url")
+    return f"computed from a web recipe ({url})" if url else "computed from a typical recipe (no web recipe found)"
 
 
 def build_nutrition_tools(ctx: NutritionContext) -> list[Callable[..., dict[str, Any]]]:
@@ -257,6 +283,7 @@ def build_nutrition_tools(ctx: NutritionContext) -> list[Callable[..., dict[str,
                         "kcal": _kcal(r.chosen, r.item.amount_g),
                         "confidence": r.confidence,
                         "known": r.confirmed or None,
+                        "recipe": _recipe_source(r.chosen),
                     }
                 )
                 for r in resolutions

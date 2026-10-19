@@ -87,7 +87,8 @@ def resolve_components(session: Session, components: list[Component]) -> list[tu
     for component in components:
         if component.grams_per_100g <= 0:
             continue
-        hits = search_usda(session, component.usda_query_en, limit=1)
+        # Hidden USDA foods (E28 duplicates, e.g. the 1:1 reference of a KT food) still serve as references
+        hits = search_usda(session, component.usda_query_en, limit=1, include_hidden=True)
         if hits and hits[0][1] >= MIN_SCORE and hits[0][0].id is not None:
             refs.append((hits[0][0].id, component.grams_per_100g / 100))
     return refs

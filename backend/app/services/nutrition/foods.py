@@ -3,8 +3,16 @@
 from sqlalchemy import func, or_
 from sqlmodel import Session, col, select
 
-from app.models.nutrition import Food, FoodPortion, FoodSource, MealLogItem, MicrosStatus
-from app.schemas.nutrition import FoodCreate, FoodRead, FoodUpdate, MicroRefIn, MicroRefRead, PortionRead
+from app.models.nutrition import Food, FoodPortion, FoodSource, MealLogItem, MicrosStatus, RecipeComponent
+from app.schemas.nutrition import (
+    FoodCreate,
+    FoodRead,
+    FoodUpdate,
+    MicroRefIn,
+    MicroRefRead,
+    PortionRead,
+    RecipeComponentRead,
+)
 from app.services.nutrition.micro_refs import Ref, effective_values, refs_for, set_refs
 from app.services.nutrition.nutrients import MICRO_KEYS
 from app.services.nutrition.resolver import normalize
@@ -32,12 +40,20 @@ def read_food(
     refs: list[Ref] | None = None,
 ) -> FoodRead:
     """`refs` None = load them; pass the batch-loaded list (possibly empty) when reading many foods."""
-    portions = []
+    portions, components = [], []
     if with_portions:
         rows = session.exec(
             select(FoodPortion).where(FoodPortion.food_id == food.id).order_by(col(FoodPortion.grams))
         ).all()
         portions = [PortionRead(label=p.label, grams=p.grams) for p in rows]
+        if food.source == FoodSource.recipe:
+            ingredients = session.exec(
+                select(RecipeComponent, Food)
+                .join(Food, col(Food.id) == RecipeComponent.ingredient_food_id)
+                .where(RecipeComponent.recipe_food_id == food.id)
+                .order_by(col(RecipeComponent.amount_g).desc())
+            ).all()
+            components = [RecipeComponentRead(food_id=f.id, name=f.name, amount_g=c.amount_g) for c, f in ingredients]  # type: ignore[arg-type]
     if use_count is None:
         use_count = use_counts(session, [food.id]).get(food.id, 0) if food.id else 0  # type: ignore[list-item]
     if refs is None:
@@ -52,6 +68,7 @@ def read_food(
             "use_count": use_count,
             "micro_refs": micro_refs,
             "borrowed": borrowed,
+            "recipe_components": components,
         }
     )
 
