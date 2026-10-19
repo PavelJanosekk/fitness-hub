@@ -128,7 +128,6 @@ export function MealDraftCard({ draft }: { draft: MealDraft }) {
             <li key={i} className="rounded-lg bg-zinc-900/70 p-2">
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs text-zinc-500">„{item.input.user_phrase}“</p>
                   {row.candidate ? (
                     <p className="flex items-center gap-1.5">
                       <span className="truncate">{row.candidate.name}</span>
@@ -142,12 +141,14 @@ export function MealDraftCard({ draft }: { draft: MealDraft }) {
                     <p className="text-xs text-amber-400">nejistá shoda</p>
                   )}
                 </div>
-                <DecimalInput
-                  ariaLabel="Gramy"
-                  value={row.grams}
-                  onChange={(grams) => update(i, { grams })}
-                  className="!min-h-9 !w-20 shrink-0 text-right !text-base"
-                />
+                <div className="w-20 shrink-0">
+                  <DecimalInput
+                    ariaLabel="Gramy"
+                    value={row.grams}
+                    onChange={(grams) => update(i, { grams })}
+                    className="!min-h-9 text-right !text-base"
+                  />
+                </div>
                 <span className="mt-2 w-4 text-zinc-500">g</span>
               </div>
               <div className="mt-1 flex items-center justify-between text-xs text-zinc-500">
