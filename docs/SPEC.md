@@ -162,7 +162,8 @@ Intake (calories/macros) is **not** stored here — the single source of truth i
 - `id`: `Optional[int]` (Primary Key)
 - `name`: `str` (Unique, Indexed, e.g. "Bench Press (Barbell)" — same naming convention as Strong so imports match)
 - `muscle_group`: `str` (chest, back, legs, shoulders, biceps, triceps, core, full_body, cardio; `arms` was split by migration 0018 [E32])
-- `equipment`: `Optional[str]` (barbell, dumbbell, machine, bodyweight, cable)
+- `equipment`: `Optional[str]` (barbell, dumbbell, machine, bodyweight, cable, plate_loaded, band)
+- `rep_min`, `rep_max`, `weight_step`, `sets_max`: `Optional` progression settings for the targets **[E33]**; null = the default for the equipment (barbell / dumbbell / bodyweight 6–10 reps, 2.5 kg; machine / cable / plate_loaded 8–12, 5 kg; band / none 8–12, 2.5 kg; 3 sets)
 
 ### 5.3 Workout (table `workouts`)
 - `id`: `UUID` (Primary Key, client-generated) **[A5]**
@@ -267,7 +268,8 @@ Per-source daily values. Used when a source sends totals instead of intervals, a
 ### 6.3 Gym & Workouts (`/api/workouts`, `/api/exercises`)
 - `GET /api/exercises`: list all exercises (seed 30 common gym exercises on startup, idempotent).
 - `POST /api/exercises`: create a custom exercise.
-- `GET /api/exercises/{exercise_id}/last-performance`: **CRITICAL FOR GYM UI.** Returns the sets (`set_order`, `set_type`, `weight_kg`, `reps`, `duration_s`, `distance_m`, `rpe`) from the most recent completed workout containing this exercise. Used to pre-fill "ghost values".
+- `GET /api/exercises/{exercise_id}/last-performance`: **CRITICAL FOR GYM UI.** Returns the sets (`set_order`, `set_type`, `weight_kg`, `reps`, `duration_s`, `distance_m`, `rpe`) from the most recent completed workout containing this exercise. Used to pre-fill "ghost values". It also carries `target`: the planned sets for the next session **[E33]** (see below).
+- **Progressive overload targets [E33]:** computed by `services/overload.py` from the last finished session, no AI. Working sets = completed `normal` / `failure` sets with reps; W = their most frequent weight (ties: the heavier); other sets are copied unchanged. One step, first match wins: comeback after >21 days, or deload after 3 sessions in a row at W without beating its best total reps → ~10 % lighter (W − k·step nearest 0.9 W, max 20 % off, else ~10 % fewer reps); best set below rep_min → one step lighter with Epley-estimated reps; every set at W ≥ rep_max → + step at rep_min; fewer working sets than sets_max → one more set at W with the lowest reps; otherwise +1 rep on the weakest set. No load (bodyweight): sets, then reps without a cap. `target = {kind: comeback|deload|lighter|weight|sets|reps, weight_kg, sets[{set_type, weight_kg, reps, changed}], stalled_sessions, days_since, rep_min, rep_max, weight_step, sets_max}` or null without a usable session (no history, time / distance only).
 - `GET /api/workouts`: recent workouts with aggregated total volume (`sum(weight_kg * reps)` over non-warmup sets) and set count.
 - `GET /api/workouts/active`: the unfinished workout (if any) with its sets, for "Resume".
 - `GET /api/workouts/templates`, `PUT /api/workouts/templates/{id}` (idempotent upsert, client UUID; new ones go to the end), `DELETE /api/workouts/templates/{id}`: hand-managed templates in `workout_templates` (name, position, ordered exercises each with planned sets `{set_type, weight_kg, reps}` as JSONB) **[E18, replaces the history-derived templates of E9]**. Seeded once by migration 0010 from the latest workout of every name done ≥3 times. The client creates the new workout with its own UUID and pre-adds the exercises with the template's values (blank values fall back to `/last-performance`; the "minule" ghost stays).
@@ -425,7 +427,8 @@ Clean, dark-mode default UI (Tailwind slate-900 / zinc-900 background) optimized
 - **Discard [E18]:** an unfinished workout can be discarded from the resume card and from the active screen; it deletes the workout and its sets on the server (queued like other gym writes) and on the phone.
 - **History [E18]:** paged list (8 per page) with PR badges ("Bench Press PR"); a row opens a read-only view laid out like the active workout, with PR details and a delete button.
 - **Auto-finish [E9]:** a forgotten workout closes itself after 2 h with no sets (see §6.3). The history marks it as "automaticky ukončeno" with an editable end time.
-- **Ghost Values:** when an exercise is added, fetch `/api/exercises/{id}/last-performance` and show the previous session's weight & reps as placeholders / defaults.
+- **Ghost Values:** when an exercise is added, fetch `/api/exercises/{id}/last-performance` and show the previous session's weight & reps in the "Minule" column (tap = copy).
+- **Targets [E33]:** the sets are pre-filled with the progression target (template values only fill exercises without history). A line under the exercise name shows the target and its step ("+1 série", "+2,5 kg", …); tapping it explains the rules and opens the exercise's progression settings (rep range, weight step, max sets), which are also editable in Cviky.
 - **Quick Stepper Controls:** −2.5 / +2.5 buttons for weight and −1 / +1 for reps next to the inputs, so the keyboard is rarely needed. Set type toggle (W / D / F) **[A6]**.
 - **1-Tap Complete & Rest Timer:** the checkmark marks the set completed, sends an optimistic mutation, and starts the floating `RestTimer` (60 / 90 / 120 / 180 s with a progress bar).
 - **Voice Dictation Shortcut:** floating microphone button (`VoiceRecorder.tsx`) inside the active workout; drafts appear as `DraftCard`s **[E4]**.
