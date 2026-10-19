@@ -50,6 +50,8 @@ class TrainingDay(SQLModel, table=True):
 
 
 class Race(SQLModel, table=True):
+    """A race: parsed from 00_INDEX.md (source "kb", replaced on sync) or added in the app (source "user", kept)."""
+
     __tablename__ = "races"
 
     id: int | None = Field(default=None, primary_key=True)
@@ -58,6 +60,8 @@ class Race(SQLModel, table=True):
     distance_km: float | None = None
     is_goal_race: bool = False  # the target race; others are tune-ups
     goal: str | None = None
+    source: str = "kb"  # "kb" | "user"
+    hidden: bool = False  # a KB race the user removed; stays hidden across syncs (matched by name + date)
 
 
 class AthleteProfile(SQLModel, table=True):

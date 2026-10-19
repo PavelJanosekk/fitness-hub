@@ -380,12 +380,13 @@ The coach is one of **two separate assistants** (the nutrition assistant arrives
 - The user's GitHub repo `COACH_KB_REPO` (PavelJanosekk/RunningCoach) **stays the source of truth**; the user keeps their Claude Code workflow there. The app keeps a read-only copy of its root `*.md` files (`coach_documents`). It syncs every 6 h and via `POST /api/coach/kb/sync`; git blob SHAs skip unchanged files. A failure is recorded and keeps the previous copy.
 - Parsed into tables on each sync, forgivingly (unparsed rows become warnings, never errors):
   - the weekly plan tables of `04_timeline_plan.md` → `training_weeks` (km/LR ranges, quality, block, notes; years inferred from the "Aktualizováno" date);
-  - races and goals from `00_INDEX.md` → `races`;
+  - races and goals from `00_INDEX.md` → `races` (`source = kb`, replaced on each sync; races the user removed stay hidden, matched by name + date) **[E34]**;
   - LTHR and max HR → `athlete_profile`.
 
   A changed LTHR triggers a local recompute of all run metrics.
 - Coach context: `CLAUDE.md`, `00_INDEX.md`, `02_physiology_zones.md` and `11_errata_corrections.md` go into every system instruction; the rest is read via `read_knowledge_base`. The coach is told the KB is read-only and that its script/commit instructions don't apply to it.
 - `GET /api/coach/kb` (status, docs, races, LTHR, warnings), `GET /api/coach/kb/documents/{name}`, `GET /api/running/weeks` (plan vs actual: km, runs, longest run per week).
+- Races can also be managed in the app **[E34]**: `POST /api/coach/races` adds one (`source = user`, untouched by syncs), `DELETE /api/coach/races/{id}` deletes a user race or hides a KB race (`hidden`). Hidden races are left out of the Run page, the coach context and the marathon boss.
 
 ### 6.8 Run stream metrics [E12]
 - Port of RunningCoach `scripts/metrics.py` (`services/run_metrics.py`): Minetti GAP, pace of the first 10 min, steady HR (after 10 min), EF (GAP m/min per beat), decoupling (GAP/HR, first vs second steady half), seconds per zone (% of LTHR as in `02`), share above easy/steady, GAP within the easy comparison band (83–87 % LTHR = 143–150).

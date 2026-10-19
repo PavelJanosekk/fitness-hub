@@ -249,3 +249,30 @@ def test_sync_endpoint(client: TestClient) -> None:
     assert status["lthr"] == 172 and len(status["documents"]) == 4 and status["plan_weeks"] == 6
     assert client.get("/api/coach/kb/documents/11").json()["path"] == "11_errata_corrections.md"
     http.close()
+
+
+def test_races_can_be_added_and_removed_and_survive_a_resync(client: TestClient, session: Session) -> None:
+    sync(session, FakeGitHub(FILES))
+    races = {r["name"]: r for r in client.get("/api/coach/kb").json()["races"]}
+    half = races["Generali Prague Half Marathon"]
+    assert half["source"] == "kb"
+
+    added = client.post(
+        "/api/coach/races", json={"name": "  Běchovice  ", "date": "2027-09-26", "distance_km": 10}
+    ).json()
+    assert (added["name"], added["source"], added["is_goal_race"]) == ("Běchovice", "user", False)
+    assert client.delete(f"/api/coach/races/{half['id']}").status_code == 204
+    assert client.delete(f"/api/coach/races/{half['id']}").status_code == 404
+
+    # A resync re-creates the KB races but keeps the removed one hidden and the user's race untouched
+    sync(session, FakeGitHub({**FILES, "00_INDEX.md": INDEX.replace("172 bpm", "175 bpm")}))
+    names = [r["name"] for r in client.get("/api/coach/kb").json()["races"]]
+    assert "Generali Prague Half Marathon" not in names and "Běchovice" in names and len(names) == 2
+    now = dt.datetime(2026, 10, 17, 9, tzinfo=dt.UTC)
+    tools = {fn.__name__: fn for fn in build_coach_tools(ToolContext(session=session, now=now))}
+    coach_races = [r["name"] for r in tools["get_running_and_marathon_context"](21)["races"]]
+    assert "Generali Prague Half Marathon" not in coach_races and coach_races[-1] == "Běchovice"
+
+    assert client.delete(f"/api/coach/races/{added['id']}").status_code == 204
+    assert session.get(Race, added["id"]) is None
+    assert client.post("/api/coach/races", json={"name": " ", "date": "2027-01-01"}).status_code == 422

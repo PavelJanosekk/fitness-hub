@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDays, isoDate } from "../lib/format";
 import { api } from "./client";
 
@@ -54,6 +54,17 @@ export type Activity = {
   z4_minutes: number | null;
 };
 
+export type Race = {
+  id: number;
+  name: string;
+  date: string;
+  distance_km: number | null;
+  is_goal_race: boolean;
+  goal: string | null;
+  source: "kb" | "user";
+};
+export type RaceInput = Pick<Race, "name" | "date" | "distance_km" | "is_goal_race">;
+
 export type KbStatus = {
   repo: string | null;
   lthr: number | null;
@@ -63,7 +74,7 @@ export type KbStatus = {
   last_sync_error: string | null;
   sync_warnings: string[];
   documents: { path: string; characters: number }[];
-  races: { name: string; date: string; distance_km: number | null; is_goal_race: boolean; goal: string | null }[];
+  races: Race[];
   plan_weeks: number;
 };
 
@@ -75,7 +86,24 @@ export const useRunWeeks = () =>
   });
 export const useActivities = () =>
   useQuery({ queryKey: ["running", "activities"], queryFn: () => api<Activity[]>("/api/running/activities?limit=40") });
-export const useKb = () => useQuery({ queryKey: ["coach", "kb"], queryFn: () => api<KbStatus>("/api/coach/kb") });
+// "v2": races gained `id` and `source`; the persisted cache on phones still holds the old shape
+const KB_KEY = ["coach", "kb", "v2"];
+export const useKb = () => useQuery({ queryKey: KB_KEY, queryFn: () => api<KbStatus>("/api/coach/kb") });
+
+/** Races added in the app survive KB syncs; removing a KB race only hides it. Needs the server, so not queued. */
+function useRaceMutation<T>(fn: (arg: T) => Promise<unknown>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    retry: 0,
+    mutationFn: fn,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: KB_KEY });
+      queryClient.invalidateQueries({ queryKey: ["rpg"] }); // the marathon boss follows the goal race
+    },
+  });
+}
+export const useAddRace = () => useRaceMutation((body: RaceInput) => api<Race>("/api/coach/races", { method: "POST", body }));
+export const useDeleteRace = () => useRaceMutation((id: number) => api(`/api/coach/races/${id}`, { method: "DELETE" }));
 
 /** HR zones as % of LTHR, rounded exactly like the backend and the knowledge base (02_physiology_zones.md). */
 export function zones(lthr: number) {

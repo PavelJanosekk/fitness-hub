@@ -1,10 +1,11 @@
-import { ChevronDown, ExternalLink, Flag, Thermometer } from "lucide-react";
+import { ChevronDown, ExternalLink, Thermometer } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useWeekly } from "../api/queries";
 import { type Activity, type PlanWeek, stravaUrl, useActivities, useKb, useRunWeeks, zones } from "../api/running";
 import { RunVolumeChart } from "../components/charts/DashboardCharts";
 import { Card, PageHeader } from "../components/Layout";
+import { RaceTiles } from "../components/running/RaceTiles";
 import { WeekRunList } from "../components/running/WeekRunList";
 import { Pager, Segmented } from "../components/ui";
 import { formatDay, formatDayMonth, formatNumber, formatPace, isoDate } from "../lib/format";
@@ -12,7 +13,6 @@ import { formatDay, formatDayMonth, formatNumber, formatPace, isoDate } from "..
 const RUN_TYPES = new Set(["Run", "TrailRun", "VirtualRun"]);
 const WEEKS_PER_PAGE = 4;
 const RUNS_PER_PAGE = 5;
-const daysUntil = (iso: string) => Math.round((new Date(`${iso}T12:00:00`).getTime() - new Date(`${isoDate()}T12:00:00`).getTime()) / 86_400_000);
 const stravaLabel = "Otevřít na Stravě";
 // The charts load only when the Grafy tab is opened
 const RunStats = lazy(() => import("../components/running/RunStats").then((m) => ({ default: m.RunStats })));
@@ -64,19 +64,7 @@ function PlanView() {
         {volume.some((w) => w.runs) ? <RunVolumeChart weeks={volume} /> : <p className="py-4 text-sm text-zinc-500">Běhy se objeví po propojení Stravy (Nastavení).</p>}
       </Card>
 
-      {upcoming.length > 0 && (
-        <div className="grid grid-cols-2 gap-3">
-          {upcoming.map((race) => (
-            <Card key={race.name} className={race.is_goal_race ? "border-emerald-700" : ""}>
-              <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-                <Flag size={14} /> {formatDay(race.date)}
-              </div>
-              <div className="mt-1 text-3xl font-semibold tabular-nums">{daysUntil(race.date)}</div>
-              <div className="text-xs text-zinc-400">dní · {race.name}</div>
-            </Card>
-          ))}
-        </div>
-      )}
+      <RaceTiles races={upcoming} />
 
       {current && (
         <Card>

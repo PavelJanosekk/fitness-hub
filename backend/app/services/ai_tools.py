@@ -275,7 +275,9 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
             .group_by(col(Workout.id))
             .order_by(col(Workout.started_at))
         ).all()
-        upcoming_races = session.exec(select(Race).where(Race.date >= start).order_by(col(Race.date))).all()
+        upcoming_races = session.exec(
+            select(Race).where(Race.date >= start, ~col(Race.hidden)).order_by(col(Race.date))
+        ).all()
         lthr = current_lthr(session)
         return {
             "hr_zones": {"lthr": lthr, **Zones(lthr).bounds()} if lthr else None,

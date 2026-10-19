@@ -56,9 +56,10 @@ def _planned_km(low: float | None, high: float | None) -> float:
 
 def marathon_boss(session: Session, on: dt.date | None = None) -> Boss | None:
     on = on or today()
+    races = select(Race).where(~col(Race.hidden))
     race = (
-        session.exec(select(Race).where(col(Race.is_goal_race)).order_by(col(Race.date).desc()).limit(1)).first()
-        or session.exec(select(Race).where(col(Race.distance_km) >= DEFEAT_KM).order_by(col(Race.date))).first()
+        session.exec(races.where(col(Race.is_goal_race)).order_by(col(Race.date).desc()).limit(1)).first()
+        or session.exec(races.where(col(Race.distance_km) >= DEFEAT_KM).order_by(col(Race.date))).first()
     )
     if race is None:
         return None

@@ -8,7 +8,7 @@ import datetime as dt
 from dataclasses import dataclass, field
 
 import httpx
-from sqlmodel import Session, delete, select
+from sqlmodel import Session, col, delete, select
 
 from app.config import settings
 from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingDay, TrainingWeek
@@ -119,8 +119,10 @@ def _apply_parsed_facts(session: Session, result: KBSyncResult) -> None:
         athlete.max_hr = facts.max_hr or athlete.max_hr
         athlete.kb_updated = facts.kb_updated or athlete.kb_updated
         if facts.races:
-            session.exec(delete(Race))
-            session.add_all(Race(**vars(race)) for race in facts.races)
+            kb_races = select(Race).where(Race.source == "kb")
+            removed = {(r.name, r.date) for r in session.exec(kb_races.where(col(Race.hidden))).all()}
+            session.exec(delete(Race).where(col(Race.source) == "kb"))
+            session.add_all(Race(**vars(race), hidden=(race.name, race.date) in removed) for race in facts.races)
             result.races = len(facts.races)
     if plan is None:
         result.warnings.append(f"{PLAN_DOC} missing: weekly plan not updated")
