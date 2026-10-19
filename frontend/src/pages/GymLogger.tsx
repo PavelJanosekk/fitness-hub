@@ -1,5 +1,5 @@
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, CloudOff, GripVertical, List, Pencil } from "lucide-react";
+import { Check, ChevronRight, CloudOff, GripVertical, List, Trash2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import {
@@ -30,6 +30,7 @@ import { RestTimer, PRESETS, restPreset, setRestPreset, startRest } from "../com
 import { ExercisePicker } from "../components/gym/ExercisePicker";
 import { AddSetButton, SetLabel, TableHeader, cellInput, selectAll } from "../components/gym/SetTable";
 import { PrBadges } from "../components/gym/PersonalRecords";
+import { TemplateDetail } from "../components/gym/TemplateDetail";
 import { TemplateEditor } from "../components/gym/TemplateEditor";
 import { WorkoutDetail } from "../components/gym/WorkoutDetail";
 import { WorkoutEditor } from "../components/gym/WorkoutEditor";
@@ -115,6 +116,8 @@ function StartView() {
   const active = useActiveServerWorkout();
   const [starting, setStarting] = useState(false);
   const [editing, setEditing] = useState<Template | "new" | null>(null);
+  // By id, so the detail shows the template as saved (and closes once it's deleted)
+  const [openTemplate, setOpenTemplate] = useState<string | null>(null);
   // By id: the summary is read from the history, so it reflects edits (and a just-logged past workout)
   const [viewing, setViewing] = useState<string | null>(null);
   const [loggingPast, setLoggingPast] = useState(false);
@@ -172,10 +175,24 @@ function StartView() {
     saveActiveWorkout(workout);
     putWorkout({ id: workout.id, body: { name, started_at: workout.started_at } });
     setStarting(false);
+    setOpenTemplate(null);
   };
 
   if (editing) {
     return <TemplateEditor template={editing === "new" ? null : editing} exercises={exercisesQuery.data ?? []} onClose={() => setEditing(null)} />;
+  }
+  const opened = openTemplate ? templates.data?.find((t) => t.id === openTemplate) : undefined;
+  if (opened) {
+    return (
+      <TemplateDetail
+        template={opened}
+        exercises={exercisesQuery.data ?? []}
+        starting={starting}
+        onBack={() => setOpenTemplate(null)}
+        onStart={() => start(opened.name, opened)}
+        onEdit={() => setEditing(opened)}
+      />
+    );
   }
   if (loggingPast) {
     return (
@@ -232,27 +249,18 @@ function StartView() {
               <h2 className="mb-2 font-semibold">Začít trénink</h2>
               <div className="space-y-1.5">
                 {templates.data?.map((t) => (
-                  <div key={t.id} className="flex items-stretch gap-1 rounded-xl bg-zinc-800/70">
-                    <button disabled={starting} onClick={() => start(t.name, t)} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left active:bg-zinc-700">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline gap-2">
-                          <span className="truncate font-medium">{t.name}</span>
-                          <span className="shrink-0 text-xs text-zinc-500">
-                            {t.exercises.length} cviků · {t.exercises.reduce((n, e) => n + e.sets.length, 0)} sérií
-                          </span>
-                        </div>
-                        <div className="truncate text-xs text-zinc-400">{t.exercises.map((e) => e.name).join(", ")}</div>
+                  <button key={t.id} onClick={() => setOpenTemplate(t.id)} className="flex w-full min-w-0 items-center gap-3 rounded-xl bg-zinc-800/70 px-3 py-2 text-left active:bg-zinc-700">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="truncate font-medium">{t.name}</span>
+                        <span className="shrink-0 text-xs text-zinc-500">
+                          {t.exercises.length} cviků · {t.exercises.reduce((n, e) => n + e.sets.length, 0)} sérií
+                        </span>
                       </div>
-                      <ChevronRight size={18} className="shrink-0 text-zinc-500" />
-                    </button>
-                    <button
-                      aria-label={`Upravit šablonu ${t.name}`}
-                      onClick={() => setEditing(t)}
-                      className="flex w-11 shrink-0 items-center justify-center rounded-xl text-zinc-400 active:bg-zinc-700"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                  </div>
+                      <div className="truncate text-xs text-zinc-400">{t.exercises.map((e) => e.name).join(", ")}</div>
+                    </div>
+                    <ChevronRight size={18} className="shrink-0 text-zinc-500" />
+                  </button>
                 ))}
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -335,6 +343,7 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   const [picking, setPicking] = useState(false);
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<number | null>(null);
   const [voice, setVoice] = useState<{ busy: boolean; response?: ChatResponse; error?: string } | null>(null);
   const elapsed = useElapsed(workout.started_at);
 
@@ -419,6 +428,18 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   };
   const reorder = useDragReorder(moveExercise);
 
+  const removeExercise = (index: number) => {
+    setConfirmRemove(null);
+    workout.exercises[index].sets.forEach((set) => set.completed && sync.deleteSet({ setId: set.id }));
+    const exercises = workout.exercises.filter((_, i) => i !== index);
+    update(exercises);
+    // The exercises below moved up one position: re-send their completed sets with the new exercise_order
+    for (let i = index; i < exercises.length; i++) exercises[i].sets.forEach((_, s) => syncSet(i, s, exercises));
+  };
+  // Without a completed set nothing is lost, so no confirmation
+  const askRemoveExercise = (index: number) =>
+    workout.exercises[index].sets.some((s) => s.completed) ? setConfirmRemove(index) : removeExercise(index);
+
   const finish = () => {
     // Every completed set once more before the finish (idempotent PUTs, same queue): repairs any set whose
     // earlier write was dropped, because the local copy is gone after this
@@ -464,9 +485,17 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
                   <GripVertical size={16} />
                 </button>
                 <h2 className="min-w-0 flex-1 truncate font-semibold">{exercise.name}</h2>
-                <span className="shrink-0 pr-2 text-xs tabular-nums text-zinc-500">
+                <span className="shrink-0 text-xs tabular-nums text-zinc-500">
                   {exercise.sets.filter((x) => x.completed).length}/{exercise.sets.length}
                 </span>
+                <button
+                  type="button"
+                  aria-label={`Odebrat cvik ${exercise.name}`}
+                  onClick={() => askRemoveExercise(exerciseIndex)}
+                  className="flex size-9 shrink-0 items-center justify-center rounded-lg text-zinc-500 active:bg-zinc-700 active:text-red-300"
+                >
+                  <Trash2 size={15} />
+                </button>
               </div>
               <TableHeader columns={["Série", "Minule", "kg", "Opak.", ""]} className={ACTIVE_COLS} />
               <div className="space-y-1">
@@ -513,6 +542,22 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
               ))}
             </>
           )}
+        </Sheet>
+      )}
+      {confirmRemove !== null && workout.exercises[confirmRemove] && (
+        <Sheet title="Odebrat cvik?" onClose={() => setConfirmRemove(null)}>
+          <p className="mb-4 text-sm text-zinc-400">
+            {workout.exercises[confirmRemove].name} se z tréninku odebere, včetně{" "}
+            {((n) => (n === 1 ? "1 odškrtnuté série" : `${n} odškrtnutých sérií`))(workout.exercises[confirmRemove].sets.filter((s) => s.completed).length)}.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="ghost" onClick={() => setConfirmRemove(null)}>
+              Zpět
+            </Button>
+            <Button variant="danger" onClick={() => removeExercise(confirmRemove)}>
+              Odebrat
+            </Button>
+          </div>
         </Sheet>
       )}
       {confirmDiscard && <DiscardSheet setCount={done} onCancel={() => setConfirmDiscard(false)} onConfirm={discard} />}
