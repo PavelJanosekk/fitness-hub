@@ -68,6 +68,7 @@ def search_foods(
     custom, imported, USDA foods with a Czech name), most eaten first; a source filter lists that whole source.
     Hidden foods (E28 duplicates) only with `hidden=True`, which lists just them."""
     statement = select(Food).where(Food.hidden == hidden)
+    eaten = select(func.count()).where(MealLogItem.food_id == Food.id).correlate(Food).scalar_subquery()
     if source:
         statement = statement.where(Food.source == source)
     if q and q.strip():
@@ -80,9 +81,11 @@ def search_foods(
         prefix = func.greatest(
             _normalized(Food.name_cs).startswith(query), _normalized(Food.name_en).startswith(query)
         ).is_(True)
-        statement = statement.where(score >= 0.4).order_by(prefix.desc(), score.desc(), func.length(Food.name_en))
+        # ...and among those, a food the user already eats beats the 2000 USDA foods they never touched
+        statement = statement.where(score >= 0.4).order_by(
+            prefix.desc(), (eaten > 0).desc(), score.desc(), func.length(Food.name_en)
+        )
     else:
-        eaten = select(func.count()).where(MealLogItem.food_id == Food.id).correlate(Food).scalar_subquery()
         if not source and not hidden:
             # "My foods": eaten, user-made/imported or translated (E28), not the untranslated USDA seed
             statement = statement.where(or_(eaten > 0, Food.source != FoodSource.usda, col(Food.name_cs).is_not(None)))

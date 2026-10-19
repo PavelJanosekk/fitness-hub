@@ -83,3 +83,19 @@ def test_data_files_have_no_duplicate_visible_names() -> None:
             duplicates.append(f"{name} ({seen[key]}, {fdc})")
         seen[key] = fdc
     assert duplicates == []
+
+
+def test_search_puts_the_users_eaten_food_first(client: TestClient, session: Session) -> None:
+    usda(session, 1, "Broccoli, frozen", name_cs="Brokolice mražená")
+    usda(session, 2, "Broccoli, cooked", name_cs="Brokolice vařená")
+    mine = Food(source=FoodSource.kaloricke_tabulky, name_cs="brokolice", kcal=44, protein_g=3, carbs_g=6, fat_g=0)
+    session.add(mine)
+    session.commit()
+    meal = MealLog(id=uuid.uuid4(), logged_date=dt.date(2026, 10, 1))
+    session.add(meal)
+    session.add(MealLogItem(meal_log_id=meal.id, label="Brokolice", food_id=mine.id, amount_g=200))
+    session.commit()
+
+    names = [f["name"] for f in client.get("/api/nutrition/foods", params={"q": "brokolice"}).json()]
+
+    assert names[0] == "brokolice"
