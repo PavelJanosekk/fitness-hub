@@ -15,6 +15,7 @@ const SOURCES = [
   ["kaloricke_tabulky", "KT"],
   ["openfoodfacts", "OFF"],
   ["usda", "USDA"],
+  ["hidden", "Skryté"],
 ] as const;
 
 const VALUE_FIELDS = [
@@ -198,6 +199,11 @@ function FoodForm({ food, onDone }: { food: Food | null; onDone: () => void }) {
       <Button onClick={submit} disabled={!valid || save.isPending} className="w-full">
         {save.isError ? "Zkusit znovu" : food ? "Uložit změny" : "Vytvořit potravinu"}
       </Button>
+      {food && (
+        <Button variant="ghost" onClick={() => save.mutate({ id: food.id, hidden: !food.hidden }, { onSuccess: onDone })} className="w-full">
+          {food.hidden ? "Zobrazit v seznamu a hledání" : "Skrýt (duplicita)"}
+        </Button>
+      )}
       {food && food.use_count === 0 && (
         <Button variant="danger" onClick={() => remove.mutate(food.id, { onSuccess: onDone })} className="w-full">
           Smazat potravinu

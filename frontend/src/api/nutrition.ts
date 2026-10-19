@@ -118,13 +118,14 @@ export type Food = Required<Macros> & {
   use_count: number;
   // E26: USDA foods it borrows unknown values from, and those values per 100 g
   micros_status: "mapped" | "unmatched" | "manual" | null;
+  hidden: boolean; // E28: a duplicate kept only as a micros reference, out of lists and search
   micro_refs: MicroRef[];
   borrowed: Record<string, number>;
 };
 export type MicroRef = { ref_food_id: number; name: string; grams_per_g: number };
 export type FoodInput = Partial<
-  Omit<Food, "id" | "name" | "source" | "use_count" | "category" | "is_raw" | "micros_status" | "micro_refs" | "borrowed">
-> & { micro_refs?: { ref_food_id: number; grams_per_g: number }[] };
+  Omit<Food, "id" | "name" | "source" | "use_count" | "category" | "is_raw" | "micros_status" | "micro_refs" | "borrowed" | "hidden">
+> & { micro_refs?: { ref_food_id: number; grams_per_g: number }[]; hidden?: boolean };
 export type NutrientInfo = { key: string; label: string; unit: string; micro: boolean };
 export type Autofill = {
   name_cs: string;
@@ -164,7 +165,9 @@ export const useDaySummary = (date: string) =>
 export function useFoods(q: string, source = "") {
   const params = new URLSearchParams({ limit: "40" });
   if (q.trim()) params.set("q", q.trim());
-  if (source) params.set("source", source);
+  // "hidden" is a pseudo-source: the duplicates hidden from the list (E28)
+  if (source === "hidden") params.set("hidden", "true");
+  else if (source) params.set("source", source);
   return useQuery({
     queryKey: nutritionKeys.foods(q.trim(), source),
     queryFn: () => api<Food[]>(`/api/nutrition/foods?${params}`),
