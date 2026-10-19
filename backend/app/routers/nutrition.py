@@ -209,8 +209,9 @@ def list_foods(
     source: FoodSource | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    hidden: bool = False,
 ) -> list[FoodRead]:
-    return search_foods(session, q, source.value if source else None, limit, offset)
+    return search_foods(session, q, source.value if source else None, limit, offset, hidden)
 
 
 @router.get("/foods/{food_id}", response_model=FoodRead)

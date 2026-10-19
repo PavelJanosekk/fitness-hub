@@ -93,6 +93,7 @@ if __name__ == "__main__":
     import httpx
 
     from app.database import engine
+    from app.services.nutrition import usda_cs
     from app.services.nutrition.usda import is_seeded, seed_usda
 
     with Session(engine) as session:
@@ -105,3 +106,6 @@ if __name__ == "__main__":
             except Exception as exc:  # foods are optional at startup; the app must come up anyway
                 session.rollback()
                 print(f"seed: WARNING USDA foods not seeded, retried on next start: {exc}")
+        named, hidden = usda_cs.apply(session)
+        if named or hidden:
+            print(f"seed: USDA Czech names {named}, hidden {hidden} (E28)")

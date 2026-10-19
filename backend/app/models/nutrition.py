@@ -2,6 +2,7 @@ import datetime as dt
 import uuid
 from enum import StrEnum
 
+import sqlalchemy as sa
 from sqlalchemy import CheckConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -77,6 +78,8 @@ class Food(SQLModel, table=True):
     micronutrients: dict[str, float] = Field(default_factory=dict, sa_type=JSONB)
     # Micros the food doesn't know itself come from its FoodMicroRef rows (E26)
     micros_status: str | None = None
+    # A duplicate or irrelevant food (E28): still a micros reference, but out of the food list and Czech search
+    hidden: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()})
     recipe_yield_g: float | None = None  # cooked weight of a recipe
     created_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
     updated_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)

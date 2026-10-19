@@ -164,7 +164,7 @@ def search_usda(session: Session, query: str, limit: int = MAX_CANDIDATES) -> li
     wanted = _tokens(query)
     if not wanted:
         return []
-    usda = Food.source == FoodSource.usda
+    usda = (Food.source == FoodSource.usda) & ~col(Food.hidden)  # hidden = duplicates (E28)
     trigram = func.similarity(func.lower(Food.name_en), query.lower())
     pool = {f.id: f for f in session.exec(select(Food).where(usda).order_by(trigram.desc()).limit(POOL))}
     tsquery = func.to_tsquery("english", " | ".join(sorted(wanted)))
@@ -200,7 +200,10 @@ def search_local(session: Session, name_cs: str, limit: int = 5) -> list[tuple[F
         func.word_similarity(query, _sql_normalized(func.concat_ws(" ", Food.name_cs, Food.brand))),
     )
     rows = session.exec(
-        select(Food, score).where(col(Food.name_cs).is_not(None), score >= 0.35).order_by(score.desc()).limit(limit)
+        select(Food, score)
+        .where(col(Food.name_cs).is_not(None), ~col(Food.hidden), score >= 0.35)
+        .order_by(score.desc())
+        .limit(limit)
     )
     return [(food, round(float(s), 3)) for food, s in rows]
 

@@ -108,6 +108,7 @@ class FoodUpdate(BaseModel):
     fiber_g: float | None = Field(default=None, ge=0, le=100)
     salt_g: float | None = Field(default=None, ge=0, le=100)
     micronutrients: dict[str, float] | None = None
+    hidden: bool | None = None  # E28: out of the list and Czech search, still a micros reference
     # Replaces the references; the food becomes `manual` and the mapper leaves it alone (E26)
     micro_refs: list[MicroRefIn] | None = Field(default=None, max_length=20)
 
@@ -136,6 +137,7 @@ class FoodRead(BaseModel):
     portions: list[PortionRead] = Field(default_factory=list)
     use_count: int = 0
     micros_status: str | None = None
+    hidden: bool = False
     micro_refs: list[MicroRefRead] = Field(default_factory=list)
     # Per-100 g values the food doesn't know itself, from its references (optional macros and micros)
     borrowed: dict[str, float] = Field(default_factory=dict)

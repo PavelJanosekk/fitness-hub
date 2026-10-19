@@ -57,11 +57,17 @@ def read_food(
 
 
 def search_foods(
-    session: Session, q: str | None, source: str | None = None, limit: int = 50, offset: int = 0
+    session: Session,
+    q: str | None,
+    source: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    hidden: bool = False,
 ) -> list[FoodRead]:
     """With a query: best name matches (Czech or English, accents ignored). Without: the user's foods (eaten,
-    custom, imported), most eaten first; a source filter lists that whole source."""
-    statement = select(Food)
+    custom, imported, USDA foods with a Czech name), most eaten first; a source filter lists that whole source.
+    Hidden foods (E28 duplicates) only with `hidden=True`, which lists just them."""
+    statement = select(Food).where(Food.hidden == hidden)
     if source:
         statement = statement.where(Food.source == source)
     if q and q.strip():
@@ -77,9 +83,9 @@ def search_foods(
         statement = statement.where(score >= 0.4).order_by(prefix.desc(), score.desc(), func.length(Food.name_en))
     else:
         eaten = select(func.count()).where(MealLogItem.food_id == Food.id).correlate(Food).scalar_subquery()
-        if not source:
-            # "My foods": eaten or user-made/imported, not the whole USDA seed
-            statement = statement.where(or_(eaten > 0, Food.source != FoodSource.usda))
+        if not source and not hidden:
+            # "My foods": eaten, user-made/imported or translated (E28), not the untranslated USDA seed
+            statement = statement.where(or_(eaten > 0, Food.source != FoodSource.usda, col(Food.name_cs).is_not(None)))
         statement = statement.order_by(eaten.desc(), col(Food.name_cs).nulls_last(), col(Food.name_en))
     foods = session.exec(statement.offset(offset).limit(limit)).all()
     ids = [f.id for f in foods if f.id is not None]
