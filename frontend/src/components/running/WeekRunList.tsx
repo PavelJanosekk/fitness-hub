@@ -7,12 +7,10 @@ import { buildWeekRows, type WeekRow } from "../../lib/weekRows";
 export function WeekRunList({
   week,
   today,
-  openableRunIds,
   onOpenRun,
 }: {
   week: PlanWeek;
   today: string;
-  openableRunIds: Set<number>;
   onOpenRun: (id: number) => void;
 }) {
   const rows = buildWeekRows(week, today);
@@ -20,18 +18,18 @@ export function WeekRunList({
   return (
     <ul className="divide-y divide-zinc-800/70">
       {rows.map((row) => (
-        <RunItem key={row.key} row={row} canOpen={row.run !== null && openableRunIds.has(row.run.id)} onOpenRun={onOpenRun} />
+        <RunItem key={row.key} row={row} onOpenRun={onOpenRun} />
       ))}
     </ul>
   );
 }
 
-function RunItem({ row, canOpen, onOpenRun }: { row: WeekRow; canOpen: boolean; onOpenRun: (id: number) => void }) {
+function RunItem({ row, onOpenRun }: { row: WeekRow; onOpenRun: (id: number) => void }) {
   const { run, plan, date, status } = row;
   const done = status === "done";
   const title = plan ?? run?.notes ?? "Běh";
   const link = run ? stravaUrl(run) : null;
-  const open = canOpen && run ? () => onOpenRun(run.id) : undefined;
+  const open = run ? () => onOpenRun(run.id) : undefined;
   return (
     <li
       className={`flex gap-3 py-2.5 ${done ? "text-zinc-500" : "text-zinc-100"} ${open ? "cursor-pointer active:bg-zinc-800/40" : ""}`}

@@ -292,6 +292,7 @@ Per-source daily values. Used when a source sends totals instead of intervals, a
 
 ### 6.4 Running & Marathon Plan (`/api/running`)
 - `GET /api/running/activities`: cardio activities with calculated pace (min/km).
+- `GET /api/running/activities/{id}` [E29]: run detail page — summary, chart series (≤ 400 points: distance, pace, GAP, HR, altitude, cadence, lat/lng), per-km splits on moving time, simplified route, zones. Missing or outdated streams are fetched from Strava first (best effort, 2 requests).
 - `POST /api/running/activities`: log a run manually (Strava-synced runs arrive via §6.5; dedupe on `external_id`).
 - **Strava is the only automatic source of activities [E10].** Samsung Health and Apple Health workouts are not ingested, so runs are never duplicated.
 - `GET /api/running/plan?start_date=...&end_date=...`: planned marathon workouts alongside linked actual activities.
@@ -386,7 +387,7 @@ The coach is one of **two separate assistants** (the nutrition assistant arrives
 
 ### 6.8 Run stream metrics [E12]
 - Port of RunningCoach `scripts/metrics.py` (`services/run_metrics.py`): Minetti GAP, pace of the first 10 min, steady HR (after 10 min), EF (GAP m/min per beat), decoupling (GAP/HR, first vs second steady half), seconds per zone (% of LTHR as in `02`), share above easy/steady, GAP within the easy comparison band (83–87 % LTHR = 143–150).
-- The Strava sync fetches detail (RPE, description, calories) and per-second streams for runs, **newest first, 10 per sync**, so the history backfills within rate limits. Activities from the last 36 h get their detail re-read, because the fueling log and pain notes are added later. Raw streams are stored (`activity_streams`) so metrics can be recomputed without API calls.
+- The Strava sync fetches detail (RPE, description, calories) and per-second streams for runs, **newest first, 10 per sync**, so the history backfills within rate limits. Activities from the last 36 h get their detail re-read, because the fueling log and pain notes are added later. Raw streams are stored (`activity_streams`) so metrics can be recomputed without API calls. Streams also include `altitude`, `cadence` and `latlng` for the run detail (E29); `activity_streams.keys` records the requested keys, and rows fetched with fewer keys are refetched within the same per-sync budget (missing streams first).
 
 ---
 

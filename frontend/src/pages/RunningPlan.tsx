@@ -1,6 +1,6 @@
 import { ChevronDown, ExternalLink, Flag, Thermometer } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+import { lazy, Suspense, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import { useWeekly } from "../api/queries";
 import { type Activity, type PlanWeek, stravaUrl, useActivities, useKb, useRunWeeks, zones } from "../api/running";
 import { RunVolumeChart } from "../components/charts/DashboardCharts";
@@ -54,18 +54,8 @@ function PlanView() {
   const volume = (weekly.data ?? []).map((w) => ({ ...w, plan_km: planKm.get(w.week_start) ?? null }));
 
   const [runPage, setRunPage] = useState(0);
-  const [highlight, setHighlight] = useState<number | null>(null);
-  const openableRunIds = new Set(runs.map((r) => r.id));
-  const openRun = (id: number) => {
-    setRunPage(Math.floor(runs.findIndex((r) => r.id === id) / RUNS_PER_PAGE));
-    setHighlight(id);
-  };
-  useEffect(() => {
-    if (highlight === null) return;
-    document.getElementById(`run-${highlight}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-    const timer = setTimeout(() => setHighlight(null), 2000);
-    return () => clearTimeout(timer);
-  }, [highlight]);
+  const navigate = useNavigate();
+  const openRun = (id: number) => navigate(`/run/${id}`);
 
   return (
     <>
@@ -97,7 +87,7 @@ function PlanView() {
           <WeekProgress week={current} />
           {current.notes && <p className="mt-3 text-sm text-zinc-400">{current.notes}</p>}
           <div className="mt-2 border-t border-zinc-800 pt-1">
-            <WeekRunList week={current} today={today} openableRunIds={openableRunIds} onOpenRun={openRun} />
+            <WeekRunList week={current} today={today} onOpenRun={openRun} />
           </div>
         </Card>
       )}
@@ -105,7 +95,6 @@ function PlanView() {
       <PlanWeeks
         weeks={(weeks.data ?? []).filter((w) => w !== current)}
         today={today}
-        openableRunIds={openableRunIds}
         onOpenRun={openRun}
       />
 
@@ -134,7 +123,7 @@ function PlanView() {
         {runs.length ? (
           <ul className="divide-y divide-zinc-800">
             {runs.slice(runPage * RUNS_PER_PAGE, (runPage + 1) * RUNS_PER_PAGE).map((run) => (
-              <RunRow key={run.id} run={run} highlighted={run.id === highlight} />
+              <RunRow key={run.id} run={run} onOpen={() => openRun(run.id)} />
             ))}
           </ul>
         ) : (
@@ -149,12 +138,10 @@ function PlanView() {
 function PlanWeeks({
   weeks,
   today,
-  openableRunIds,
   onOpenRun,
 }: {
   weeks: PlanWeek[];
   today: string;
-  openableRunIds: Set<number>;
   onOpenRun: (id: number) => void;
 }) {
   const firstAhead = weeks.findIndex((w) => w.week_start > today);
@@ -201,7 +188,7 @@ function PlanWeeks({
                 </button>
                 {isOpen && (
                   <div className="border-t border-zinc-800 px-3 pb-1">
-                    <WeekRunList week={week} today={today} openableRunIds={openableRunIds} onOpenRun={onOpenRun} />
+                    <WeekRunList week={week} today={today} onOpenRun={onOpenRun} />
                   </div>
                 )}
               </li>
@@ -239,17 +226,23 @@ function WeekProgress({ week, compact = false }: { week: PlanWeek; compact?: boo
   );
 }
 
-function RunRow({ run, highlighted }: { run: Activity; highlighted: boolean }) {
+function RunRow({ run, onOpen }: { run: Activity; onOpen: () => void }) {
   const km = run.distance_meters / 1000;
   const link = stravaUrl(run);
   return (
-    <li id={`run-${run.id}`} className={`scroll-mt-20 py-3 transition-colors duration-500 ${highlighted ? "-mx-2 rounded-lg bg-emerald-500/10 px-2" : ""}`}>
+    <li
+      className="-mx-2 cursor-pointer rounded-lg px-2 py-3 active:bg-zinc-800/40"
+      onClick={onOpen}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onOpen()}
+      role="button"
+      tabIndex={0}
+    >
       <div className="flex items-baseline justify-between gap-2">
         <span className="truncate font-medium">{run.notes ?? run.activity_type}</span>
         <span className="flex shrink-0 items-center gap-1 text-xs text-zinc-400">
           {formatDay(run.start_time)}
           {link && (
-            <a href={link} target="_blank" rel="noreferrer" aria-label={stravaLabel} className="-my-3 -mr-2 flex size-11 items-center justify-center rounded-lg active:bg-zinc-800">
+            <a href={link} target="_blank" rel="noreferrer" aria-label={stravaLabel} onClick={(e) => e.stopPropagation()} className="-my-3 -mr-2 flex size-11 items-center justify-center rounded-lg active:bg-zinc-800">
               <ExternalLink size={14} />
             </a>
           )}

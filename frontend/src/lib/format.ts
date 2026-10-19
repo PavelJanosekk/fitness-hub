@@ -28,3 +28,12 @@ export function formatPace(secondsPerKm: number | null | undefined): string {
   const rounded = Math.round(secondsPerKm);
   return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, "0")}`;
 }
+
+/** "45:07" or "1:23:45". */
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined) return "–";
+  const s = Math.round(seconds);
+  const [h, m, sec] = [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+}

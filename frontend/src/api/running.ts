@@ -36,7 +36,12 @@ export type Activity = {
   activity_type: string;
   distance_meters: number;
   duration_seconds: number;
+  elapsed_seconds?: number | null;
+  elevation_gain_m?: number | null;
+  avg_cadence?: number | null;
   avg_hr: number | null;
+  max_hr?: number | null;
+  calories?: number | null;
   notes: string | null;
   description: string | null;
   pace_sec_per_km: number | null;
@@ -108,3 +113,32 @@ export type RunStats = { lthr: number | null; runs: RunStat[] };
 
 export const useRunStats = () =>
   useQuery({ queryKey: ["running", "stats", "v1"], queryFn: () => api<RunStats>("/api/running/stats") });
+
+export type RunSplit = {
+  km: number;
+  moving_s: number;
+  pace: number;
+  gap: number | null;
+  hr: number | null;
+  elevation_m: number | null;
+  cadence: number | null;
+};
+export type RunSeriesKey = "time_s" | "distance_km" | "pace" | "gap" | "hr" | "altitude" | "cadence" | "lat" | "lng";
+export type RunDetail = {
+  activity: Activity;
+  /** "partial": fetched before altitude, cadence and the route were requested (Strava was unreachable) */
+  streams: "full" | "partial" | "none";
+  elevation_gain_m: number | null;
+  lthr: number | null;
+  zone_bounds: Record<string, string> | null;
+  zone_seconds: Record<string, number> | null;
+  hr_avg_steady: number | null;
+  pace_first10_s_per_km: number | null;
+  /** Equal-length columns; a key is missing when the run didn't record it */
+  series: Partial<Record<RunSeriesKey, (number | null)[]>>;
+  splits: RunSplit[];
+  route: [number, number][];
+};
+
+export const useRunDetail = (id: number) =>
+  useQuery({ queryKey: ["running", "activity", id, "v1"], queryFn: () => api<RunDetail>(`/api/running/activities/${id}`) });
