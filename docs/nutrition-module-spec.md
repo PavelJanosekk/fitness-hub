@@ -43,6 +43,14 @@ Ids refer to `docs/plan-review-2026-10-17.md`; the verified USDA/OFF facts behin
 
 **Web-grounded fallback [C5]:** Google Search grounding (kosik.cz, rohlik.cz, kaloricketabulky.cz) runs as a **separate, isolated Gemini call** (not combined with function tools in one request), and results are stored with `source = web_estimate` and a low-confidence badge in the UI.
 
+**Smart lookup for unknown dishes [E30, 2026-10-19]** (extends C5; Google Search grounding is not in the free tier):
+- Trigger: an item without a confirmed match that has no candidates, gets no pick from the chooser, or is a composite dish (`is_dish`, set by the assistant) picked with confidence < 0.6. Also on demand from the draft card ("Dohledat recept", `POST /api/nutrition/lookup`).
+- Recipe source: DuckDuckGo's HTML search (`html.duckduckgo.com/html/?q=<dish> recept`, no API key), then up to 3 result pages; the first one with a schema.org `Recipe` in JSON-LD (`recipeIngredient`, `recipeYield`) is used. The page's own `nutrition` values are ignored (user decision). No web recipe → Gemini writes a typical recipe for one portion.
+- One Gemini lite call (structured) turns the ingredient lines into `{name_cs, usda_query_en, grams, grams_in_dish, assumed}` plus `portions`. The finished weight `yield_g` = Σ `grams_in_dish` (per ingredient: dry pasta/rice ×2.5–3, meat ×0.7; a single overall estimate came out far too low in the live check), kept within 0.3–3× the raw mass. Each ingredient resolves through the local USDA search (hidden E28 duplicates included, as references); the dish's per-100 g kcal/P/C/F = Σ ingredient values / `yield_g`. Gemini never supplies nutrient numbers. Unresolved ingredients are listed, not guessed; under 75 % of the mass resolved the computation is rejected.
+- Always a draft (E4). Confirming creates a `source = recipe` food: `recipe_yield_g`, `recipe_components` (USDA ingredients, recipe grams), micro refs = ingredients / yield (micros and optional macros flow through E26), a "porce" portion, `foods.source_url`, and the aliases. Values are recomputed on the server from the ingredient ids.
+- `MealItemInput.portions`: "1 porce bun cha" without grams → amount = portions × the recipe's (or a known food's) "porce" portion.
+- The numbers-only AI estimate (C5, `web_estimate`) stays as the last resort for non-dishes and failed recipe lookups.
+
 **Prompt context [C7]:** include the user's ~150 most-used foods (id + canonical name + typical portion) in the nutrition assistant's prompt so known foods come back as a `food_id` directly and skip the resolver.
 
 **Daily summary [C1]:** each nutrient total comes with **coverage** (share of the day's kcal from foods that have a value for it); the micronutrient grid shows it so partial data isn't read as a deficiency.
