@@ -1,12 +1,15 @@
 import datetime as dt
+import logging
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
 
 from app.database import SessionDep
 from app.models.coach import TrainingDay, TrainingWeek
-from app.models.running import Activity, ActivityMetrics, TrainingPlanItem
+from app.models.running import Activity, ActivityMetrics, ActivityStream, TrainingPlanItem
+from app.routers.integrations import HttpDep
 from app.schemas.running import (
     ActivityCreate,
     ActivityRead,
@@ -14,13 +17,17 @@ from app.schemas.running import (
     PlanItemIn,
     PlanItemRead,
     PlanWeekRead,
+    RunDetail,
     RunStats,
 )
-from app.services.run_analysis import RUN_TYPES, is_heat
+from app.services import strava_client as strava
+from app.services.run_analysis import RUN_TYPES, current_lthr, is_heat
+from app.services.run_detail import run_detail
 from app.services.run_stats import run_stats
 from app.timeutils import day_bounds, today
 
 router = APIRouter(prefix="/api/running", tags=["running"])
+log = logging.getLogger(__name__)
 
 
 def read_activity(activity: Activity, metrics: ActivityMetrics | None = None) -> ActivityRead:
@@ -53,6 +60,22 @@ def list_activities(
     if activity_type:
         query = query.where(Activity.activity_type == activity_type)
     return [read_activity(a, m) for a, m in session.exec(query).all()]
+
+
+@router.get("/activities/{activity_id}", response_model=RunDetail)
+def get_activity_detail(activity_id: int, session: SessionDep, http: HttpDep) -> RunDetail:
+    """The run detail page. Missing or outdated streams are fetched from Strava first (best effort)."""
+    activity = session.get(Activity, activity_id)
+    if activity is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Activity not found")
+    try:
+        strava.refresh_run_streams(session, http, activity)
+    except (strava.StravaError, httpx.HTTPError) as exc:
+        session.rollback()
+        log.warning("Run detail %s: streams not refreshed (%s)", activity_id, exc)
+    metrics = session.get(ActivityMetrics, activity_id)
+    detail = run_detail(activity, session.get(ActivityStream, activity_id), metrics, current_lthr(session))
+    return RunDetail(activity=read_activity(activity, metrics), **detail)
 
 
 @router.post("/activities", response_model=ActivityRead, status_code=status.HTTP_201_CREATED)

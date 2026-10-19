@@ -12,9 +12,10 @@ from sqlmodel import Session, select
 from app.config import settings
 from app.main import app
 from app.models.integrations import IntegrationToken
-from app.models.running import Activity
+from app.models.running import Activity, ActivityStream
 from app.routers import integrations
 from app.routers.integrations import get_http
+from app.services.run_metrics import STREAM_KEYS
 from app.services.strava_client import map_activity, sync_activities
 
 NOW = dt.datetime(2026, 10, 17, 12, 0, tzinfo=dt.UTC)
@@ -118,6 +119,15 @@ def test_map_activity() -> None:
     assert (mapped["avg_hr"], mapped["max_hr"], mapped["calories"]) == (148, 171, 612)
     assert mapped["duration_seconds"] == 3000
     assert mapped["notes"] == "Morning Run"
+    assert mapped["elapsed_seconds"] == 3100
+
+
+def test_map_activity_doubles_run_cadence_only() -> None:
+    run = map_activity(strava_activity(7, NOW, average_cadence=85.2, total_elevation_gain=42.0))
+    ride = map_activity(strava_activity(8, NOW, sport_type="Ride", average_cadence=85.2))
+
+    assert (run["avg_cadence"], run["elevation_gain_m"]) == (170.4, 42.0)
+    assert ride["avg_cadence"] == 85.2
 
 
 def test_first_sync_backfills_pages_and_fetches_details_for_recent_runs(
@@ -232,3 +242,48 @@ def test_status_reports_strava_and_webhook_sources(
     assert status["strava"]["connected"] is True
     assert status["webhooks_enabled"] is True
     assert status["webhook_sources"]["apple_health"]["last_day"] == "2026-10-17"
+
+
+def test_sync_refetches_streams_fetched_with_older_keys(
+    session: Session, connected: IntegrationToken, fake_http
+) -> None:
+    old = NOW - dt.timedelta(days=60)
+    sync_activities(session, fake_http(FakeStrava([[strava_activity(1, old)]])), now=NOW)
+    stream = session.get(ActivityStream, 1) or session.exec(select(ActivityStream)).one()
+    stream.keys = "time,distance,heartrate,velocity_smooth,moving,grade_smooth"
+    session.add(stream)
+    session.commit()
+
+    fake = FakeStrava([[]], details={1: {"total_elevation_gain": 55.0}})
+    result = sync_activities(session, fake_http(fake), now=NOW)
+
+    assert (result.streams_fetched, result.streams_pending) == (1, 0)
+    assert session.exec(select(ActivityStream)).one().keys == STREAM_KEYS
+    assert session.exec(select(Activity)).one().elevation_gain_m == 55.0
+
+
+def test_run_detail_fetches_missing_streams_from_strava(
+    client: TestClient, session: Session, connected: IntegrationToken, fake_http
+) -> None:
+    activity = Activity(**map_activity(strava_activity(5, NOW - dt.timedelta(days=400))))
+    session.add(activity)
+    session.commit()
+    fake = FakeStrava([], details={5: {"average_cadence": 86}})
+    fake_http(fake)
+
+    detail = client.get(f"/api/running/activities/{activity.id}").json()
+
+    assert detail["streams"] == "full"
+    assert detail["activity"]["avg_cadence"] == 172
+    assert len(detail["series"]["hr"]) == len(detail["series"]["time_s"])
+    assert any(r.url.path.endswith("/streams") for r in fake.requests)
+
+
+def test_run_detail_without_strava_connection_uses_what_is_stored(client: TestClient, session: Session) -> None:
+    activity = Activity(**map_activity(strava_activity(6, NOW)))
+    session.add(activity)
+    session.commit()
+
+    detail = client.get(f"/api/running/activities/{activity.id}").json()
+
+    assert (detail["streams"], detail["series"], detail["splits"], detail["route"]) == ("none", {}, [], [])

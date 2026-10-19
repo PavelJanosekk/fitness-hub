@@ -10,8 +10,14 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.models.integrations import IntegrationToken
-from app.models.running import Activity
-from app.services.run_analysis import current_lthr, runs_missing_streams, store_streams
+from app.models.running import Activity, ActivityStream
+from app.services.run_analysis import (
+    RUN_TYPES,
+    current_lthr,
+    runs_missing_streams,
+    store_streams,
+    streams_stale,
+)
 from app.services.run_metrics import STREAM_KEYS
 from app.timeutils import now_utc
 
@@ -127,18 +133,30 @@ def _access_token(session: Session, http: httpx.Client, now: dt.datetime) -> str
     return token.access_token
 
 
+def _cadence(data: dict[str, Any], activity_type: str) -> float | None:
+    """Steps per minute; Strava reports a run's cadence per leg."""
+    cadence = data.get("average_cadence")
+    if cadence is None:
+        return None
+    return round(cadence * (2 if activity_type in RUN_TYPES else 1), 1)
+
+
 def map_activity(data: dict[str, Any]) -> dict[str, Any]:
     def rounded(key: str) -> int | None:
         value = data.get(key)
         return round(value) if value is not None else None
 
+    activity_type = data.get("sport_type") or data.get("type") or "Workout"
     return {
         "external_id": f"strava:{data['id']}",
         "source": PROVIDER,
         "start_time": dt.datetime.fromisoformat(data["start_date"].replace("Z", "+00:00")),
-        "activity_type": data.get("sport_type") or data.get("type") or "Workout",
+        "activity_type": activity_type,
         "distance_meters": float(data.get("distance") or 0),
         "duration_seconds": int(data.get("moving_time") or data.get("elapsed_time") or 0),
+        "elapsed_seconds": rounded("elapsed_time"),
+        "elevation_gain_m": data.get("total_elevation_gain"),
+        "avg_cadence": _cadence(data, activity_type),
         "avg_hr": rounded("average_heartrate"),
         "max_hr": rounded("max_heartrate"),
         "calories": rounded("calories"),
@@ -167,6 +185,40 @@ def _apply_detail(activity: Activity, detail: dict[str, Any]) -> None:
         activity.rpe = round(detail["perceived_exertion"])
     activity.description = detail.get("description") or activity.description
     activity.notes = detail.get("name") or activity.notes
+    if detail.get("elapsed_time") is not None:
+        activity.elapsed_seconds = round(detail["elapsed_time"])
+    if detail.get("total_elevation_gain") is not None:
+        activity.elevation_gain_m = detail["total_elevation_gain"]
+    if (cadence := _cadence(detail, activity.activity_type)) is not None:
+        activity.avg_cadence = cadence
+
+
+def _fetch_streams(
+    session: Session, http: httpx.Client, access_token: str, activity: Activity, lthr: int | None, with_detail: bool
+) -> None:
+    if with_detail:
+        _apply_detail(activity, _get(http, f"/activities/{_strava_id(activity)}", access_token))
+    streams = _get(
+        http,
+        f"/activities/{_strava_id(activity)}/streams",
+        access_token,
+        {"keys": STREAM_KEYS, "key_by_type": "true"},
+    )
+    store_streams(session, activity, streams, lthr)
+
+
+def refresh_run_streams(session: Session, http: httpx.Client, activity: Activity) -> bool:
+    """Fetch one run's streams right away when they are missing or outdated (opening the run detail).
+
+    Two requests (detail + streams); raises StravaError / httpx.HTTPError for the caller to ignore."""
+    if activity.activity_type not in RUN_TYPES or not (activity.external_id or "").startswith("strava:"):
+        return False
+    if not streams_stale(session.get(ActivityStream, activity.id)) or session.get(IntegrationToken, PROVIDER) is None:
+        return False
+    access_token = _access_token(session, http, now_utc())
+    _fetch_streams(session, http, access_token, activity, current_lthr(session), with_detail=True)
+    session.commit()
+    return True
 
 
 def sync_activities(session: Session, http: httpx.Client, now: dt.datetime | None = None) -> SyncResult:
@@ -218,16 +270,9 @@ def sync_activities(session: Session, http: httpx.Client, now: dt.datetime | Non
 
         lthr = current_lthr(session)
         for activity in runs_missing_streams(session, STREAMS_PER_SYNC):
-            if activity.id not in detailed:
-                _apply_detail(activity, _get(http, f"/activities/{_strava_id(activity)}", access_token))
-                result.details_fetched += 1
-            streams = _get(
-                http,
-                f"/activities/{_strava_id(activity)}/streams",
-                access_token,
-                {"keys": STREAM_KEYS, "key_by_type": "true"},
-            )
-            store_streams(session, activity, streams, lthr)
+            with_detail = activity.id not in detailed
+            _fetch_streams(session, http, access_token, activity, lthr, with_detail)
+            result.details_fetched += with_detail
             result.streams_fetched += 1
     except StravaRateLimitedError:
         result.complete = listing_done

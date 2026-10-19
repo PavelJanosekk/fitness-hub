@@ -1,4 +1,5 @@
 import datetime as dt
+from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -26,6 +27,9 @@ class ActivityRead(BaseModel):
     activity_type: str
     distance_meters: float
     duration_seconds: int
+    elapsed_seconds: int | None = None
+    elevation_gain_m: float | None = None
+    avg_cadence: float | None = None  # steps per minute
     avg_hr: int | None
     max_hr: int | None
     calories: int | None
@@ -41,6 +45,33 @@ class ActivityRead(BaseModel):
     decoupling_pct: float | None = None
     pct_above_easy: float | None = None
     z4_minutes: float | None = None
+
+
+class RunSplit(BaseModel):
+    km: float  # 1.0 except for the last, partial split
+    moving_s: int
+    pace: int  # s/km
+    gap: int | None
+    hr: int | None
+    elevation_m: int | None
+    cadence: int | None  # steps per minute
+
+
+class RunDetail(BaseModel):
+    """One run for the detail page: summary, chart series, per-km splits, route."""
+
+    activity: ActivityRead
+    streams: Literal["full", "partial", "none"]  # partial: fetched before altitude/cadence/route were requested
+    elevation_gain_m: float | None
+    lthr: int | None
+    zone_bounds: dict[str, str] | None
+    zone_seconds: dict[str, float] | None
+    hr_avg_steady: float | None
+    pace_first10_s_per_km: float | None
+    # Columns of equal length (time_s always; distance_km, pace, gap, hr, altitude, cadence, lat, lng when recorded)
+    series: dict[str, list[float | None]]
+    splits: list[RunSplit]
+    route: list[list[float]]  # [lat, lng], simplified
 
 
 class PlanDayRead(BaseModel):

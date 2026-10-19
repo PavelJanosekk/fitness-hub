@@ -8,7 +8,8 @@ follow the athlete when the LTHR changes after a retest.
 from dataclasses import dataclass
 from typing import Any
 
-STREAM_KEYS = "time,distance,heartrate,velocity_smooth,moving,grade_smooth"
+# altitude, cadence and latlng only feed the run detail page; changing this refetches older streams
+STREAM_KEYS = "time,distance,heartrate,velocity_smooth,moving,grade_smooth,altitude,cadence,latlng"
 MAX_GAP_S = 10  # pauses longer than this don't count as moving time
 MOVING_SPEED = 1.0  # m/s
 WARMUP_S = 600

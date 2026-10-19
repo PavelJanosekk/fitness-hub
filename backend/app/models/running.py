@@ -20,6 +20,9 @@ class Activity(SQLModel, table=True):
     activity_type: str  # Run, Walk, Ride, ...
     distance_meters: float
     duration_seconds: int  # moving time
+    elapsed_seconds: int | None = None  # including pauses
+    elevation_gain_m: float | None = None  # Strava total_elevation_gain
+    avg_cadence: float | None = None  # steps per minute (Strava reports runs per leg; stored doubled)
     avg_hr: int | None = None
     max_hr: int | None = None
     calories: int | None = None
@@ -35,6 +38,7 @@ class ActivityStream(SQLModel, table=True):
 
     activity_id: int = Field(primary_key=True, foreign_key="activities.id", ondelete="CASCADE")
     data: dict[str, Any] = Field(sa_type=JSONB(none_as_null=True))
+    keys: str | None = None  # the stream keys requested; refetched when STREAM_KEYS gains new ones
     fetched_at: dt.datetime = Field(sa_type=AwareDateTime)
 
 

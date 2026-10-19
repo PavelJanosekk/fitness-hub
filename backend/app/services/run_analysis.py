@@ -6,7 +6,7 @@ from sqlmodel import Session, col, select
 
 from app.models.coach import AthleteProfile
 from app.models.running import Activity, ActivityMetrics, ActivityStream
-from app.services.run_metrics import compute_metrics
+from app.services.run_metrics import STREAM_KEYS, compute_metrics
 from app.timeutils import now_utc
 
 RUN_TYPES = ("Run", "TrailRun", "VirtualRun")
@@ -32,7 +32,7 @@ def store_streams(
 ) -> ActivityMetrics | None:
     assert activity.id is not None
     streams = compact_streams(raw)
-    session.merge(ActivityStream(activity_id=activity.id, data=streams, fetched_at=now_utc()))
+    session.merge(ActivityStream(activity_id=activity.id, data=streams, keys=STREAM_KEYS, fetched_at=now_utc()))
     return _store_metrics(session, activity.id, streams, lthr)
 
 
@@ -59,8 +59,15 @@ def recompute_metrics(session: Session, lthr: int | None) -> int:
     return len(stale)
 
 
+def streams_stale(stream: ActivityStream | None) -> bool:
+    """No streams yet, or fetched before STREAM_KEYS gained keys (e.g. altitude for the run detail)."""
+    return stream is None or stream.keys != STREAM_KEYS
+
+
 def runs_missing_streams(session: Session, limit: int) -> list[Activity]:
-    """Newest runs first, so recent analysis is available before the history backfill finishes."""
+    """Runs without streams first, then runs with outdated ones; newest first within each, so recent
+    analysis is available before the history backfill finishes."""
+    missing = col(ActivityStream.activity_id).is_(None)
     return list(
         session.exec(
             select(Activity)
@@ -68,9 +75,9 @@ def runs_missing_streams(session: Session, limit: int) -> list[Activity]:
             .where(
                 col(Activity.activity_type).in_(RUN_TYPES),
                 col(Activity.external_id).startswith("strava:"),
-                col(ActivityStream.activity_id).is_(None),
+                missing | col(ActivityStream.keys).is_distinct_from(STREAM_KEYS),
             )
-            .order_by(col(Activity.start_time).desc())
+            .order_by(missing.desc(), col(Activity.start_time).desc())
             .limit(limit)
         ).all()
     )
