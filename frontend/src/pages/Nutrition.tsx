@@ -234,7 +234,7 @@ function ItemRow({ item, mealType, date }: { item: MealItem; mealType: MealType;
         <p className="line-clamp-2 leading-snug text-zinc-300">{item.food_name ?? item.label}</p>
         {item.food_name && item.label !== item.food_name && <p className="truncate text-xs text-zinc-500">{item.label}</p>}
       </button>
-      {details && <ItemNutrientsSheet item={item} onClose={() => setDetails(false)} />}
+      {details && <ItemNutrientsSheet item={item} date={date} onClose={() => setDetails(false)} />}
       {item.food_id ? (
         editing !== null ? (
           <form onSubmit={(e) => (e.preventDefault(), commit())} className="w-20">
