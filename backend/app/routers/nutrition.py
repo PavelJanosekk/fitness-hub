@@ -194,12 +194,16 @@ class NutrientInfo(BaseModel):
     label: str
     unit: str
     micro: bool
+    reference: float | None  # adult daily reference (EU NRV), None = no single reference
 
 
 @router.get("/nutrients", response_model=list[NutrientInfo])
 def list_nutrients() -> list[NutrientInfo]:
     """Every tracked nutrient in display order, for labelling per-food values."""
-    return [NutrientInfo(key=n.key, label=n.label_cs, unit=n.unit, micro=n.key in MICRO_KEYS) for n in ALL_NUTRIENTS]
+    return [
+        NutrientInfo(key=n.key, label=n.label_cs, unit=n.unit, micro=n.key in MICRO_KEYS, reference=n.reference)
+        for n in ALL_NUTRIENTS
+    ]
 
 
 @router.get("/foods", response_model=list[FoodRead])

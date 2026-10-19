@@ -268,8 +268,8 @@ def test_confirmed_draft_maps_a_new_off_food_from_its_query(client: TestClient, 
 def test_nutrients_lists_labels_in_order(client: TestClient) -> None:
     nutrients = client.get("/api/nutrition/nutrients").json()
 
-    assert nutrients[0] == {"key": "kcal", "label": "Energie", "unit": "kcal", "micro": False}
-    assert {"key": "iron_mg", "label": "Železo", "unit": "mg", "micro": True} in nutrients
+    assert nutrients[0] == {"key": "kcal", "label": "Energie", "unit": "kcal", "micro": False, "reference": 2000}
+    assert {"key": "iron_mg", "label": "Železo", "unit": "mg", "micro": True, "reference": 14} in nutrients
 
 
 @pytest.mark.parametrize("schema", [list[FoodComponents], AutofillAnswer], ids=["mapper", "autofill"])

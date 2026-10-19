@@ -19,6 +19,7 @@ import { Markdown } from "../components/Markdown";
 import { AddFoodSheet } from "../components/nutrition/AddFoodSheet";
 import { EnergySummary } from "../components/nutrition/EnergySummary";
 import { MealDraftCard } from "../components/nutrition/MealDraftCard";
+import { ItemNutrientsSheet } from "../components/nutrition/ItemNutrients";
 import { MacroSummary, MicroGrid } from "../components/nutrition/NutrientBars";
 import { TargetsSheet } from "../components/nutrition/TargetsSheet";
 import { DecimalInput, parseDecimal } from "../components/ui";
@@ -217,6 +218,7 @@ function ItemRow({ item, mealType, date }: { item: MealItem; mealType: MealType;
   const putItem = usePutItem();
   const deleteItem = useDeleteItem();
   const [editing, setEditing] = useState<string | null>(null);
+  const [details, setDetails] = useState(false);
 
   const commit = () => {
     const grams = parseDecimal(editing ?? "");
@@ -228,10 +230,11 @@ function ItemRow({ item, mealType, date }: { item: MealItem; mealType: MealType;
 
   return (
     <li className="flex items-center gap-2 py-1.5 text-sm">
-      <div className="min-w-0 flex-1">
+      <button onClick={() => setDetails(true)} className="min-w-0 flex-1 rounded text-left active:bg-zinc-800">
         <p className="line-clamp-2 leading-snug text-zinc-300">{item.food_name ?? item.label}</p>
         {item.food_name && item.label !== item.food_name && <p className="truncate text-xs text-zinc-500">{item.label}</p>}
-      </div>
+      </button>
+      {details && <ItemNutrientsSheet item={item} onClose={() => setDetails(false)} />}
       {item.food_id ? (
         editing !== null ? (
           <form onSubmit={(e) => (e.preventDefault(), commit())} className="w-20">

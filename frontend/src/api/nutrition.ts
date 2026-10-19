@@ -126,7 +126,7 @@ export type MicroRef = { ref_food_id: number; name: string; grams_per_g: number 
 export type FoodInput = Partial<
   Omit<Food, "id" | "name" | "source" | "use_count" | "category" | "is_raw" | "micros_status" | "micro_refs" | "borrowed" | "hidden">
 > & { micro_refs?: { ref_food_id: number; grams_per_g: number }[]; hidden?: boolean };
-export type NutrientInfo = { key: string; label: string; unit: string; micro: boolean };
+export type NutrientInfo = { key: string; label: string; unit: string; micro: boolean; reference: number | null };
 export type Autofill = {
   name_cs: string;
   brand: string | null;
@@ -155,7 +155,8 @@ export const nutritionKeys = {
   // v2: Food gained micro_refs / borrowed (E26); persisted v1 entries lack them
   foods: (q: string, source: string) => ["nutrition", "foods-v2", q, source] as const,
   food: (id: number) => ["nutrition", "food-v2", id] as const,
-  nutrients: ["nutrition", "nutrients"] as const,
+  // v2: gained reference (persisted with staleTime Infinity, so the key must change)
+  nutrients: ["nutrition", "nutrients-v2"] as const,
   profile: ["nutrition", "profile"] as const,
 };
 
