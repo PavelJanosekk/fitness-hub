@@ -23,6 +23,13 @@ export function formatNumber(value: number | null | undefined, digits = 0): stri
   return value.toLocaleString("cs-CZ", { maximumFractionDigits: digits, minimumFractionDigits: digits });
 }
 
+/** A nutrient amount with as many decimals as its size needs, without trailing zeros (1 mg, 0,9 mg, 2,4 µg). */
+export function formatAmount(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "–";
+  const digits = Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 1 ? 1 : 2;
+  return value.toLocaleString("cs-CZ", { maximumFractionDigits: digits });
+}
+
 export function formatPace(secondsPerKm: number | null | undefined): string {
   if (!secondsPerKm) return "–";
   const rounded = Math.round(secondsPerKm);

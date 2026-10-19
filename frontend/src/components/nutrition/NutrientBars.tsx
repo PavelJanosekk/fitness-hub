@@ -1,7 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import type { NutrientTotal } from "../../api/nutrition";
-import { formatNumber } from "../../lib/format";
+import { formatAmount, formatNumber } from "../../lib/format";
 import { NutrientSources } from "./NutrientSources";
 
 const MACROS = ["protein_g", "carbs_g", "fat_g", "fiber_g"] as const;
@@ -84,6 +84,7 @@ export function MicroGrid({ nutrients }: { nutrients: NutrientTotal[] }) {
                       <span className="text-zinc-300">{n.label}</span>
                       <span className="tabular-nums text-zinc-400">
                         {n.amount === null ? "?" : `${formatNumber(n.amount, digits(n.unit))} ${n.unit}`}
+                        {n.target !== null && <span className="text-zinc-500"> z {formatAmount(n.target)} {n.unit}</span>}
                         {n.percent !== null && ` · ${formatNumber(n.percent)} %`}
                       </span>
                     </div>

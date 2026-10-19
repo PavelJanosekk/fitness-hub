@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { NutrientTotal } from "../../api/nutrition";
-import { formatNumber } from "../../lib/format";
+import { formatAmount, formatNumber } from "../../lib/format";
 import { Sheet } from "../ui";
 
 const POPOVER_ROWS = 8;
@@ -87,6 +87,7 @@ export function NutrientSources({
         <Sheet title={nutrient.label} onClose={() => setSheet(false)}>
           <p className="mb-3 text-sm text-zinc-400">
             Celkem {formatNumber(nutrient.amount, digits(nutrient.amount ?? 0, nutrient.unit))} {nutrient.unit}
+            {nutrient.target !== null && ` z ${formatAmount(nutrient.target)} ${nutrient.unit}`}
             {nutrient.percent !== null && ` · ${formatNumber(nutrient.percent)} % cíle`}
           </p>
           <SourceList nutrient={nutrient} />

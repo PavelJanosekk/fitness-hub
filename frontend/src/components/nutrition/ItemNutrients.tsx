@@ -1,13 +1,13 @@
 import type { MealItem } from "../../api/types";
 import { SOURCE_LABELS, useDaySummary, useFood, useNutrients } from "../../api/nutrition";
-import { formatNumber } from "../../lib/format";
+import { formatAmount, formatNumber } from "../../lib/format";
 import { Sheet } from "../ui";
 
 const ITEM_MACROS = ["kcal", "protein_g", "carbs_g", "fat_g"] as const;
 
 const digits = (value: number, unit: string) => (unit === "kcal" || value >= 100 || value === 0 ? 0 : value >= 1 ? 1 : 2);
 
-type Row = { key: string; label: string; unit: string; amount: number | null; estimated: boolean; percent: number | null };
+type Row = { key: string; label: string; unit: string; amount: number | null; estimated: boolean; reference: number | null; percent: number | null };
 
 function Rows({ rows }: { rows: Row[] }) {
   return (
@@ -23,6 +23,12 @@ function Rows({ rows }: { rows: Row[] }) {
                 <>
                   {row.estimated && <span className="text-zinc-500">≈ </span>}
                   {formatNumber(row.amount, digits(row.amount, row.unit))} {row.unit}
+                  {row.reference !== null && (
+                    <span className="text-zinc-500">
+                      {" "}
+                      z {formatAmount(row.reference)} {row.unit}
+                    </span>
+                  )}
                   {row.percent !== null && <span className="text-zinc-500"> · {formatNumber(row.percent)} %</span>}
                 </>
               )}
@@ -66,7 +72,7 @@ export function ItemNutrientsSheet({ item, date, onClose }: { item: MealItem; da
       amount = null;
     }
     const percent = amount !== null && reference ? (amount / reference) * 100 : null;
-    return { key, label, unit, amount, estimated, percent };
+    return { key, label, unit, amount, estimated, reference: reference || null, percent };
   };
 
   const all = (nutrients.data ?? []).map((n) => row(n.key, n.label, n.unit, targets[n.key] ?? n.reference));
