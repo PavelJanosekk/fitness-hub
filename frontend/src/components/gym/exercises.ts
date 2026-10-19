@@ -23,6 +23,20 @@ export const EQUIPMENT_LABELS: Record<string, string> = {
   band: "Guma",
 };
 
+/** Progression defaults per equipment as in backend `services/overload.py` (E33): [rep min, rep max, weight step kg]. */
+const PROGRESSION_DEFAULTS: Record<string, [number, number, number]> = {
+  barbell: [6, 10, 2.5],
+  dumbbell: [6, 10, 2.5],
+  bodyweight: [6, 10, 2.5],
+  machine: [8, 12, 5],
+  cable: [8, 12, 5],
+  plate_loaded: [8, 12, 5],
+};
+export const progressionDefaults = (equipment: string | null) => {
+  const [repMin, repMax, step] = (equipment && PROGRESSION_DEFAULTS[equipment]) || [8, 12, 2.5];
+  return { rep_min: repMin, rep_max: repMax, weight_step: step, sets_max: 3 };
+};
+
 const normalize = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 /** Search (diacritics-insensitive) and muscle-group filter shared by the picker and the exercise list. */

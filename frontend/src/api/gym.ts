@@ -2,13 +2,29 @@ import { type Mutation, type QueryClient, useMutation, useQuery, useQueryClient 
 import { updateActiveExercise } from "../lib/activeWorkout";
 import { ApiError, api } from "./client";
 
-export type Exercise = { id: number; name: string; muscle_group: string; equipment: string | null };
+/** Per-exercise settings of the progression targets (E33); null = the default for the equipment. */
+export type ProgressionSettings = { rep_min: number | null; rep_max: number | null; weight_step: number | null; sets_max: number | null };
+export type Exercise = { id: number; name: string; muscle_group: string; equipment: string | null } & Partial<ProgressionSettings>;
 export type SetType = "normal" | "warmup" | "drop" | "failure";
+export type TargetSet = { set_type: SetType; weight_kg: number | null; reps: number | null; changed: boolean };
+/** What to lift next time (E33): the last session's sets with one step applied. */
+export type ProgressionTarget = {
+  kind: "comeback" | "deload" | "lighter" | "weight" | "sets" | "reps";
+  weight_kg: number; // the working weight of the target, 0 = no load
+  sets: TargetSet[];
+  stalled_sessions: number;
+  days_since: number;
+  rep_min: number;
+  rep_max: number;
+  weight_step: number;
+  sets_max: number;
+};
 export type LastPerformance = {
   exercise_id: number;
   workout_id: string | null;
   workout_started_at: string | null;
   sets: { set_order: number; set_type: SetType; weight_kg: number | null; reps: number | null }[];
+  target?: ProgressionTarget | null; // missing in workouts kept on the phone from before E33
 };
 export type TemplateSet = { set_type: SetType; weight_kg: number | null; reps: number | null };
 export type TemplateExercise = { exercise_id: number; name: string; sets: TemplateSet[] };
@@ -56,12 +72,13 @@ export type ServerWorkout = Omit<WorkoutSummary, "duration_min" | "set_count" | 
 export type SetBody = Omit<ServerSet, "id">;
 
 export const gymKeys = {
-  exercises: ["exercises"] as const,
+  // v2: exercises gained the progression settings (E33); an old cached list would save them back as defaults
+  exercises: ["exercises", "v2"] as const,
   // "v2": the persisted cache on phones still holds the old template shape (derived from history)
   templates: ["workouts", "templates", "v2"] as const,
   history: ["workouts", "history", "v2"] as const, // v2: summaries gained `prs`; older persisted ones lack it
   workout: (id: string) => ["workouts", id] as const,
-  last: (exerciseId: number) => ["exercises", exerciseId, "last"] as const,
+  last: (exerciseId: number) => ["exercises", exerciseId, "last", "v2"] as const, // v2: gained `target` (E33)
   // Under "workouts" / "exercises", so finishing a workout or editing a set refreshes the charts too
   stats: ["workouts", "stats", "v1"] as const,
   progression: (exerciseId: number) => ["exercises", exerciseId, "progression", "v1"] as const,
@@ -113,7 +130,7 @@ export const useProgression = (exerciseId: number | null) =>
     enabled: exerciseId !== null,
   });
 
-export type ExerciseInput = { name: string; muscle_group: string; equipment: string | null };
+export type ExerciseInput = { name: string; muscle_group: string; equipment: string | null } & ProgressionSettings;
 
 /** Create or edit an exercise. Needs the server (it assigns the id), so it fails at once instead of queueing. */
 export function useSaveExercise() {
@@ -126,8 +143,9 @@ export function useSaveExercise() {
       queryClient.setQueryData<Exercise[]>(gymKeys.exercises, (list) =>
         [...(list ?? []).filter((e) => e.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name)),
       );
-      // Templates and history show exercise names from the server
+      // Templates and history show exercise names from the server; the target depends on the progression settings
       queryClient.invalidateQueries({ queryKey: ["workouts"] });
+      queryClient.invalidateQueries({ queryKey: ["exercises", saved.id] });
       updateActiveExercise(saved);
     },
   });

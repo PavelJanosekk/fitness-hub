@@ -9,6 +9,7 @@ export type LocalSet = {
   reps: string;
   completed: boolean;
   completed_at: string | null;
+  progress?: boolean; // pre-filled from the step of the progression target (E33)
 };
 export type LocalExercise = {
   exercise_id: number;
@@ -42,6 +43,12 @@ export function saveActiveWorkout(workout: ActiveWorkout | null) {
     cache = { raw: null, value: workout }; // storage blocked: keep it in memory at least
   }
   listeners.forEach((listener) => listener());
+}
+
+/** Change the stored workout as it is now, not a render's copy that an await may have outdated. */
+export function patchActiveWorkout(change: (workout: ActiveWorkout) => ActiveWorkout) {
+  const workout = read();
+  if (workout) saveActiveWorkout(change(workout));
 }
 
 /** An edited exercise keeps its new name and muscle group in the workout in progress too. */

@@ -28,14 +28,23 @@ import { VoiceRecorder } from "../components/VoiceRecorder";
 import { errorText } from "./AiCoach";
 import { RestTimer, PRESETS, restPreset, setRestPreset, startRest } from "../components/RestTimer";
 import { ExercisePicker } from "../components/gym/ExercisePicker";
+import { ExerciseSheet } from "../components/gym/ExerciseSheet";
 import { AddSetButton, SetLabel, TableHeader, cellInput, selectAll } from "../components/gym/SetTable";
 import { PrBadges } from "../components/gym/PersonalRecords";
+import { TargetLine, TargetSheet } from "../components/gym/Target";
 import { TemplateDetail } from "../components/gym/TemplateDetail";
 import { TemplateEditor } from "../components/gym/TemplateEditor";
 import { WorkoutDetail } from "../components/gym/WorkoutDetail";
 import { WorkoutEditor } from "../components/gym/WorkoutEditor";
 import { Button, Pager, Segmented, Sheet, parseDecimal } from "../components/ui";
-import { type ActiveWorkout, type LocalExercise, type LocalSet, saveActiveWorkout, useActiveWorkout } from "../lib/activeWorkout";
+import {
+  type ActiveWorkout,
+  type LocalExercise,
+  type LocalSet,
+  patchActiveWorkout,
+  saveActiveWorkout,
+  useActiveWorkout,
+} from "../lib/activeWorkout";
 import { formatDay, formatNumber, formatTime } from "../lib/format";
 import { moveItem, useDragReorder } from "../lib/useDragReorder";
 import { uuid } from "../lib/uuid";
@@ -60,9 +69,10 @@ const setBody = (exercise: LocalExercise, exerciseOrder: number, set: LocalSet, 
   completed_at: set.completed_at,
 });
 
-/** Planned sets from the last session of the exercise (ghost values), or one empty set. */
+/** Planned sets: the progression target (E33), else the last session (ghost values), else one empty set. */
 function plannedSets(last: LastPerformance | null, count?: number): LocalSet[] {
-  const source = last?.sets.length ? last.sets : [{ set_type: "normal" as const, weight_kg: null, reps: null }];
+  const empty = { set_type: "normal" as const, weight_kg: null, reps: null, changed: false };
+  const source = last?.target?.sets.length ? last.target.sets : last?.sets.length ? last.sets.map((s) => ({ ...s, changed: false })) : [empty];
   const n = count ?? source.length;
   return Array.from({ length: n }, (_, i) => {
     const s = source[Math.min(i, source.length - 1)];
@@ -73,12 +83,17 @@ function plannedSets(last: LastPerformance | null, count?: number): LocalSet[] {
       reps: s.reps !== null ? String(s.reps) : "",
       completed: false,
       completed_at: null,
+      progress: s.changed && i < source.length,
     };
   });
 }
 
-/** Sets of a template exercise; anything the template leaves blank falls back to the last session (ghost values). */
+/**
+ * Sets of a template exercise. The progression target wins: every template holds a snapshot of an old session (E33).
+ * Without one, anything the template leaves blank falls back to the last session (ghost values).
+ */
 function templateSets(sets: TemplateSet[], last: LastPerformance | null): LocalSet[] {
+  if (last?.target) return plannedSets(last);
   const ghost = plannedSets(last, sets.length);
   return sets.map((s, i) => ({
     ...ghost[i],
@@ -344,6 +359,9 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<number | null>(null);
+  const [explaining, setExplaining] = useState<number | null>(null);
+  const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
+  const exercisesQuery = useExercises();
   const [voice, setVoice] = useState<{ busy: boolean; response?: ChatResponse; error?: string } | null>(null);
   const elapsed = useElapsed(workout.started_at);
 
@@ -420,6 +438,18 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
     ]);
   };
 
+  // New progression settings change the target: refresh it, and re-plan the sets while none of them is checked
+  const retarget = async (exerciseId: number) => {
+    const last = await fetchLastPerformance(queryClient, exerciseId).catch(() => null);
+    if (!last) return;
+    patchActiveWorkout((w) => ({
+      ...w,
+      exercises: w.exercises.map((e) =>
+        e.exercise_id !== exerciseId ? e : { ...e, last, sets: e.sets.some((s) => s.completed) ? e.sets : plannedSets(last) },
+      ),
+    }));
+  };
+
   const moveExercise = (from: number, to: number) => {
     const exercises = moveItem(workout.exercises, from, to);
     update(exercises);
@@ -456,6 +486,9 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   };
 
   const done = workout.exercises.reduce((n, e) => n + e.sets.filter((s) => s.completed).length, 0);
+  const explained = explaining !== null ? workout.exercises[explaining] : undefined;
+  // Editing the settings needs the exercise from the server list (it is not there while offline)
+  const explainedExercise = explained && exercisesQuery.data?.find((e) => e.id === explained.exercise_id);
 
   return (
     <>
@@ -497,6 +530,7 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
                   <Trash2 size={15} />
                 </button>
               </div>
+              {exercise.last?.target && <TargetLine target={exercise.last.target} onOpen={() => setExplaining(exerciseIndex)} />}
               <TableHeader columns={["Série", "Minule", "kg", "Opak.", ""]} className={ACTIVE_COLS} />
               <div className="space-y-1">
                 {exercise.sets.map((set, setIndex) => (
@@ -560,6 +594,18 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
           </div>
         </Sheet>
       )}
+      {explained?.last?.target && (
+        <TargetSheet
+          name={explained.name}
+          target={explained.last.target}
+          last={explained.last}
+          onEdit={explainedExercise && (() => (setExplaining(null), setEditingExercise(explainedExercise)))}
+          onClose={() => setExplaining(null)}
+        />
+      )}
+      {editingExercise && (
+        <ExerciseSheet exercise={editingExercise} onClose={() => setEditingExercise(null)} onSaved={(saved) => void retarget(saved.id)} />
+      )}
       {confirmDiscard && <DiscardSheet setCount={done} onCancel={() => setConfirmDiscard(false)} onConfirm={discard} />}
       {picking && <ExercisePicker onPick={addExercise} onClose={() => setPicking(false)} />}
       {confirmFinish && (
@@ -584,6 +630,8 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
 }
 
 const ACTIVE_COLS = "grid-cols-[2rem_minmax(0,1fr)_4.25rem_3.5rem_2.25rem]";
+// The set the progression target pushes (E33); a ring too, since Zen's accent text is close to its ink
+const PROGRESS_CELL = "text-emerald-300 ring-1 ring-emerald-500/60";
 
 function SetRow({
   index,
@@ -628,7 +676,7 @@ function SetRow({
         onChange={(e) => onChange({ weight: e.target.value.replace(/[^\d.,]/g, "") })}
         onBlur={() => onCommit()}
         onFocus={selectAll}
-        className={cellInput(set.completed)}
+        className={`${cellInput(set.completed)} ${set.progress && !set.completed ? PROGRESS_CELL : ""}`}
       />
       <input
         aria-label={`opakování, série ${index + 1}`}
@@ -638,7 +686,7 @@ function SetRow({
         onChange={(e) => onChange({ reps: e.target.value.replace(/\D/g, "") })}
         onBlur={() => onCommit()}
         onFocus={selectAll}
-        className={cellInput(set.completed)}
+        className={`${cellInput(set.completed)} ${set.progress && !set.completed ? PROGRESS_CELL : ""}`}
       />
       <button
         aria-label={set.completed ? "Zrušit odškrtnutí" : "Série hotová"}
