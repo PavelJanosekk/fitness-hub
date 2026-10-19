@@ -12,7 +12,6 @@ import {
   type SetType,
   type Template,
   type TemplateSet,
-  type WorkoutSummary,
   useExercises,
   useHistory,
   type ServerWorkout,
@@ -33,6 +32,7 @@ import { AddSetButton, SetLabel, TableHeader, cellInput, selectAll } from "../co
 import { PrBadges } from "../components/gym/PersonalRecords";
 import { TemplateEditor } from "../components/gym/TemplateEditor";
 import { WorkoutDetail } from "../components/gym/WorkoutDetail";
+import { WorkoutEditor } from "../components/gym/WorkoutEditor";
 import { Button, Pager, Segmented, Sheet, parseDecimal } from "../components/ui";
 import { type ActiveWorkout, type LocalExercise, type LocalSet, saveActiveWorkout, useActiveWorkout } from "../lib/activeWorkout";
 import { formatDay, formatNumber, formatTime } from "../lib/format";
@@ -115,7 +115,9 @@ function StartView() {
   const active = useActiveServerWorkout();
   const [starting, setStarting] = useState(false);
   const [editing, setEditing] = useState<Template | "new" | null>(null);
-  const [viewing, setViewing] = useState<WorkoutSummary | null>(null);
+  // By id: the summary is read from the history, so it reflects edits (and a just-logged past workout)
+  const [viewing, setViewing] = useState<string | null>(null);
+  const [loggingPast, setLoggingPast] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [historyPage, setHistoryPage] = useState(0);
   const [params, setParams] = useSearchParams();
@@ -175,9 +177,21 @@ function StartView() {
   if (editing) {
     return <TemplateEditor template={editing === "new" ? null : editing} exercises={exercisesQuery.data ?? []} onClose={() => setEditing(null)} />;
   }
-  if (viewing) return <WorkoutDetail summary={viewing} onBack={() => setViewing(null)} />;
-
+  if (loggingPast) {
+    return (
+      <WorkoutEditor
+        workout={null}
+        exercises={exercisesQuery.data ?? []}
+        onClose={() => setLoggingPast(false)}
+        onSaved={(id) => (setLoggingPast(false), setViewing(id))}
+      />
+    );
+  }
   const workouts = history.data ?? [];
+  const viewed = viewing ? workouts.find((w) => w.id === viewing) : undefined;
+  if (viewed) return <WorkoutDetail summary={viewed} onBack={() => setViewing(null)} />;
+  if (viewing && history.isFetching) return <p className="animate-pulse px-1 pt-6 text-sm text-zinc-500">Načítám…</p>;
+
   const pages = Math.ceil(workouts.length / HISTORY_PAGE_SIZE);
   const shownPage = Math.min(historyPage, Math.max(pages - 1, 0));
 
@@ -259,7 +273,7 @@ function StartView() {
               <ul className="divide-y divide-zinc-800">
                 {workouts.slice(shownPage * HISTORY_PAGE_SIZE, (shownPage + 1) * HISTORY_PAGE_SIZE).map((w) => (
                   <li key={w.id}>
-                    <button onClick={() => setViewing(w)} className="flex w-full items-center gap-2 py-2.5 text-left text-sm active:bg-zinc-800/50">
+                    <button onClick={() => setViewing(w.id)} className="flex w-full items-center gap-2 py-2.5 text-left text-sm active:bg-zinc-800/50">
                       <div className="min-w-0 flex-1">
                         <div className="font-medium">{w.name}</div>
                         <div className="text-xs text-zinc-400">
@@ -275,6 +289,9 @@ function StartView() {
                 ))}
               </ul>
               {history.isSuccess && workouts.length === 0 && <p className="py-4 text-sm text-zinc-500">Zatím žádný trénink.</p>}
+              <Button variant="ghost" className="mt-2 w-full" onClick={() => setLoggingPast(true)}>
+                + Zapsat starší trénink
+              </Button>
             </Card>
           </>
         )}

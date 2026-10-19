@@ -1,4 +1,4 @@
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Pencil } from "lucide-react";
 import { useState } from "react";
 import { useDeleteWorkout, useExercises, useWorkout, type WorkoutSummary } from "../../api/gym";
 import { formatDay, formatNumber, formatTime } from "../../lib/format";
@@ -6,15 +6,17 @@ import { Card } from "../Layout";
 import { Button, Sheet } from "../ui";
 import { GROUP_LABELS } from "./exercises";
 import { PrBadge } from "./PersonalRecords";
+import { WorkoutEditor } from "./WorkoutEditor";
 
 const SET_TYPE_LABEL = { normal: "", warmup: "zahřívací", drop: "drop", failure: "do selhání" } as const;
 
-/** A finished workout, read-only, laid out like the active workout screen. */
+/** A finished workout laid out like the active workout screen; "Upravit" opens the editor. */
 export function WorkoutDetail({ summary, onBack }: { summary: WorkoutSummary; onBack: () => void }) {
   const workout = useWorkout(summary.id);
   const exercises = useExercises();
   const remove = useDeleteWorkout();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const byExercise = new Map(exercises.data?.map((e) => [e.id, e]));
   const groups = new Map<number, { exerciseId: number; sets: NonNullable<typeof workout.data>["sets"] }>();
@@ -26,6 +28,10 @@ export function WorkoutDetail({ summary, onBack }: { summary: WorkoutSummary; on
   }
   const prByExercise = new Map(summary.prs.map((pr) => [pr.exercise_id, pr]));
 
+  if (editing && workout.data) {
+    return <WorkoutEditor workout={workout.data} exercises={exercises.data ?? []} onClose={() => setEditing(false)} onSaved={() => setEditing(false)} />;
+  }
+
   return (
     <>
       <header className="sticky top-0 z-20 -mx-4 mb-3 border-b border-zinc-800 bg-zinc-950/95 px-4 pt-[max(env(safe-area-inset-top),0.75rem)] pb-3 backdrop-blur">
@@ -33,13 +39,24 @@ export function WorkoutDetail({ summary, onBack }: { summary: WorkoutSummary; on
           <button aria-label="Zpět na historii" onClick={onBack} className="-ml-2 flex size-11 items-center justify-center rounded-full text-zinc-300 active:bg-zinc-800">
             <ChevronLeft size={24} />
           </button>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="truncate text-xl font-semibold">{summary.name}</h1>
             <p className="text-xs text-zinc-400">
               {formatDay(summary.started_at)} {formatTime(summary.started_at)} · {summary.set_count} sérií · {formatNumber(summary.total_volume_kg)} kg
               {summary.duration_min !== null && ` · ${summary.duration_min} min${summary.ended_by === "user" ? "" : " (odhad)"}`}
             </p>
           </div>
+          {/* An unfinished workout is edited live on the workout screen, not here */}
+          {summary.ended_at && (
+            <button
+              aria-label="Upravit trénink"
+              disabled={!workout.data || !exercises.data}
+              onClick={() => setEditing(true)}
+              className="flex size-11 shrink-0 items-center justify-center rounded-full text-zinc-300 active:bg-zinc-800 disabled:text-zinc-700"
+            >
+              <Pencil size={18} />
+            </button>
+          )}
         </div>
       </header>
 
@@ -91,6 +108,11 @@ export function WorkoutDetail({ summary, onBack }: { summary: WorkoutSummary; on
           })}
         {workout.data && groups.size === 0 && <p className="px-1 text-sm text-zinc-500">Tento trénink nemá žádné odcvičené série.</p>}
 
+        {summary.ended_at && (
+          <Button variant="ghost" className="w-full" disabled={!workout.data || !exercises.data} onClick={() => setEditing(true)}>
+            Upravit trénink
+          </Button>
+        )}
         <Button variant="danger" className="w-full" onClick={() => setConfirmDelete(true)}>
           Smazat trénink
         </Button>

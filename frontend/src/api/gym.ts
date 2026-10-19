@@ -42,6 +42,11 @@ export type ServerSet = {
   reps: number | null;
   completed: boolean;
   completed_at: string | null;
+  // Not edited in the app (Strong imports, AI dictation), but kept when a finished workout is edited
+  rpe?: number | null;
+  duration_s?: number | null;
+  distance_m?: number | null;
+  notes?: string | null;
 };
 export type ServerWorkout = Omit<WorkoutSummary, "duration_min" | "set_count" | "total_volume_kg" | "prs"> & {
   notes: string | null;
@@ -153,6 +158,33 @@ export function useDeleteWorkout() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workouts"] });
       queryClient.invalidateQueries({ queryKey: ["metrics"] });
+    },
+  });
+}
+
+export type WorkoutEdit = {
+  id: string;
+  name: string;
+  started_at: string;
+  ended_at: string;
+  notes: string | null;
+  sets: (SetBody & { id: string })[];
+};
+
+/**
+ * Editing a finished workout or logging a past one: one request with the whole set list (sets left out are deleted).
+ * Not queued like the live workout: it needs the server, and errors are shown in the editor.
+ */
+export function useSaveWorkout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    retry: 0,
+    mutationFn: ({ id, ...body }: WorkoutEdit) =>
+      api<ServerWorkout>(`/api/workouts/${id}`, { method: "PUT", body: { ...body, replace_sets: true } }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(gymKeys.workout(saved.id), saved);
+      // History, PRs, charts, ghost values, progression and the RPG ledger all derive from the sets
+      for (const key of ["workouts", "exercises", "metrics", "rpg"]) queryClient.invalidateQueries({ queryKey: [key] });
     },
   });
 }
