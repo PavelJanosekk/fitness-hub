@@ -266,7 +266,7 @@ def test_weekly_quests_rewards_bonus_and_failures(empty: Session, exercises: dic
     bench, squat = exercises["Bench Press (Barbell)"], exercises["Squat (Barbell)"]
     for day in (d(15, 9), d(22, 9), d(29, 9), d(6)):  # 1 workout a week before -> target 2 (minimum)
         _workout(empty, day, bench, 3)
-    for group in ("back", "shoulders", "arms", "core"):  # legs stay the only untrained group
+    for group in ("back", "shoulders", "biceps", "triceps", "core"):  # legs stay the only untrained group
         _workout(empty, d(7), by_group[group], 1)
     weak = habit(empty, "Anki", d(14, 9), [d(14, 9) + dt.timedelta(days=i) for i in range(0, 28, 3)])
     habit(empty, "Postel", d(14, 9), [d(14, 9) + dt.timedelta(days=i) for i in range(35)])

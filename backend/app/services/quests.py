@@ -31,7 +31,15 @@ ALL_QUESTS_XP = 100
 MUSCLE_SETS = 6
 HABIT_DAYS = 5
 LOOKBACK_DAYS = 28
-GROUPS = {"chest": "Hrudník", "back": "Záda", "legs": "Nohy", "shoulders": "Ramena", "arms": "Paže", "core": "Core"}
+GROUPS = {
+    "chest": "Hrudník",
+    "back": "Záda",
+    "legs": "Nohy",
+    "shoulders": "Ramena",
+    "biceps": "Biceps",
+    "triceps": "Triceps",
+    "core": "Core",
+}
 
 
 @dataclass

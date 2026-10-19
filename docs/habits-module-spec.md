@@ -178,7 +178,7 @@ Level-up animation, boss-defeat confetti, XP history chart by week.
 - Quests are derived per ISO week from the routine's first week, from data known before the week started:
   run = the plan week's lower km bound (150 XP); gym = average workouts/week of the previous 4 weeks, clamped 2-4
   (100 XP); muscle = 6 working sets for the group with the fewest sets in the previous 4 weeks, ties in the order
-  chest, back, legs, shoulders, arms, core (80 XP; only with gym in those weeks); home = every weekly Domov habit
+  chest, back, legs, shoulders, biceps, triceps, core (80 XP; only with gym in those weeks); home = every weekly Domov habit
   (80 XP); habit = 5 days of the weakest daily routine habit of the previous 4 weeks (>= 7 scheduled days; 60 XP).
   All of them: +100 XP. XP lands on the completion day (multiplier applies, skill by quest); a finished week's open
   quests become 0-XP "Výprava nesplněna" entries.

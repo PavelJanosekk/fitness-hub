@@ -53,7 +53,6 @@ _QUADS = (
     "výpad",
     "legpress",
 )
-_TRICEPS = ("tricep", "pushdown", "skull", "kickback", "french", "close grip", "dip", "francouz")
 _BACK_EXCLUDED = ("shrug", "back extension", "hyperextension", "krčení")
 
 
@@ -74,10 +73,10 @@ def antagonist_muscle(name: str, muscle_group: str) -> str | None:
             if has(_REAR_DELTS):
                 return "rear_delts"
             return "front_delts" if has(_FRONT_DELTS) else None
-        case "arms":
-            if has(_TRICEPS):
-                return "triceps"
-            return "biceps" if ("curl" in n or "bicep" in n or "zdvih" in n) and "wrist" not in n else None
+        case "biceps":
+            return None if "wrist" in n else "biceps"
+        case "triceps":
+            return "triceps"
         case "legs":
             if has(_HAMSTRINGS):
                 return "hamstrings"

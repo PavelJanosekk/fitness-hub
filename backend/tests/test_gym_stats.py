@@ -22,8 +22,8 @@ NOW = T0 + dt.timedelta(days=30)  # Saturday 31. 10. 2026
         ("Overhead Press (Cable)", "shoulders", "front_delts"),
         ("Reverse Fly (Cable)", "shoulders", "rear_delts"),
         ("Lateral Raise (Dumbbell)", "shoulders", None),
-        ("Hammer Curl (Dumbbell)", "arms", "biceps"),
-        ("Triceps Pushdown (Cable - Straight Bar)", "arms", "triceps"),
+        ("Hammer Curl (Dumbbell)", "biceps", "biceps"),
+        ("Triceps Pushdown (Cable - Straight Bar)", "triceps", "triceps"),
         ("Lying Leg Curl (Machine)", "legs", "hamstrings"),
         ("Romanian Deadlift (Barbell)", "legs", "hamstrings"),
         ("Leg Extension (Machine)", "legs", "quads"),
@@ -37,7 +37,8 @@ def test_antagonist_muscle_from_name_and_group(name: str, group: str, muscle: st
 
 
 def test_seeded_curls_and_presses_are_classified() -> None:
-    unclassified = {n for n, g, _ in EXERCISES if g in ("chest", "back", "arms") and antagonist_muscle(n, g) is None}
+    groups = ("chest", "back", "biceps", "triceps")
+    unclassified = {n for n, g, _ in EXERCISES if g in groups and antagonist_muscle(n, g) is None}
 
     assert unclassified <= {"Back Extension", "Kelso Shrug", "Shrug (Dumbbell)", "Shrug (Barbell)"}
 
@@ -69,7 +70,8 @@ def test_stats_bucket_days_and_weeks_with_working_sets_only(
         "2026-09-21", "2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26",
     ]  # fmt: skip
     week = stats.weeks[1]
-    assert (week.workouts, week.sets, week.volume_kg) == (1, {"chest": 2, "arms": 1}, {"chest": 1120.0, "arms": 150.0})
+    assert (week.workouts, week.sets) == (1, {"chest": 2, "biceps": 1})
+    assert week.volume_kg == {"chest": 1120.0, "biceps": 150.0}
     assert week.muscles == {"chest": 2, "biceps": 1}
     assert (stats.weeks[3].sets, stats.weeks[3].muscles, stats.weeks[3].unclassified_sets) == (
         {"shoulders": 1, "chest": 1},

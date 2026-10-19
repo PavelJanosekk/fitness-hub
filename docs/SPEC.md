@@ -161,7 +161,7 @@ Intake (calories/macros) is **not** stored here — the single source of truth i
 ### 5.2 Exercise (table `exercises`)
 - `id`: `Optional[int]` (Primary Key)
 - `name`: `str` (Unique, Indexed, e.g. "Bench Press (Barbell)" — same naming convention as Strong so imports match)
-- `muscle_group`: `str` (chest, back, legs, shoulders, arms, core, full_body, cardio)
+- `muscle_group`: `str` (chest, back, legs, shoulders, biceps, triceps, core, full_body, cardio; `arms` was split by migration 0018 [E32])
 - `equipment`: `Optional[str]` (barbell, dumbbell, machine, bodyweight, cable)
 
 ### 5.3 Workout (table `workouts`)

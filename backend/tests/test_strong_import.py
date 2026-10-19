@@ -125,7 +125,7 @@ def test_new_exercise_gets_guessed_group_and_notes_are_kept(
     upload(client)
 
     kickback = session.exec(select(Exercise).where(Exercise.name == "Cable Kickback")).one()
-    assert kickback.muscle_group == "arms"
+    assert kickback.muscle_group == "triceps"
     assert sets_of(session, "Cable Kickback")[0].notes == "lehce"
 
 
