@@ -1,11 +1,14 @@
-import { Check, Flame, Zap } from "lucide-react";
+import { Check, Flame, PencilLine, Star, Zap } from "lucide-react";
 import { useMemo } from "react";
 import { useHabitBoard, useSetHabitDay } from "../../api/habits";
 import { isoDate } from "../../lib/format";
 import {
   AUTO_RULES,
   currentStreak,
+  entryOf,
   type HabitDays,
+  hasContent,
+  logModeOf,
   plural,
   skillIndex,
   skillLabel,
@@ -16,6 +19,7 @@ import {
   withDays,
 } from "../../lib/habits";
 import { useChartColors } from "../charts/palette";
+import { openEntrySheet } from "./entryStore";
 
 /** All habits in their order with done-day sets; `active` = not archived. */
 export function useHabitDays() {
@@ -32,23 +36,34 @@ export function useHabitDays() {
 /**
  * Tick / untick a habit on a day. Days completed by an auto rule can't be unticked (the data says so).
  * Weekly habits: with a target of 1 a done week is unticked as a whole, otherwise the tap toggles the given day.
+ * Note / review habits (E37) open the entry sheet instead, which ticks on Uložit; so does unticking a day that has
+ * a note, stars or a dovednost (the sheet asks before deleting it).
  */
 export function useToggleHabit() {
   const setDay = useSetHabitDay();
   return (h: HabitDays, day: string) => {
+    const journal = logModeOf(h) !== "check";
+    const untick = (days: string[]) => {
+      const withContent = days.find((d) => hasContent(entryOf(h, d)));
+      if (withContent) openEntrySheet(h.id, withContent);
+      else days.forEach((d) => setDay({ habitId: h.id, date: d, done: false }));
+    };
     if (h.frequency === "weekly") {
       const days = weekDays(weekStart(day));
       const manual = days.filter((d) => h.manual.has(d));
       const met = days.filter((d) => h.doneSet.has(d)).length >= h.weekly_target;
       if (h.weekly_target === 1 && met) {
-        manual.forEach((d) => setDay({ habitId: h.id, date: d, done: false }));
+        if (journal) openEntrySheet(h.id, h.manual.has(day) ? day : (manual.at(-1) ?? day));
+        else untick(manual);
         return;
       }
-      if (h.manual.has(day)) setDay({ habitId: h.id, date: day, done: false });
+      if (journal) openEntrySheet(h.id, day);
+      else if (h.manual.has(day)) untick([day]);
       else if (!h.auto[day]) setDay({ habitId: h.id, date: day, done: true });
       return;
     }
-    if (h.manual.has(day)) setDay({ habitId: h.id, date: day, done: false });
+    if (journal) openEntrySheet(h.id, day);
+    else if (h.manual.has(day)) untick([day]);
     else if (!h.auto[day]) setDay({ habitId: h.id, date: day, done: true });
   };
 }
@@ -116,6 +131,9 @@ export function HabitRow({ h, day, onToggle }: { h: HabitDays; day: string; onTo
     status = autoText ?? (h.auto_rule ? `automaticky: ${autoRuleLabel(h)}` : "");
   }
   const streak = currentStreak(h, day < isoDate() ? day : isoDate());
+  const journal = logModeOf(h) !== "check";
+  const entryDays = weekly ? weekDays(monday).filter((d) => h.manual.has(d)) : h.manual.has(day) ? [day] : [];
+  const entry = entryDays.map((d) => entryOf(h, d)).filter(hasContent).at(-1);
 
   return (
     <button
@@ -145,6 +163,25 @@ export function HabitRow({ h, day, onToggle }: { h: HabitDays; day: string; onTo
             </span>
           )}
         </span>
+        {entry ? (
+          <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-zinc-300">
+            {entry.rating ? (
+              <span className="flex shrink-0 items-center gap-0.5 text-amber-300">
+                <Star size={11} fill="currentColor" />
+                {entry.rating}
+              </span>
+            ) : null}
+            {entry.ability && <span className="shrink-0 rounded-full bg-zinc-800 px-1.5 py-px text-[11px] text-emerald-300">{entry.ability}</span>}
+            {entry.note && <span className="truncate">{entry.note.split("\n")[0]}</span>}
+          </span>
+        ) : (
+          journal &&
+          entryDays.length > 0 && (
+            <span className="mt-1 flex items-center gap-1 text-xs text-zinc-500">
+              <PencilLine size={11} /> doplnit poznámku
+            </span>
+          )
+        )}
       </span>
       {h.is_bonus ? (
         <span className="shrink-0 rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-semibold text-amber-300">+{h.points} b</span>

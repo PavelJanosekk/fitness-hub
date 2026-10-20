@@ -2,7 +2,7 @@ import { Minus, Plus } from "lucide-react";
 import { useState } from "react";
 import { ApiError } from "../../api/client";
 import { type HabitInput, useSaveHabit } from "../../api/habits";
-import { AUTO_RULES, type AutoRule, type Frequency, type HabitDays, type Skill, SKILLS } from "../../lib/habits";
+import { AUTO_RULES, type AutoRule, type Frequency, type HabitDays, LOG_MODES, type LogMode, logModeOf, type Skill, SKILLS } from "../../lib/habits";
 import { Button, Chips, DecimalInput, parseDecimal, Segmented, Sheet } from "../ui";
 
 const FREQUENCIES = [
@@ -31,6 +31,7 @@ export function HabitSheet({ habit, onClose }: { habit?: HabitDays; onClose: () 
   const [bonus, setBonus] = useState(habit?.is_bonus ?? false);
   const [rule, setRule] = useState<AutoRule | null>(habit?.auto_rule ?? null);
   const [threshold, setThreshold] = useState(habit?.auto_threshold != null ? String(habit.auto_threshold).replace(".", ",") : "");
+  const [logMode, setLogMode] = useState<LogMode>(habit ? logModeOf(habit) : "check");
   const ruleMeta = AUTO_RULES.find((a) => a.rule === rule);
   const valid = title.trim() !== "";
 
@@ -45,6 +46,7 @@ export function HabitSheet({ habit, onClose }: { habit?: HabitDays; onClose: () 
       is_bonus: frequency === "daily" && bonus,
       auto_rule: rule,
       auto_threshold: ruleMeta?.unit ? parseDecimal(threshold) : null,
+      log_mode: logMode,
     };
     save.mutate({ id: habit?.id, ...body }, { onSuccess: onClose });
   };
@@ -90,6 +92,18 @@ export function HabitSheet({ habit, onClose }: { habit?: HabitDays; onClose: () 
         <div>
           <p className="mb-1.5 text-sm text-zinc-400">Oblast</p>
           <Chips label="Oblast" options={SKILLS} value={skill} onChange={setSkill} allLabel="Žádná" wrap />
+        </div>
+
+        <div>
+          <p className="mb-1.5 text-sm text-zinc-400">Při odškrtnutí</p>
+          <Chips label="Při odškrtnutí" options={LOG_MODES} value={logMode} onChange={(v) => setLogMode(v ?? "check")} wrap />
+          <p className="mt-1.5 text-xs text-zinc-500">
+            {logMode === "note"
+              ? "Otevře okno na poznámku a dovednost (obojí nepovinné). Dovednosti se sbírají u hrdiny."
+              : logMode === "review"
+                ? "Otevře okno na hvězdičky, poznámku a dovednost (vše nepovinné)."
+                : "Jedno ťuknutí a hotovo."}
+          </p>
         </div>
 
         <div className="flex items-center justify-between gap-3">

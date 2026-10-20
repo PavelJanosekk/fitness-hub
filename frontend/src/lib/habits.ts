@@ -14,6 +14,16 @@ import { addDays, isoDate } from "./format";
 export type Frequency = "daily" | "weekly";
 export type Skill = "body" | "nutrition" | "home" | "discipline" | "mind";
 export type AutoRule = "gym_workout" | "activity" | "gym_or_activity" | "steps" | "sleep" | "weight_logged" | "protein";
+/** What ticking asks for (E37): a plain tick, a note + dovednost, or stars + note + dovednost. */
+export type LogMode = "check" | "note" | "review";
+export type HabitEntry = { note: string | null; rating: number | null; ability_id: number | null; ability: string | null };
+export type AbilityBrief = { id: number; name: string; icon: string | null };
+
+export const LOG_MODES: readonly (readonly [LogMode, string])[] = [
+  ["check", "Jen odškrtnout"],
+  ["note", "Poznámka a dovednost"],
+  ["review", "Hodnocení a poznámka"],
+];
 
 export type Habit = {
   id: number;
@@ -30,9 +40,22 @@ export type Habit = {
   archived_at: string | null;
   done: string[]; // ticked by hand
   auto: Record<string, string>; // completed by the auto rule: day -> what did it
+  log_mode?: LogMode; // optional like everything E37 added: missing = "check"
+  entries?: Record<string, HabitEntry>; // ticked days with a note, stars or a dovednost
 };
-// paused / forgiven: optional, older persisted boards don't have them
-export type HabitBoard = { today: string; start: string; habits: Habit[]; paused?: string[]; forgiven?: string[] };
+// paused / forgiven / abilities: optional, older persisted boards don't have them
+export type HabitBoard = {
+  today: string;
+  start: string;
+  habits: Habit[];
+  paused?: string[];
+  forgiven?: string[];
+  abilities?: AbilityBrief[];
+};
+
+export const logModeOf = (habit: Pick<Habit, "log_mode">): LogMode => habit.log_mode ?? "check";
+export const entryOf = (habit: Pick<Habit, "entries">, day: string): HabitEntry | undefined => habit.entries?.[day];
+export const hasContent = (entry: HabitEntry | undefined) => !!(entry && (entry.note || entry.rating || entry.ability));
 
 export const ROUTINE_WEEK_PCT = 60;
 
