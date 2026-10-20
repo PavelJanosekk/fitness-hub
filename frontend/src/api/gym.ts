@@ -2,29 +2,46 @@ import { type Mutation, type QueryClient, useMutation, useQuery, useQueryClient 
 import { updateActiveExercise } from "../lib/activeWorkout";
 import { ApiError, api } from "./client";
 
-/** Per-exercise settings of the progression targets (E33); null = the default for the equipment. */
-export type ProgressionSettings = { rep_min: number | null; rep_max: number | null; weight_step: number | null; sets_max: number | null };
-export type Exercise = { id: number; name: string; muscle_group: string; equipment: string | null } & Partial<ProgressionSettings>;
 export type SetType = "normal" | "warmup" | "drop" | "failure";
-export type TargetSet = { set_type: SetType; weight_kg: number | null; reps: number | null; changed: boolean };
-/** What to lift next time (E33): the last session's sets with one step applied. */
+export type SetRole = "straight" | "top" | "backoff";
+export type ProgressionStrategy = "straight" | "top_backoff";
+/** Per-exercise settings of the progression targets (E33, E35); null = the default (equipment, 1 RIR, straight sets). */
+export type ProgressionSettings = {
+  rep_min: number | null;
+  rep_max: number | null;
+  weight_step: number | null;
+  sets_max: number | null; // opt-in: sets are added up to this before reps; null = never
+  target_rir: number | null;
+  strategy: ProgressionStrategy | null;
+};
+export type Exercise = { id: number; name: string; muscle_group: string; equipment: string | null } & Partial<ProgressionSettings>;
+export type TargetSet = { set_type: SetType; weight_kg: number | null; reps: number | null; role: SetRole | null; changed: boolean; priority: boolean };
+export type TargetReason = "plus_rep" | "weight_up" | "return_up" | "add_set" | "hold" | "check_drop" | "lower" | "comeback" | "no_data";
+export type TargetWarning = "stall" | "decline" | "big_jump" | "low_confidence" | "last_not_comparable";
+/** What to lift next time (E35): the last comparable session with one step per block (straight sets, or top + back-off). */
 export type ProgressionTarget = {
-  kind: "comeback" | "deload" | "lighter" | "weight" | "sets" | "reps";
-  weight_kg: number; // the working weight of the target, 0 = no load
+  strategy: ProgressionStrategy;
   sets: TargetSet[];
+  blocks: { role: SetRole; reason: TargetReason; weight_kg: number }[];
+  warnings: TargetWarning[];
+  suggestion: { kind: "deload" | "lighter"; sets: TargetSet[] } | null; // for the current workout only
+  fatigue_from: string | null;
   stalled_sessions: number;
   days_since: number;
   rep_min: number;
   rep_max: number;
   weight_step: number;
-  sets_max: number;
+  sets_max: number | null;
+  target_rir: number;
 };
+/** A set's plan (E35): the target it was planned with and its role; null = no plan. */
+export type SetPlan = { planned_weight_kg?: number | null; planned_reps?: number | null; role?: SetRole | null };
 export type LastPerformance = {
   exercise_id: number;
   workout_id: string | null;
   workout_started_at: string | null;
-  sets: { set_order: number; set_type: SetType; weight_kg: number | null; reps: number | null }[];
-  target?: ProgressionTarget | null; // missing in workouts kept on the phone from before E33
+  sets: ({ set_order: number; set_type: SetType; weight_kg: number | null; reps: number | null } & SetPlan)[];
+  target?: ProgressionTarget | null; // missing in workouts kept on the phone from before; E33's shape has no `blocks`
 };
 export type TemplateSet = { set_type: SetType; weight_kg: number | null; reps: number | null };
 export type TemplateExercise = { exercise_id: number; name: string; sets: TemplateSet[] };
@@ -59,11 +76,12 @@ export type ServerSet = {
   completed: boolean;
   completed_at: string | null;
   // Not edited in the app (Strong imports, AI dictation), but kept when a finished workout is edited
-  rpe?: number | null;
+  rpe?: number | null; // the logger stores a confirmed RIR as 10 - RIR (3+ -> 7)
   duration_s?: number | null;
   distance_m?: number | null;
   notes?: string | null;
-};
+  unusual?: boolean;
+} & SetPlan;
 export type ServerWorkout = Omit<WorkoutSummary, "duration_min" | "set_count" | "total_volume_kg" | "prs"> & {
   notes: string | null;
   sets: ServerSet[];
@@ -78,7 +96,7 @@ export const gymKeys = {
   templates: ["workouts", "templates", "v2"] as const,
   history: ["workouts", "history", "v2"] as const, // v2: summaries gained `prs`; older persisted ones lack it
   workout: (id: string) => ["workouts", id] as const,
-  last: (exerciseId: number) => ["exercises", exerciseId, "last", "v2"] as const, // v2: gained `target` (E33)
+  last: (exerciseId: number) => ["exercises", exerciseId, "last", "v3"] as const, // v3: the E35 target and set plans
   // Under "workouts" / "exercises", so finishing a workout or editing a set refreshes the charts too
   stats: ["workouts", "stats", "v1"] as const,
   progression: (exerciseId: number) => ["exercises", exerciseId, "progression", "v1"] as const,

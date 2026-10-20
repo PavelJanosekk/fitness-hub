@@ -103,6 +103,11 @@ export function WorkoutEditor({
             duration_s: s.saved?.duration_s ?? null,
             distance_m: s.saved?.distance_m ?? null,
             notes: s.saved?.notes ?? null,
+            // The plan the set was lifted with (E35) stays: editing the result must not rewrite what was planned
+            planned_weight_kg: s.saved?.planned_weight_kg ?? null,
+            planned_reps: s.saved?.planned_reps ?? null,
+            role: s.saved?.role ?? null,
+            unusual: s.saved?.unusual ?? false,
             id: s.id,
             exercise_id: e.exercise_id,
             exercise_order: exerciseIndex + 1,

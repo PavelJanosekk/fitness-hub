@@ -34,7 +34,7 @@ const PROGRESSION_DEFAULTS: Record<string, [number, number, number]> = {
 };
 export const progressionDefaults = (equipment: string | null) => {
   const [repMin, repMax, step] = (equipment && PROGRESSION_DEFAULTS[equipment]) || [8, 12, 2.5];
-  return { rep_min: repMin, rep_max: repMax, weight_step: step, sets_max: 3 };
+  return { rep_min: repMin, rep_max: repMax, weight_step: step, sets_max: null };
 };
 
 const normalize = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();

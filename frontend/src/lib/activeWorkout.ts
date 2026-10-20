@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { LastPerformance, SetType } from "../api/gym";
+import type { LastPerformance, SetRole, SetType } from "../api/gym";
 
 /** The workout in progress, kept on the phone so nothing is lost without signal (docs/SPEC.md §8). */
 export type LocalSet = {
@@ -9,7 +9,12 @@ export type LocalSet = {
   reps: string;
   completed: boolean;
   completed_at: string | null;
-  progress?: boolean; // pre-filled from the step of the progression target (E33)
+  progress?: boolean; // the target changed it or pushes it (E33, E35)
+  // The plan (E35): the target the set was pre-filled with and its role; kept when the values are edited
+  planned_weight?: number | null;
+  planned_reps?: number | null;
+  role?: SetRole | null;
+  rir?: number | null; // confirmed by the user (0-3, 3 = 3+); null = not confirmed
 };
 export type LocalExercise = {
   exercise_id: number;
@@ -17,6 +22,7 @@ export type LocalExercise = {
   muscle_group: string;
   sets: LocalSet[];
   last: LastPerformance | null;
+  unusual?: boolean; // pain, interruption, fatigue: kept out of the progression (E35)
 };
 export type ActiveWorkout = { id: string; name: string; started_at: string; exercises: LocalExercise[] };
 
@@ -79,7 +85,10 @@ export function useActiveWorkout(): ActiveWorkout | null {
 
 /** Add sets the server has but the phone doesn't (e.g. saved by the AI coach) to the local workout. */
 export function mergeServerSets(
-  server: { id: string; sets: { id: string; exercise_id: number; set_type: SetType; weight_kg: number | null; reps: number | null; completed: boolean; completed_at: string | null }[] },
+  server: {
+    id: string;
+    sets: { id: string; exercise_id: number; set_type: SetType; weight_kg: number | null; reps: number | null; completed: boolean; completed_at: string | null; rpe?: number | null }[];
+  },
   names: Map<number, { name: string; muscle_group: string }>,
 ) {
   const local = read();
@@ -95,6 +104,8 @@ export function mergeServerSets(
       reps: s.reps !== null ? String(s.reps) : "",
       completed: true,
       completed_at: s.completed_at,
+      // An RPE the coach saved survives the logger re-sending the set (it stores RIR as 10 - RIR)
+      rir: s.rpe == null ? null : Math.min(3, Math.max(0, Math.round(10 - s.rpe))),
     };
     const target = exercises.find((e) => e.exercise_id === s.exercise_id);
     if (target) target.sets.push(set);

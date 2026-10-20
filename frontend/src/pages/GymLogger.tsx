@@ -1,6 +1,6 @@
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, CloudOff, GripVertical, List, Trash2 } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Check, ChevronRight, CloudOff, GripVertical, List, Trash2, X } from "lucide-react";
+import { Fragment, lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import {
   type Exercise,
@@ -10,6 +10,7 @@ import {
   SYNC_SCOPE,
   type SetBody,
   type SetType,
+  type TargetSet,
   type Template,
   type TemplateSet,
   useExercises,
@@ -31,7 +32,7 @@ import { ExercisePicker } from "../components/gym/ExercisePicker";
 import { ExerciseSheet } from "../components/gym/ExerciseSheet";
 import { AddSetButton, SetLabel, TableHeader, cellInput, selectAll } from "../components/gym/SetTable";
 import { PrBadges } from "../components/gym/PersonalRecords";
-import { TargetLine, TargetSheet } from "../components/gym/Target";
+import { SetMeta, TargetLine, TargetSheet, asTarget, kgText } from "../components/gym/Target";
 import { TemplateDetail } from "../components/gym/TemplateDetail";
 import { TemplateEditor } from "../components/gym/TemplateEditor";
 import { WorkoutDetail } from "../components/gym/WorkoutDetail";
@@ -67,40 +68,78 @@ const setBody = (exercise: LocalExercise, exerciseOrder: number, set: LocalSet, 
   reps: set.reps ? Math.round(parseDecimal(set.reps) ?? 0) : null,
   completed: true,
   completed_at: set.completed_at,
+  // E35: the plan the set was pre-filled with, the confirmed RIR as RPE (3+ -> 7) and the unusual flag
+  planned_weight_kg: set.planned_weight ?? null,
+  planned_reps: set.planned_reps ?? null,
+  role: set.role ?? null,
+  rpe: set.rir != null ? 10 - set.rir : null,
+  unusual: !!exercise.unusual,
 });
 
-/** Planned sets: the progression target (E33), else the last session (ghost values), else one empty set. */
-function plannedSets(last: LastPerformance | null, count?: number): LocalSet[] {
-  const empty = { set_type: "normal" as const, weight_kg: null, reps: null, changed: false };
-  const source = last?.target?.sets.length ? last.target.sets : last?.sets.length ? last.sets.map((s) => ({ ...s, changed: false })) : [empty];
-  const n = count ?? source.length;
-  return Array.from({ length: n }, (_, i) => {
-    const s = source[Math.min(i, source.length - 1)];
-    return {
+/** RIR-based RPE back to the RIR the user picked (0-3, 3 = 3+). */
+const rirFromRpe = (rpe: number | null | undefined) => (rpe == null ? null : Math.min(3, Math.max(0, Math.round(10 - rpe))));
+const isWorking = (type: SetType) => type === "normal" || type === "failure";
+const repsText = (reps: number | null) => (reps !== null ? String(reps) : "");
+
+/** Planned sets: the progression target with its plan (E35), else the last session (ghost values), else one empty set. */
+function plannedSets(last: LastPerformance | null): LocalSet[] {
+  const target = asTarget(last?.target);
+  if (target?.sets.length) {
+    return target.sets.map((s) => ({
       id: uuid(),
       set_type: s.set_type,
-      weight: s.weight_kg !== null ? formatNumber(s.weight_kg, s.weight_kg % 1 ? 1 : 0) : "",
-      reps: s.reps !== null ? String(s.reps) : "",
+      weight: kgText(s.weight_kg),
+      reps: repsText(s.reps),
       completed: false,
       completed_at: null,
-      progress: s.changed && i < source.length,
-    };
-  });
+      progress: s.changed || s.priority,
+      planned_weight: s.weight_kg,
+      planned_reps: s.reps,
+      role: s.role,
+    }));
+  }
+  const source = last?.sets.length ? last.sets : [{ set_type: "normal" as const, weight_kg: null, reps: null }];
+  return source.map((s) => ({ id: uuid(), set_type: s.set_type, weight: kgText(s.weight_kg), reps: repsText(s.reps), completed: false, completed_at: null }));
+}
+
+/** The template decides how many working sets an exercise has (E35): extra ones copy the last, surplus ones go. */
+function withWorkingSets(sets: LocalSet[], count: number): LocalSet[] {
+  const working = sets.filter((s) => isWorking(s.set_type));
+  if (!count || working.length === count) return sets;
+  if (working.length > count) {
+    const surplus = new Set(working.slice(count).map((s) => s.id));
+    return sets.filter((s) => !surplus.has(s.id));
+  }
+  const last = working.at(-1);
+  if (!last) return sets;
+  const at = sets.indexOf(last) + 1;
+  const extra = Array.from({ length: count - working.length }, () => ({ ...last, id: uuid(), progress: false }));
+  return [...sets.slice(0, at), ...extra, ...sets.slice(at)];
 }
 
 /**
- * Sets of a template exercise. The progression target wins: every template holds a snapshot of an old session (E33).
- * Without one, anything the template leaves blank falls back to the last session (ghost values).
+ * Sets of a template exercise. With a target, the template only gives the number of working sets: every template
+ * holds a snapshot of an old session (E33, E35). Without one, the template's values are the plan and anything it
+ * leaves blank falls back to the last session (ghost values).
  */
 function templateSets(sets: TemplateSet[], last: LastPerformance | null): LocalSet[] {
-  if (last?.target) return plannedSets(last);
-  const ghost = plannedSets(last, sets.length);
-  return sets.map((s, i) => ({
-    ...ghost[i],
-    set_type: s.set_type,
-    weight: s.weight_kg !== null ? formatNumber(s.weight_kg, s.weight_kg % 1 ? 1 : 0) : ghost[i].weight,
-    reps: s.reps !== null ? String(s.reps) : ghost[i].reps,
-  }));
+  if (asTarget(last?.target)) return withWorkingSets(plannedSets(last), sets.filter((s) => isWorking(s.set_type)).length);
+  const ghost = plannedSets(last);
+  return sets.map((s, i) => {
+    const fallback = ghost[Math.min(i, ghost.length - 1)];
+    const weight = s.weight_kg !== null ? kgText(s.weight_kg) : fallback.weight;
+    const reps = s.reps !== null ? String(s.reps) : fallback.reps;
+    const planned = isWorking(s.set_type) && (weight !== "" || reps !== "");
+    return {
+      id: uuid(),
+      set_type: s.set_type,
+      weight,
+      reps,
+      completed: false,
+      completed_at: null,
+      ...(planned && { planned_weight: parseDecimal(weight), planned_reps: reps ? Number(reps) : null, role: "straight" as const }),
+    };
+  });
 }
 
 const HISTORY_PAGE_SIZE = 8;
@@ -166,7 +205,12 @@ function StartView() {
         reps: s.reps !== null ? String(s.reps) : "",
         completed: s.completed,
         completed_at: s.completed_at,
+        planned_weight: s.planned_weight_kg ?? null,
+        planned_reps: s.planned_reps ?? null,
+        role: s.role ?? null,
+        rir: rirFromRpe(s.rpe),
       });
+      exercise.unusual ||= !!s.unusual;
       byOrder.set(s.exercise_order, exercise);
     }
     saveActiveWorkout({ id: server.id, name: server.name, started_at: server.started_at, exercises: [...byOrder.values()] });
@@ -361,6 +405,7 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   const [confirmRemove, setConfirmRemove] = useState<number | null>(null);
   const [explaining, setExplaining] = useState<number | null>(null);
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
+  const [offer, setOffer] = useState<WeightOffer | null>(null);
   const exercisesQuery = useExercises();
   const [voice, setVoice] = useState<{ busy: boolean; response?: ChatResponse; error?: string } | null>(null);
   const elapsed = useElapsed(workout.started_at);
@@ -396,6 +441,68 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
     );
     update(exercises);
     if (syncNow) syncSet(exerciseIndex, setIndex, exercises);
+  };
+
+  // A weight changed by hand (E35): offer to copy it to the following unticked sets of the same block. It stays a change
+  // for today; only "I příště" makes it the plan
+  const commitSet = (exerciseIndex: number, setIndex: number, patch?: Partial<LocalSet>, weightBefore?: string) => {
+    changeSet(exerciseIndex, setIndex, patch ?? {}, true);
+    if (weightBefore === undefined) return;
+    const sets = workout.exercises[exerciseIndex].sets;
+    const edited = { ...sets[setIndex], ...patch };
+    const before = parseDecimal(weightBefore);
+    const after = parseDecimal(edited.weight);
+    if (after === null || before === after) return;
+    const targets = sets.flatMap((s, i) =>
+      i > setIndex && !s.completed && (s.role ?? null) === (edited.role ?? null) && parseDecimal(s.weight) === before ? [i] : [],
+    );
+    const offPlan = edited.planned_weight != null && edited.planned_weight !== after;
+    if (targets.length || offPlan) setOffer({ exerciseIndex, setIndex, weight: edited.weight, targets, previous: targets.map((i) => sets[i].weight), applied: false });
+    else setOffer(null);
+  };
+
+  const copyWeight = (o: WeightOffer, weights: string[]) =>
+    update(
+      workout.exercises.map((e, i) =>
+        i !== o.exerciseIndex ? e : { ...e, sets: e.sets.map((s, j) => (o.targets.includes(j) ? { ...s, weight: weights[o.targets.indexOf(j)] } : s)) },
+      ),
+    );
+
+  // The new weight becomes the plan of its block, so the next target builds on it
+  const keepForNextTime = (o: WeightOffer) => {
+    const role = workout.exercises[o.exerciseIndex].sets[o.setIndex].role ?? null;
+    const weight = parseDecimal(o.weight);
+    const exercises = workout.exercises.map((e, i) =>
+      i !== o.exerciseIndex ? e : { ...e, sets: e.sets.map((s) => ((s.role ?? null) === role && s.planned_weight != null ? { ...s, planned_weight: weight } : s)) },
+    );
+    update(exercises);
+    exercises[o.exerciseIndex].sets.forEach((_, s) => syncSet(o.exerciseIndex, s, exercises));
+    setOffer(null);
+  };
+
+  const markUnusual = (exerciseIndex: number, unusual: boolean) => {
+    const exercises = workout.exercises.map((e, i) => (i === exerciseIndex ? { ...e, unusual } : e));
+    update(exercises);
+    exercises[exerciseIndex].sets.forEach((_, s) => syncSet(exerciseIndex, s, exercises));
+  };
+
+  // Today only: the unticked sets take the easier values, their plan stays, so the next target goes back up
+  const applySuggestion = (exerciseIndex: number, suggested: TargetSet[]) => {
+    update(
+      workout.exercises.map((e, i) =>
+        i !== exerciseIndex
+          ? e
+          : {
+              ...e,
+              sets: e.sets.flatMap((s, j) => {
+                const v = suggested[j];
+                if (s.completed) return [s];
+                return v ? [{ ...s, weight: kgText(v.weight_kg), reps: v.reps !== null ? String(v.reps) : s.reps }] : [];
+              }),
+            },
+      ),
+    );
+    setExplaining(null);
   };
 
   const toggleComplete = (exerciseIndex: number, setIndex: number) => {
@@ -486,7 +593,13 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   };
 
   const done = workout.exercises.reduce((n, e) => n + e.sets.filter((s) => s.completed).length, 0);
+  // The RIR picker shows under the set ticked last
+  const latestDone = workout.exercises
+    .flatMap((e) => e.sets)
+    .filter((s) => s.completed && s.completed_at)
+    .reduce<LocalSet | null>((latest, s) => (!latest || s.completed_at! > latest.completed_at! ? s : latest), null)?.id;
   const explained = explaining !== null ? workout.exercises[explaining] : undefined;
+  const explainedTarget = asTarget(explained?.last?.target);
   // Editing the settings needs the exercise from the server list (it is not there while offline)
   const explainedExercise = explained && exercisesQuery.data?.find((e) => e.id === explained.exercise_id);
 
@@ -510,7 +623,9 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
       </header>
 
       <div className="space-y-2">
-        {workout.exercises.map((exercise, exerciseIndex) => (
+        {workout.exercises.map((exercise, exerciseIndex) => {
+          const target = asTarget(exercise.last?.target);
+          return (
           <div key={`${exercise.exercise_id}-${exerciseIndex}`} {...reorder.itemProps(exerciseIndex)} className="rounded-(--radius-card) data-dragging:bg-zinc-950 data-dragging:shadow-2xl">
             <Card className="px-2 py-1.5">
               <div className="flex items-center gap-1">
@@ -530,27 +645,47 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
                   <Trash2 size={15} />
                 </button>
               </div>
-              {exercise.last?.target && <TargetLine target={exercise.last.target} onOpen={() => setExplaining(exerciseIndex)} />}
+              {target && <TargetLine target={target} onOpen={() => setExplaining(exerciseIndex)} />}
               <TableHeader columns={["Série", "Minule", "kg", "Opak.", ""]} className={ACTIVE_COLS} />
               <div className="space-y-1">
                 {exercise.sets.map((set, setIndex) => (
-                  <SetRow
-                    key={set.id}
-                    index={setIndex}
-                    set={set}
-                    types={exercise.sets.map((x) => x.set_type)}
-                    ghost={exercise.last?.sets[setIndex]}
-                    onChange={(patch) => changeSet(exerciseIndex, setIndex, patch)}
-                    onCommit={(patch) => changeSet(exerciseIndex, setIndex, patch ?? {}, true)}
-                    onToggle={() => toggleComplete(exerciseIndex, setIndex)}
-                    onRemove={() => removeSet(exerciseIndex, setIndex)}
-                  />
+                  <Fragment key={set.id}>
+                    <SetRow
+                      index={setIndex}
+                      set={set}
+                      types={exercise.sets.map((x) => x.set_type)}
+                      ghost={exercise.last?.sets[setIndex]}
+                      onChange={(patch) => changeSet(exerciseIndex, setIndex, patch)}
+                      onCommit={(patch, weightBefore) => commitSet(exerciseIndex, setIndex, patch, weightBefore)}
+                      onToggle={() => toggleComplete(exerciseIndex, setIndex)}
+                      onRemove={() => removeSet(exerciseIndex, setIndex)}
+                    />
+                    {set.completed && (
+                      <SetMeta
+                        set={set}
+                        picker={set.id === latestDone}
+                        targetRir={target?.target_rir ?? 1}
+                        onRir={(rir) => changeSet(exerciseIndex, setIndex, { rir }, true)}
+                      />
+                    )}
+                    {offer?.exerciseIndex === exerciseIndex && offer.setIndex === setIndex && (
+                      <WeightOfferBar
+                        offer={offer}
+                        canKeep={set.planned_weight != null}
+                        onApply={() => (copyWeight(offer, offer.targets.map(() => offer.weight)), setOffer({ ...offer, applied: true }))}
+                        onUndo={() => (copyWeight(offer, offer.previous), setOffer(null))}
+                        onKeep={() => keepForNextTime(offer)}
+                        onClose={() => setOffer(null)}
+                      />
+                    )}
+                  </Fragment>
                 ))}
               </div>
               <AddSetButton onClick={() => addSet(exerciseIndex)} />
             </Card>
           </div>
-        ))}
+          );
+        })}
 
         <Button variant="ghost" className="w-full" onClick={() => setPicking(true)}>
           + Přidat cvik
@@ -594,11 +729,15 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
           </div>
         </Sheet>
       )}
-      {explained?.last?.target && (
+      {explaining !== null && explained?.last && explainedTarget && (
         <TargetSheet
           name={explained.name}
-          target={explained.last.target}
+          target={explainedTarget}
           last={explained.last}
+          unusual={!!explained.unusual}
+          canApply={explained.sets.some((s) => !s.completed)}
+          onApply={(sets) => applySuggestion(explaining, sets)}
+          onUnusual={(unusual) => markUnusual(explaining, unusual)}
           onEdit={explainedExercise && (() => (setExplaining(null), setEditingExercise(explainedExercise)))}
           onClose={() => setExplaining(null)}
         />
@@ -630,6 +769,55 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
 }
 
 const ACTIVE_COLS = "grid-cols-[2rem_minmax(0,1fr)_4.25rem_3.5rem_2.25rem]";
+
+/** A weight changed by hand during the workout and the following unticked sets of its block it can be copied to. */
+type WeightOffer = { exerciseIndex: number; setIndex: number; weight: string; targets: number[]; previous: string[]; applied: boolean };
+
+const OFFER_BUTTON = "shrink-0 rounded-md bg-zinc-700 px-2 py-1 font-medium text-zinc-100 active:bg-zinc-600";
+
+function WeightOfferBar({
+  offer,
+  canKeep,
+  onApply,
+  onUndo,
+  onKeep,
+  onClose,
+}: {
+  offer: WeightOffer;
+  canKeep: boolean;
+  onApply: () => void;
+  onUndo: () => void;
+  onKeep: () => void;
+  onClose: () => void;
+}) {
+  const sets = offer.targets.map((i) => i + 1).join(", ");
+  const series = offer.targets.length > 1 ? "sérií" : "série";
+  return (
+    <div className="ml-9 flex items-center gap-1.5 rounded-lg bg-zinc-800/70 py-1 pr-1 pl-2 text-xs text-zinc-300">
+      <span className="min-w-0 flex-1">
+        {offer.applied ? `Propsáno do ${series} ${sets}.` : offer.targets.length ? `Propsat ${offer.weight} kg do ${series} ${sets}?` : `${offer.weight} kg mimo plán.`}
+      </span>
+      {!offer.applied && offer.targets.length > 0 && (
+        <button type="button" onClick={onApply} className={OFFER_BUTTON}>
+          Propsat
+        </button>
+      )}
+      {offer.applied && (
+        <button type="button" onClick={onUndo} className={OFFER_BUTTON}>
+          Vrátit
+        </button>
+      )}
+      {canKeep && (
+        <button type="button" onClick={onKeep} className={OFFER_BUTTON}>
+          I příště
+        </button>
+      )}
+      <button type="button" aria-label="Zavřít" onClick={onClose} className="flex size-7 shrink-0 items-center justify-center rounded-md text-zinc-500 active:bg-zinc-700">
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
 // The set the progression target pushes (E33); a ring too, since Zen's accent text is close to its ink
 const PROGRESS_CELL = "text-emerald-300 ring-1 ring-emerald-500/60";
 
@@ -648,11 +836,12 @@ function SetRow({
   types: SetType[];
   ghost?: LastPerformance["sets"][number];
   onChange: (patch: Partial<LocalSet>) => void;
-  onCommit: (patch?: Partial<LocalSet>) => void;
+  onCommit: (patch?: Partial<LocalSet>, weightBefore?: string) => void;
   onToggle: () => void;
   onRemove: () => void;
 }) {
   const ghostWeight = ghost?.weight_kg != null ? formatNumber(ghost.weight_kg, ghost.weight_kg % 1 ? 1 : 0) : null;
+  const weightAtFocus = useRef(set.weight); // to tell a changed weight on blur (E35)
   return (
     <div className={`grid items-center gap-1.5 rounded-lg px-1 py-0.5 ${ACTIVE_COLS} ${set.completed ? "bg-emerald-500/15" : ""}`}>
       <SetLabel types={types} index={index} onType={(set_type) => onCommit({ set_type })} onRemove={onRemove} />
@@ -660,7 +849,7 @@ function SetRow({
         <button
           type="button"
           aria-label="Použít hodnoty z minula"
-          onClick={() => onCommit({ weight: ghostWeight ?? "", reps: ghost.reps !== null ? String(ghost.reps) : "" })}
+          onClick={() => onCommit({ weight: ghostWeight ?? "", reps: ghost.reps !== null ? String(ghost.reps) : "" }, set.weight)}
           className="h-9 truncate rounded-lg text-center text-sm tabular-nums text-zinc-500 active:bg-zinc-800"
         >
           {ghostWeight ?? "–"} × {ghost.reps ?? "–"}
@@ -674,8 +863,8 @@ function SetRow({
         placeholder="kg"
         value={set.weight}
         onChange={(e) => onChange({ weight: e.target.value.replace(/[^\d.,]/g, "") })}
-        onBlur={() => onCommit()}
-        onFocus={selectAll}
+        onBlur={() => onCommit(undefined, weightAtFocus.current)}
+        onFocus={(e) => ((weightAtFocus.current = set.weight), selectAll(e))}
         className={`${cellInput(set.completed)} ${set.progress && !set.completed ? PROGRESS_CELL : ""}`}
       />
       <input
