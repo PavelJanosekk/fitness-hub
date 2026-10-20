@@ -21,10 +21,11 @@ from sqlmodel import Session, col, select
 
 from app.models.body import DailyMetric
 from app.models.gym import Workout, WorkoutSet
-from app.models.habits import AutoRule, Habit, HabitFrequency, HabitLog
+from app.models.habits import Ability, AutoRule, Habit, HabitFrequency, HabitLog
 from app.models.nutrition import NutritionProfile
 from app.models.rpg import RpgPause
 from app.models.running import Activity
+from app.services import abilities as ab
 from app.services.metrics import intake_by_day
 from app.timeutils import day_bounds, local_date, today
 
@@ -53,12 +54,23 @@ def _decimal(value: float, digits: int = 1) -> str:
 
 
 @dataclass
+class Entry:
+    """What a note / review tick recorded besides the tick (E37); any of it may be empty."""
+
+    note: str | None = None
+    rating: int | None = None
+    ability_id: int | None = None
+    ability: str | None = None  # the ability's name
+
+
+@dataclass
 class HabitDays:
     """A habit with the days it was done: ticked by hand, or completed by its auto rule (day -> what did it)."""
 
     habit: Habit
     manual: set[dt.date] = field(default_factory=set)
     auto: dict[dt.date, str] = field(default_factory=dict)
+    entries: dict[dt.date, Entry] = field(default_factory=dict)  # manual days that have content
     paused: set[dt.date] = field(default_factory=set)  # shared by every habit of one board
     forgiven: set[dt.date] = field(default_factory=set)  # shared too: one missed day per month
 
@@ -169,9 +181,16 @@ def load_board(
         return []
     start = start or min(h.start_date for h in habits)
     board = {h.id: HabitDays(h) for h in habits}
-    for log in session.exec(select(HabitLog).where(col(HabitLog.date).between(start, end))):
+    logs = session.exec(
+        select(HabitLog, Ability.name)
+        .outerjoin(Ability, col(Ability.id) == HabitLog.ability_id)
+        .where(col(HabitLog.date).between(start, end))
+    )
+    for log, ability in logs:
         if log.habit_id in board:
             board[log.habit_id].manual.add(log.date)
+            if log.note or log.rating or log.ability_id:
+                board[log.habit_id].entries[log.date] = Entry(log.note, log.rating, log.ability_id, ability)
     rule_cache: dict[tuple[str, float | None], dict[dt.date, str]] = {}
     for days in board.values():
         habit = days.habit
@@ -212,14 +231,35 @@ def exceptions(
     return paused, forgiven
 
 
-def set_day(session: Session, habit: Habit, day: dt.date, done: bool) -> None:
-    """Idempotent: the same call twice leaves the same state (offline replays, double taps)."""
+ENTRY_FIELDS = ("note", "rating", "ability")
+
+
+def set_day(session: Session, habit: Habit, day: dt.date, done: bool, content: dict | None = None) -> HabitLog | None:
+    """Idempotent: the same call twice leaves the same state (offline replays, double taps).
+
+    `content` holds only the entry fields the caller sent (`note`, `rating`, `ability` = a name): a key that is
+    missing keeps what is stored and None clears it, so a bare tick never wipes a note. Unticking deletes the entry.
+    """
     log = session.get(HabitLog, (habit.id, day))
-    if done and log is None:
-        session.add(HabitLog(habit_id=habit.id, date=day))
-    elif not done and log is not None:
-        session.delete(log)
+    if not done:
+        if log is not None:
+            session.delete(log)
+        session.commit()
+        return None
+    if log is None:
+        log = HabitLog(habit_id=habit.id, date=day)
+    content = content or {}
+    if "note" in content:
+        log.note = (content["note"] or "").strip() or None
+    if "rating" in content:
+        log.rating = content["rating"] or None
+    if "ability" in content:
+        name = (content["ability"] or "").strip()
+        log.ability_id = ab.find_or_create(session, name).id if name else None
+    session.add(log)
     session.commit()
+    session.refresh(log)
+    return log
 
 
 # --- Status, streaks, rates ------------------------------------------------------------------

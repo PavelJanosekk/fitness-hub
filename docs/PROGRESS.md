@@ -171,7 +171,7 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 
 ### Phase 9: Habit journal + Dovednosti (E37)
 `docs/habit-journal-module-spec.md`. Steps, each committed:
-- [ ] 9.1 Backend: migration 0023 (`habits.log_mode`, `abilities`, entry columns on `habit_logs`), day PUT with content, abilities service + routes, ledger (new dovednost XP), board `entries`, tests
+- [x] 9.1 Backend: migration 0023 (`habits.log_mode`, `abilities`, entry columns on `habit_logs`), day PUT with content, abilities service + routes, ledger (new dovednost XP), board `entries`, tests
 - [ ] 9.2 Backend: coach tools (`set_habits_done` with note / rating / ability, `get_abilities`), weekly quest, bucket auto rule `ability`, Síň slávy entries
 - [ ] 9.3 Frontend: board v2 + mutation, entry sheet, log mode in the habit sheet, Den rows
 - [ ] 9.4 Frontend: Dovednosti card + page, Deník in Měsíc, Síň slávy
@@ -328,3 +328,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-20 (13):** E36 deployed to prod at the user's request (backup `data/backups/manual-pre-0022-2026-10-20-1130.dump`, 0022 migrated, health ok, no tracebacks): 132 items / 34 done / 0 XP, 6 countries, 2 continents, the four skill exercises linked, level 12 with the Dobrodružství skill, `/hero/bucket` and `world-110m.json` served.
 - **2026-10-20 (14):** User asked for habit log modes (plain tick / note + dovednost / stars + note like the bucket list) and a list of dovednosti on the hero. No earlier TODO for it (R2 had rejected habit notes for lack of UI). Drafted `docs/habit-journal-module-spec.md` (decisions J1–J8, ideas 1–5); backlog D7, open item O10. Waiting for decisions.
 - **2026-10-20 (15):** E37 decided: J1, J4–J8 as recommended, J2 with an optional dovednost in `review` too, J3 tick only on Uložit; ideas 1, 2, 3, 5 (agent pick at the user's "dle doporučení"), photos later. Phase 9 added.
+- **2026-10-20 (16):** 9.1 backend: migration 0023 (`abilities` with a Python-computed unique `key`, `habits.log_mode`, `habit_logs.note / rating / ability_id`; the two "new thing" habits → `note`), `services/abilities.py` (key, find-or-create, levels, live entries, +25 XP to Mysl for a new one, merge), day PUT with entry fields (left out = kept, null = cleared, ability by name so offline replays create it once), board `log_mode` / `entries` / `abilities`, `/api/habits/abilities` (list, detail, rename / icon, merge, delete), ledger `ability_new` counts on paused days. 11 new tests (381 total), ruff clean, 0023 downgrade / upgrade and `alembic check` clean. Built in an isolated container on DB `fitness_journal` (copy of dev).

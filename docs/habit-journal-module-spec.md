@@ -55,8 +55,9 @@ with `skill`. Postava keeps the radar of RPG skills, and Dovednosti become a car
 
 ## Data model (migration 0023)
 - `habits.log_mode` text not null default `check`, `one_of` constraint.
-- `abilities`: `id` int PK, `name` text, `icon` text null, `created_at` timestamptz; unique index on
-  `lower(unaccent(name))`.
+- `abilities`: `id` int PK, `name` text, `key` text unique (the name casefolded, without diacritics and extra
+  spaces, computed in Python by `services/abilities.ability_key`, so the constraint is modelled and `alembic check`
+  stays clean), `icon` text null, `created_at` timestamptz.
 - `habit_logs` gains `note` text null (≤ 2 000 chars), `rating` smallint null (CHECK 1–5), `ability_id` FK
   `abilities.id` null (ON DELETE SET NULL). The PK `(habit_id, date)` stays, so a weekly habit keeps one entry
   per day it was done. (This replaces R2's "no `notes`, no UI for it", because there is a UI now.)
@@ -68,13 +69,15 @@ with `skill`. Postava keeps the radar of RPG skills, and Dovednosti become a car
   lets a dovednost typed in offline replay safely. Absent fields keep what is stored, and `null` clears it. A
   bare `{done: true}` from a one-tap or the coach therefore never wipes a note. `done: false` deletes the row
   with its content.
-- `GET /api/habits/board`: habits gain `log_mode`, plus `entries: {date: {note, rating, ability}}` only for days
-  with content (the `done` list stays as it is, cheap). **Query key `habits/board/v2`** (persisted cache shape
+- `GET /api/habits/board`: habits gain `log_mode`, plus `entries: {date: {note, rating, ability_id, ability}}` only
+  for days with content, and the board gains `abilities: [{id, name, icon}]` (most recently used first) for the
+  entry sheet offline (the `done` list stays as it is, cheap). **Query key `habits/board/v2`** (persisted cache shape
   changes).
 - `GET /api/habits/abilities` (list with count, first / last date, level), `GET /api/habits/abilities/{id}`
   (timeline), `PATCH` (rename / icon), `POST /api/habits/abilities/{id}/merge` `{into_id}`, `DELETE`.
 - Ledger: an `ability_new` entry (+25, skill `mind`) on the date of a dovednost's first log, computed live, so
-  an untick or a merge moves or removes it.
+  an untick or a merge moves or removes it. It also counts on paused days, like bucket-list XP.
+- Rename to a name another dovednost has → 409 (merge instead); delete keeps the entries' notes and stars.
 
 ## UI
 - **Entry sheet** (bottom sheet, like the bucket memory sheet). Title = the habit, date chip.

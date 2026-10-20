@@ -24,6 +24,7 @@ and the level drop too); paused days and days before the routine's first day don
 
 Bucket list (E36, services/bucket.py): completed items, steps and the yearly bonus feed the Dobrodružství skill. They
 also count on paused days (a holiday is when bucket-list things happen), and Dobrodružství never rusts.
+Dovednosti (E37, services/abilities.py): the first entry of a new dovednost pays Mysl, also on a paused day.
 """
 
 import datetime as dt
@@ -38,6 +39,7 @@ from app.models.habits import HabitFrequency
 from app.models.nutrition import MealLog, NutritionProfile
 from app.models.rpg import RpgPause
 from app.models.running import Activity
+from app.services import abilities as ab
 from app.services import bucket as bk
 from app.services import habits as hs
 from app.services import quests as qs
@@ -99,6 +101,8 @@ KIND_SKILL = {
 }
 HABIT_SKILL_NAMES = {"body": "Tělo", "nutrition": "Výživa", "home": "Domov", "discipline": "Disciplína", "mind": "Mysl"}
 BUCKET_KINDS = {"bucket", "bucket_goal", "bucket_step", "bucket_year"}
+# Rare events that also count on paused days
+EVENT_KINDS = BUCKET_KINDS | {"ability_new"}
 TITLES = [
     (1, "Učeň"),
     (5, "Poutník"),
@@ -377,6 +381,8 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
     gains = _gains_by_day(session, board, on)
     for gain in bk.gains(bk.load(session, on), on):
         gains[gain.date].append(XpEntry(gain.date, gain.amount, gain.kind, gain.text, {bk.SKILL: gain.amount}))
+    for gain in ab.gains(ab.load(session, on), on):
+        gains[gain.date].append(XpEntry(gain.date, gain.amount, gain.kind, gain.text, {ab.SKILL: gain.amount}))
     ledger = Ledger(forgiven=forgiven, paused_today=on in paused)
     if not gains and not board:
         return ledger
@@ -407,7 +413,7 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
         if day in paused:
             if day - dt.timedelta(days=1) not in paused:
                 entries.append(XpEntry(day, 0, "pause", "Pauza: dny se nepočítají"))
-            entries.extend(e for e in gains.get(day, []) if e.kind in BUCKET_KINDS)
+            entries.extend(e for e in gains.get(day, []) if e.kind in EVENT_KINDS)
         else:
             day_gains = gains.get(day, [])
             entries.extend(day_gains)

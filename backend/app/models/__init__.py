@@ -25,7 +25,7 @@ from app.models.bucket import BucketItem, BucketStep, VisitedCountry  # noqa: E4
 from app.models.chat import ChatConversation, ChatMessage  # noqa: E402
 from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingDay, TrainingWeek  # noqa: E402
 from app.models.gym import Exercise, Workout, WorkoutSet, WorkoutTemplate  # noqa: E402
-from app.models.habits import Habit, HabitLog  # noqa: E402
+from app.models.habits import Ability, Habit, HabitLog  # noqa: E402
 from app.models.integrations import IntegrationToken  # noqa: E402
 from app.models.nutrition import (  # noqa: E402
     Food,
@@ -42,6 +42,7 @@ from app.models.rpg import RpgPause  # noqa: E402
 from app.models.running import Activity, ActivityMetrics, ActivityStream, TrainingPlanItem  # noqa: E402
 
 __all__ = [
+    "Ability",
     "Activity",
     "ActivityMetrics",
     "ActivityStream",
