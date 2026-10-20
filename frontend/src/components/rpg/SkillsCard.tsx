@@ -13,8 +13,8 @@ export function SkillsCard({ skills }: { skills: Skill[] }) {
   return (
     <Card className="space-y-3">
       <div className="flex items-baseline justify-between">
-        <h2 className="font-semibold">Dovednosti</h2>
-        <span className="text-xs text-zinc-500">level dovednosti</span>
+        <h2 className="font-semibold">Vlastnosti</h2>
+        <span className="text-xs text-zinc-500">level vlastnosti</span>
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <RadarChart data={data} outerRadius="72%" margin={{ top: 4, right: 24, bottom: 4, left: 24 }}>

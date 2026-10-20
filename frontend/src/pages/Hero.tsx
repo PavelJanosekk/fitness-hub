@@ -8,6 +8,7 @@ import { LevelBadge, signed, XpBar } from "../components/rpg/CharacterCard";
 import { BossCard } from "../components/rpg/BossCard";
 import { BadgesCard, QuestsCard } from "../components/rpg/QuestsCard";
 import { SkillsCard } from "../components/rpg/SkillsCard";
+import { AbilitiesCard } from "../components/habits/AbilitiesCard";
 import { Button, Sheet } from "../components/ui";
 import { addDays, formatDay, formatDayMonth, formatNumber, isoDate } from "../lib/format";
 
@@ -82,6 +83,8 @@ export function Hero() {
         <BossCard />
 
         {c?.skills?.length ? <SkillsCard skills={c.skills} /> : null}
+
+        <AbilitiesCard />
 
         <BadgesCard />
 

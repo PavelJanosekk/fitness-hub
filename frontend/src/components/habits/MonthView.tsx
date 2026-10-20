@@ -1,11 +1,12 @@
-import { ChevronLeft, ChevronRight, Flame } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flame, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { addDays, formatDayMonth, formatNumber } from "../../lib/format";
+import { addDays, formatDay, formatDayMonth, formatNumber } from "../../lib/format";
 import {
   completion,
   currentStreak,
   type HabitDays,
+  hasContent,
   isActive,
   pct,
   routineDay,
@@ -17,6 +18,7 @@ import {
 } from "../../lib/habits";
 import { Legend, useChartKit } from "../charts/DashboardCharts";
 import { Card } from "../Layout";
+import { Chips } from "../ui";
 import { SkillDot } from "./parts";
 
 const monthFormat = new Intl.DateTimeFormat("cs-CZ", { month: "long", year: "numeric" });
@@ -94,7 +96,47 @@ export function MonthView({ habits, today, onOpenDay }: { habits: HabitDays[]; t
       <HabitRates habits={daily} end={closed} />
       <WeekdayPattern habits={habits} end={closed} />
       {weekly.length > 0 && <WeeklyHistory habits={weekly} end={end} />}
+      <Journal habits={habits} month={month} end={monthEnd} />
     </div>
+  );
+}
+
+/** Deník (E37): every note, rating and dovednost of the month, newest first, filterable by habit. */
+function Journal({ habits, month, end }: { habits: HabitDays[]; month: string; end: string }) {
+  const [only, setOnly] = useState<string | null>(null);
+  const rows = habits
+    .flatMap((h) =>
+      Object.entries(h.entries ?? {})
+        .filter(([day, e]) => day >= month && day <= end && hasContent(e))
+        .map(([day, e]) => ({ ...e, day, habitId: h.id, title: h.title })),
+    )
+    .sort((a, b) => b.day.localeCompare(a.day));
+  if (!rows.length) return null;
+  const titles = [...new Map(rows.map((r) => [String(r.habitId), r.title])).entries()] as [string, string][];
+  const shown = only ? rows.filter((r) => String(r.habitId) === only) : rows;
+  return (
+    <Card className="space-y-3">
+      <h2 className="font-semibold">Deník</h2>
+      {titles.length > 1 && <Chips label="Návyk" options={titles} value={only} onChange={setOnly} allLabel="Vše" />}
+      <ol className="space-y-3">
+        {shown.map((r) => (
+          <li key={`${r.habitId}:${r.day}`} className="space-y-0.5">
+            <p className="text-xs text-zinc-500">
+              <span className="capitalize">{formatDay(r.day)}</span> · {r.title}
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {r.rating ? (
+                <span className="flex items-center gap-0.5 text-sm text-amber-300">
+                  <Star size={13} fill="currentColor" /> {r.rating}
+                </span>
+              ) : null}
+              {r.ability && <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-emerald-300">{r.ability}</span>}
+            </div>
+            {r.note && <p className="text-sm whitespace-pre-line text-zinc-200">{r.note}</p>}
+          </li>
+        ))}
+      </ol>
+    </Card>
   );
 }
 
