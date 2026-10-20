@@ -211,3 +211,17 @@ def test_rebuild_all_recomputes_stored_days(client: TestClient, session: Session
     send(client, {"sequence": 1, "steps": [step("a", utc(9), utc(9, 30), 700)]})
 
     assert [(m.date, m.steps) for m in rebuild_all(session)] == [(DAY, 700)]
+
+
+def test_a_lower_daily_total_does_not_hide_the_records(client: TestClient) -> None:
+    # Seen on 2026-10-20: one payload carried a 19,637-step record and a daily total of 15,901
+    result = send(
+        client,
+        {
+            "sequence": 1,
+            "steps": [step("day", utc(0), utc(23, 59), 19637)],
+            "daily_totals": [{"date": DAY.isoformat(), "steps": 15901}],
+        },
+    )
+
+    assert result["days"][0]["steps"] == 19637

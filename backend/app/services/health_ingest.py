@@ -202,7 +202,8 @@ def _merge_steps(
             totals[src] = totals.get(src, 0.0) + value
     for (src, metric), value in daily.items():
         if metric == DailyMetricKind.steps_total and src != HealthSource.manual:
-            totals[src] = value  # a device's own daily total beats a possibly incomplete interval sum
+            # The higher one: records can be incomplete, and the forwarder's own total can lag the records
+            totals[src] = max(totals.get(src, 0.0), value)
     manual = daily.get((HealthSource.manual, DailyMetricKind.steps_total))
     if manual is not None:
         return manual, "manual", totals

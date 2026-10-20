@@ -339,7 +339,7 @@ Per-source daily values. Used when a source sends totals instead of intervals, a
 
 **Step merge algorithm [E7]** (`services/health_ingest.py`, re-run for each affected day after every push)
 1. Interval samples are distributed into **15-min buckets** (`step_buckets`) in proportion to their time overlap. Samples **longer than 1 hour** carry no usable timing (Samsung Health writes one whole-day record to Health Connect), so they never enter the buckets: their in-day part is stored as the source's `steps_untimed` daily value and only adds to that source's daily total **[E38]**.
-2. **Day total = the source with the most steps [E39]:** each source's total is its bucket sum plus its untimed steps (or its own daily total when it sends one), and the day takes the **max** over sources. There is no per-bucket merge: with untimed watch data it inflated the day. The buckets remain for the breakdown chart.
+2. **Day total = the source with the most steps [E39]:** each source's total is its bucket sum plus its untimed steps, or its own daily total when that is higher, and the day takes the **max** over sources. There is no per-bucket merge: with untimed watch data it inflated the day. The buckets remain for the breakdown chart.
 4. The result is written to `DailyMetric.steps`. `GET /api/metrics/steps-breakdown?date=` returns per-source totals, the method used (`max_daily`, `single_source` or `manual`), the merged total and the merged bucket series, so the number is explainable.
 
 **Sleep [E8]:** sleep sessions are attributed to the **date of wake-up** (session end, in `APP_TZ`). `DailyMetric.sleep_hours` is the total of all sessions ending on that date, naps included. Samsung Health is the primary sleep source.
