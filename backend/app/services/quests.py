@@ -7,6 +7,8 @@ before it started (the plan week, the previous 4 weeks of gym / habits), so they
 - muscle: 6 working sets for the muscle group with the fewest sets in the previous 4 weeks
 - home: every weekly "Domov" habit of the week
 - habit: 5 days of the weakest daily routine habit of the previous 4 weeks
+- ability (E37, weeks from ABILITY_QUEST_FROM so earlier weeks keep their quests): one new dovednost, when Mysl got
+  the least skill XP of the previous 4 weeks and a note / review habit exists to log it
 Each completed quest pays XP on the day it is completed; all of them pay a bonus. A finished week's open quests are
 recorded as failed (no reward). Values are (tune).
 """
@@ -21,12 +23,15 @@ from app.models.coach import TrainingWeek
 from app.models.gym import Exercise, Workout, WorkoutSet
 from app.models.habits import HabitFrequency
 from app.models.running import Activity
+from app.services import abilities as ab
 from app.services import habits as hs
 from app.services.run_analysis import RUN_TYPES
 from app.services.workouts import WORKING_SET
 from app.timeutils import day_bounds, local_date
 
-QUEST_XP = {"run": 150, "gym": 100, "muscle": 80, "home": 80, "habit": 60}
+QUEST_XP = {"run": 150, "gym": 100, "muscle": 80, "home": 80, "habit": 60, "ability": 60}
+ABILITY_QUEST_FROM = dt.date(2026, 10, 26)
+TRAINED_SKILLS = ("strength", "endurance", "nutrition", "discipline", "mind", "home")  # not the rare Dobrodružství
 ALL_QUESTS_XP = 100
 MUSCLE_SETS = 6
 HABIT_DAYS = 5
@@ -51,6 +56,7 @@ class History:
     gym_days: Counter[dt.date] = field(default_factory=Counter)  # workouts with working sets per day
     group_sets: dict[dt.date, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
     plan_km: dict[dt.date, float] = field(default_factory=dict)  # week start -> planned km (lower bound)
+    new_abilities: Counter[dt.date] = field(default_factory=Counter)  # first entries of dovednosti per day
 
 
 def load_history(session: Session, start: dt.date, end: dt.date) -> History:
@@ -77,6 +83,8 @@ def load_history(session: Session, start: dt.date, end: dt.date) -> History:
         if workout_id not in seen:
             seen.add(workout_id)
             history.gym_days[day] += 1
+    for day, _ in ab.first_days(session, end).values():
+        history.new_abilities[day] += 1
     for week in session.exec(select(TrainingWeek)):
         if week.km_min:
             history.plan_km[week.week_start] = week.km_min
@@ -100,8 +108,15 @@ def _days(start: dt.date, end: dt.date) -> list[dt.date]:
     return [start + dt.timedelta(days=i) for i in range((end - start).days + 1)]
 
 
-def week_quests(history: History, board: list[hs.HabitDays], monday: dt.date, on: dt.date) -> list[Quest]:
-    """The quests of the ISO week starting `monday`, with progress up to `on`."""
+def week_quests(
+    history: History,
+    board: list[hs.HabitDays],
+    monday: dt.date,
+    on: dt.date,
+    skill_xp_before: dict[str, int] | None = None,
+) -> list[Quest]:
+    """The quests of the ISO week starting `monday`, with progress up to `on`; `skill_xp_before` = XP per skill
+    in the 4 weeks before it."""
     before = _days(monday - dt.timedelta(days=LOOKBACK_DAYS), monday - dt.timedelta(days=1))
     quests: list[Quest] = []
 
@@ -157,6 +172,13 @@ def week_quests(history: History, board: list[hs.HabitDays], monday: dt.date, on
             )
         )
 
+    sunday = monday + dt.timedelta(days=6)
+    journal = any(d.habit.log_mode != "check" and hs.is_active(d.habit, sunday) for d in board)
+    if monday >= ABILITY_QUEST_FROM and skill_xp_before is not None and journal:
+        weakest = min(TRAINED_SKILLS, key=lambda s: (skill_xp_before.get(s, 0), s != "mind"))
+        if weakest == "mind":
+            quests.append(Quest("ability", "Vyzkoušej novou dovednost", 1, "×", QUEST_XP["ability"], "mind"))
+
     # Progress day by day, so the completion day is known
     for day in _days(monday, min(on, monday + dt.timedelta(days=6))):
         for quest in quests:
@@ -172,6 +194,8 @@ def week_quests(history: History, board: list[hs.HabitDays], monday: dt.date, on
                 )
             elif quest.key.startswith("habit:") and habit_item and day in habit_item.done:
                 quest.progress += 1
+            elif quest.key == "ability":
+                quest.progress += history.new_abilities[day]
             if quest.done_on is None and quest.progress >= quest.target - 1e-9:
                 quest.done_on = day
     for quest in quests:

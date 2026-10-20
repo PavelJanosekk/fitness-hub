@@ -9,6 +9,7 @@ from sqlmodel import Session, delete, select
 from app.models.habits import Ability, Habit, HabitLog
 from app.models.rpg import RpgPause
 from app.services import abilities as ab
+from app.services import habits as hs
 from app.services import rpg
 from app.timeutils import today
 
@@ -224,3 +225,24 @@ def test_coach_saves_an_entry_and_asks_about_a_similar_dovednost(empty: Session)
     listed = tools["get_abilities"]()["abilities"]
     assert [(a["name"], a["times"]) for a in listed] == [("Lezení", 1), ("Lezení na skalách", 1)]
     assert listed[0]["latest"] == [{"date": "2026-10-18", "habit": habit.title, "note": "Stěna Lezec", "rating": 5}]
+
+
+def test_weekly_ability_quest_when_mind_is_weakest(empty: Session) -> None:
+    from app.services import quests as qs
+
+    habit = add_habit(empty, frequency="weekly", start_date=d(1))
+    gym = add_habit(empty, title="Posilovna", log_mode="check", skill="body", frequency="daily", start_date=d(1))
+    for day in range(1, 26):
+        empty.add(HabitLog(habit_id=gym.id, date=d(day)))
+    empty.add(HabitLog(habit_id=habit.id, date=d(28), ability_id=ab.find_or_create(empty, "Keramika").id))
+    empty.commit()
+
+    ledger = rpg.build_ledger(empty, d(29))
+    quest = next(q for q in ledger.quests if q.key == "ability")
+    assert (quest.title, quest.done_on, quest.skill) == ("Vyzkoušej novou dovednost", d(28), "mind")
+    assert any(e.kind == "quest" and e.text == "Výprava splněna: Vyzkoušej novou dovednost" for e in ledger.entries)
+
+    board = hs.load_board(empty, end=d(29))
+    history = qs.load_history(empty, d(1), d(29))
+    before = qs.week_quests(history, board, d(19), d(25), {"mind": 0})
+    assert all(q.key != "ability" for q in before)  # weeks before the feature keep their quests

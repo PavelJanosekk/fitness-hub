@@ -345,7 +345,12 @@ def _quest_entries(
     history = qs.load_history(session, first - dt.timedelta(days=qs.LOOKBACK_DAYS), on)
     week, current = first, []
     while week <= on:
-        quests = qs.week_quests(history, board, week, on)
+        skill_xp: dict[str, int] = defaultdict(int)
+        for back in range(1, qs.LOOKBACK_DAYS + 1):
+            for entry in gains.get(week - dt.timedelta(days=back), []):
+                for skill, amount in entry.skills.items():
+                    skill_xp[skill] += amount
+        quests = qs.week_quests(history, board, week, on, skill_xp)
         for quest in quests:
             if quest.done_on:
                 text = f"Výprava splněna: {quest.title}"
