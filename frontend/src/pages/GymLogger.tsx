@@ -577,11 +577,16 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   const askRemoveExercise = (index: number) =>
     workout.exercises[index].sets.some((s) => s.completed) ? setConfirmRemove(index) : removeExercise(index);
 
-  const finish = () => {
+  // `confirmRest`: the unticked sets that have reps are ticked now and saved too; the rest are dropped either way
+  const finish = (confirmRest = false) => {
+    const now = new Date().toISOString();
+    const exercises = confirmRest
+      ? workout.exercises.map((e) => ({ ...e, sets: e.sets.map((s) => (!s.completed && hasReps(s) ? { ...s, completed: true, completed_at: now } : s)) }))
+      : workout.exercises;
     // Every completed set once more before the finish (idempotent PUTs, same queue): repairs any set whose
     // earlier write was dropped, because the local copy is gone after this
-    workout.exercises.forEach((exercise, e) => exercise.sets.forEach((_, s) => syncSet(e, s)));
-    sync.putWorkout({ id: workout.id, body: { ended_at: new Date().toISOString() } });
+    exercises.forEach((exercise, e) => exercise.sets.forEach((_, s) => syncSet(e, s, exercises)));
+    sync.putWorkout({ id: workout.id, body: { ended_at: now } });
     saveActiveWorkout(null);
     setConfirmFinish(false);
   };
@@ -593,6 +598,8 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
   };
 
   const done = workout.exercises.reduce((n, e) => n + e.sets.filter((s) => s.completed).length, 0);
+  const unticked = workout.exercises.flatMap((e) => e.sets.filter((s) => !s.completed));
+  const confirmable = unticked.filter(hasReps).length;
   // The RIR picker shows under the set ticked last
   const latestDone = workout.exercises
     .flatMap((e) => e.sets)
@@ -749,16 +756,39 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
       {picking && <ExercisePicker onPick={addExercise} onClose={() => setPicking(false)} />}
       {confirmFinish && (
         <Sheet title="Dokončit trénink?" onClose={() => setConfirmFinish(false)}>
-          <p className="mb-4 text-sm text-zinc-400">
-            Uloží se {done} odcvičených sérií. Neodškrtnuté série se zahodí.
-            {pending > 0 && " Některé změny ještě čekají na připojení, odešlou se samy."}
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="ghost" onClick={() => setConfirmFinish(false)}>
-              Zpět
-            </Button>
-            <Button onClick={finish}>Dokončit</Button>
-          </div>
+          {unticked.length === 0 ? (
+            <>
+              <p className="mb-4 text-sm text-zinc-400">
+                Uloží se {setsText(done)}.{pending > 0 && " Některé změny ještě čekají na připojení, odešlou se samy."}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="ghost" onClick={() => setConfirmFinish(false)}>
+                  Zpět
+                </Button>
+                <Button onClick={() => finish()}>Dokončit</Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mb-4 text-sm text-zinc-400">
+                Odškrtnuto {done} z {done + unticked.length} sérií. Co s těmi zbylými?
+                {confirmable < unticked.length &&
+                  ` ${unticked.length - confirmable === 1 ? "1 série nemá" : `${unticked.length - confirmable} sérií nemá`} vyplněná opakování, ta se zahodí vždy.`}
+                {pending > 0 && " Některé změny ještě čekají na připojení, odešlou se samy."}
+              </p>
+              {confirmable > 0 && (
+                <Button className="w-full" onClick={() => finish(true)}>
+                  Potvrdit {setsText(confirmable)} a dokončit
+                </Button>
+              )}
+              <Button variant={confirmable > 0 ? "ghost" : "primary"} className="mt-2 w-full" onClick={() => finish()}>
+                {done > 0 ? `Uložit jen ${setsText(done)}` : "Dokončit bez sérií"}
+              </Button>
+              <Button variant="ghost" className="mt-2 w-full" onClick={() => setConfirmFinish(false)}>
+                Zpět k tréninku
+              </Button>
+            </>
+          )}
           <Button variant="danger" className="mt-2 w-full" onClick={() => (setConfirmFinish(false), setConfirmDiscard(true))}>
             Zahodit trénink
           </Button>
@@ -767,6 +797,11 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
     </>
   );
 }
+
+/** A set that can be ticked without the user's input: it has a rep count. */
+const hasReps = (s: LocalSet) => (parseDecimal(s.reps) ?? 0) > 0;
+
+const setsText = (n: number) => (n === 1 ? "1 sérii" : n >= 2 && n <= 4 ? `${n} série` : `${n} sérií`);
 
 const ACTIVE_COLS = "grid-cols-[2rem_minmax(0,1fr)_4.25rem_3.5rem_2.25rem]";
 
