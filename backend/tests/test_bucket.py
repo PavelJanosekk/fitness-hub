@@ -135,7 +135,7 @@ def test_auto_rules_marathon_exercise_and_hike(empty: Session, exercises: dict[s
 
     assert (states[marathon.id].done_on, states[marathon.id].auto_label) == (d(5), "Běh 42,3 km")
     assert (states[lsit.id].done_on, states[lsit.id].auto_label) == (d(8), "Gym: L-Sit")
-    assert (states[hike.id].done_on, states[hike.id].auto_label) == (d(7), "Túra s převýšením 1 240 m")
+    assert (states[hike.id].done_on, states[hike.id].auto_label) == (d(7), "Túra s převýšením 1\u00a0240\u00a0m")
     assert states[marathon.id].source == "auto" and states[marathon.id].xp == 1000
 
 

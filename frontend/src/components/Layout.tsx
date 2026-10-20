@@ -1,5 +1,6 @@
 import { Bot, Dumbbell, Footprints, LayoutDashboard, Settings, Swords, Utensils } from "lucide-react";
 import { NavLink, Outlet } from "react-router";
+import { BucketWatcher } from "./bucket/BucketWatcher";
 import { LevelWatcher } from "./rpg/LevelWatcher";
 
 const NAV = [
@@ -35,6 +36,7 @@ export function Layout() {
         <Outlet />
       </main>
       <LevelWatcher />
+      <BucketWatcher />
 
       <nav className="ui-tabbar fixed z-30 md:hidden">
         <div className="grid grid-cols-6">

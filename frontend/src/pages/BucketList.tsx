@@ -1,7 +1,8 @@
-import { CalendarClock, Check, Plus, Search, Sparkles, Star } from "lucide-react";
-import { useMemo, useState } from "react";
+import { CalendarClock, Check, Dices, Plus, Search, Sparkles, Star } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { type BucketBoard, type BucketItem, type Category, useBucketBoard } from "../api/bucket";
+import { DiceSheet } from "../components/bucket/DiceSheet";
 import { ItemForm } from "../components/bucket/ItemForm";
 import { ItemSheet } from "../components/bucket/ItemSheet";
 import { Card } from "../components/Layout";
@@ -34,8 +35,19 @@ export function BucketList() {
   const status = (STATUSES.find(([key]) => key === params.get("s"))?.[0] ?? "open") as Status;
   const [tag, setTag] = useState<Tag | null>(null);
   const [query, setQuery] = useState("");
-  const [openId, setOpenId] = useState<{ id: number; complete: boolean } | null>(null);
+  const [openId, setOpenId] = useState<{ id: number; mode: "view" | "complete" | "plan" } | null>(null);
   const [adding, setAdding] = useState(false);
+  const [dice, setDice] = useState(false);
+
+  // ?i=<id> opens an item (the completion moment links here to add a memory)
+  const linked = Number(params.get("i")) || null;
+  useEffect(() => {
+    if (!linked) return;
+    setOpenId({ id: linked, mode: "view" });
+    const next = new URLSearchParams(params);
+    next.delete("i");
+    setParams(next, { replace: true });
+  }, [linked, params, setParams]);
 
   const setFilter = (next: { c?: Category | null; s?: Status }) => {
     const c = next.c !== undefined ? next.c : category;
@@ -79,7 +91,12 @@ export function BucketList() {
   return (
     <div className="space-y-3">
       <Summary board={data} />
-      <Planned board={data} onOpen={(id) => setOpenId({ id, complete: false })} />
+      <Planned board={data} onOpen={(id) => setOpenId({ id, mode: "view" })} />
+      <div className="grid grid-cols-1 gap-2">
+        <button onClick={() => setDice(true)} className="ui-card flex min-h-12 items-center justify-center gap-2 text-sm font-medium active:bg-zinc-800/60">
+          <Dices size={18} className="text-emerald-400" /> Kostka osudu
+        </button>
+      </div>
       <CategoryGrid board={data} value={category} onChange={(c) => setFilter({ c })} />
 
       <div className="flex items-center justify-between gap-2 pt-1">
@@ -108,16 +125,26 @@ export function BucketList() {
                 <c.icon size={17} className="text-zinc-400" /> {c.label}
                 <span className="ml-auto text-[13px] font-normal text-zinc-400 tabular-nums">{items.length}</span>
               </h2>
-              <ItemList items={items} board={data} onOpen={(id, complete) => setOpenId({ id, complete })} />
+              <ItemList items={items} board={data} onOpen={(id, complete) => setOpenId({ id, mode: complete ? "complete" : "view" })} />
             </section>
           );
         })
       ) : (
-        <ItemList items={shown} board={data} onOpen={(id, complete) => setOpenId({ id, complete })} />
+        <ItemList items={shown} board={data} onOpen={(id, complete) => setOpenId({ id, mode: complete ? "complete" : "view" })} />
       )}
 
       {opened && (
-        <ItemSheet key={opened.id} item={opened} board={data} initialMode={openId?.complete ? "complete" : "view"} onClose={() => setOpenId(null)} />
+        <ItemSheet key={opened.id} item={opened} board={data} initialMode={openId?.mode} onClose={() => setOpenId(null)} />
+      )}
+      {dice && (
+        <DiceSheet
+          board={data}
+          onClose={() => setDice(false)}
+          onPick={(item, plan) => {
+            setDice(false);
+            setOpenId({ id: item.id, mode: plan ? "plan" : "view" });
+          }}
+        />
       )}
       {adding && (
         <Sheet title="Nová položka" onClose={() => setAdding(false)}>
@@ -159,6 +186,7 @@ function Summary({ board }: { board: BucketBoard }) {
           return n ? <div key={r} className={RARITY[r].bar} style={{ width: `${(n / total) * 100}%` }} /> : null;
         })}
       </div>
+      <YearGoals board={board} />
       <div className="flex items-center gap-2 text-[13px] text-zinc-300">
         <Sparkles size={15} className={yq.reached_on ? "text-amber-300" : "text-zinc-500"} />
         Rok dobrodružství {yq.year}:{" "}
@@ -168,6 +196,32 @@ function Summary({ board }: { board: BucketBoard }) {
         <span className="text-zinc-500">{yq.reached_on ? "splněno" : `+${formatNumber(yq.xp)} XP`}</span>
       </div>
     </Card>
+  );
+}
+
+function YearGoals({ board }: { board: BucketBoard }) {
+  const year = Number(board.today.slice(0, 4));
+  const goals = board.items.filter((i) => i.year_goal === year);
+  if (!goals.length) {
+    return <p className="text-xs text-zinc-500">Tip: označ si ★ 3–5 věcí jako letošní cíle, splněný cíl dá +{Math.round(board.year_goal_share * 100)} % XP navíc.</p>;
+  }
+  const done = goals.filter((i) => i.done).length;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2 text-[13px] text-zinc-300">
+        <Star size={15} className="text-amber-300" fill="currentColor" /> Letošní cíle:{" "}
+        <strong className="tabular-nums">
+          {done} / {goals.length}
+        </strong>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {goals.map((g) => (
+          <span key={g.id} className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs ${g.done ? "bg-emerald-500/15 text-emerald-300" : "bg-zinc-800 text-zinc-300"}`}>
+            {g.done && <Check size={12} strokeWidth={3} />} {g.title}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 

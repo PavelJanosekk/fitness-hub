@@ -127,8 +127,8 @@ def _hike(session: Session, threshold: float, on: dt.date) -> tuple[dt.date, str
             col(Activity.activity_type).in_(HIKE_TYPES), Activity.elevation_gain_m >= threshold
         )
     ).all()
-    label = "Túra s převýšením {:,.0f} m"
-    return _first((d, label.format(gain).replace(",", " ")) for start, gain in rows if (d := local_date(start)) <= on)
+    label = "Túra s převýšením {:,.0f}\u00a0m"
+    return _first((d, label.format(gain).replace(",", "\u00a0")) for start, gain in rows if (d := local_date(start)) <= on)
 
 
 def _sort_key(day: dt.date | None) -> dt.date:
