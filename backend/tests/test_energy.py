@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
-from app.models.body import DailyMetric, StepBucket
+from app.models.body import DailyMetric
 from app.models.gym import Workout, WorkoutSet
 from app.models.nutrition import NutritionProfile
 from app.models.running import Activity
@@ -50,17 +50,10 @@ def test_rest_day_is_base_plus_steps(client: TestClient, session: Session, athle
     assert day["missing"] == []
 
 
-def test_run_steps_are_not_counted_twice_and_a_watch_logged_gym_session_is_one_session(
+def test_all_steps_count_and_a_watch_logged_gym_session_is_one_session(
     client: TestClient, session: Session, athlete: None, exercises: dict[str, int]
 ) -> None:
     session.add(DailyMetric(date=D, steps=10000))
-    for source, start, steps in [
-        ("samsung_health", at(10), 2500),
-        ("samsung_health", at(10, 15), 2500),
-        ("samsung_health", at(10, 30), 300),  # starts when the run ends
-        ("apple_health", at(10), 2000),  # the phone in the pocket: the higher source wins per bucket
-    ]:
-        session.add(StepBucket(source=source, bucket_start=start, steps=steps))
     session.add(
         Activity(
             external_id="strava:1",
@@ -105,10 +98,9 @@ def test_run_steps_are_not_counted_twice_and_a_watch_logged_gym_session_is_one_s
     assert (gym["source"], gym["name"], gym["minutes"]) == ("gym", "Chest tri", 60)
     assert gym["kcal"] == round(3.5 * 80 - RESTING_PER_HOUR)
     assert day["steps"] == 10000
-    assert day["steps_counted"] == 5000
     assert day["exercise_kcal"] == run["kcal"] + gym["kcal"]
-    assert day["active_kcal"] == round(0.5 * 80 * 5000 * STRIDE_KM) + run["kcal"] + gym["kcal"]
-    assert day["total_kcal"] == round(BMR * 1.15) + round(0.5 * 80 * 5000 * STRIDE_KM) + run["kcal"] + gym["kcal"]
+    assert day["active_kcal"] == round(0.5 * 80 * 10000 * STRIDE_KM) + run["kcal"] + gym["kcal"]
+    assert day["total_kcal"] == round(BMR * 1.15) + round(0.5 * 80 * 10000 * STRIDE_KM) + run["kcal"] + gym["kcal"]
 
 
 def test_estimates_without_device_calories(client: TestClient, session: Session, athlete: None) -> None:

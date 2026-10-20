@@ -1,11 +1,10 @@
 """Health data ingestion and multi-source merge (docs/SPEC.md §6.5, decisions E7/E8).
 
-Steps from the iPhone and the watch overlap whenever both are carried. Interval data is spread over
-15-minute buckets; per bucket the higher source wins, and the day is the sum of those maxima. Without
-interval data the day falls back to the highest daily total. A manual value always wins.
-
-Records longer than an hour carry no usable timing (Samsung Health writes one whole-day record), so they
-only count toward their source's daily total (steps_untimed), never into the buckets (E38).
+Steps from the iPhone and the watch overlap whenever both are carried, so the day is simply the source
+with the most steps (E39; the old per-bucket merge was unreliable with untimed watch data). A manual value
+always wins. Interval data is still kept in 15-minute buckets for the breakdown chart. Records longer than
+an hour carry no usable timing (Samsung Health writes one whole-day record), so they skip the buckets and
+only add to their source's total (steps_untimed, E38).
 """
 
 import datetime as dt
@@ -207,10 +206,6 @@ def _merge_steps(
     manual = daily.get((HealthSource.manual, DailyMetricKind.steps_total))
     if manual is not None:
         return manual, "manual", totals
-    if len(per_source) >= 2:
-        starts = set().union(*(b.keys() for b in per_source.values()))
-        bucket_total = sum(max(b.get(start, 0.0) for b in per_source.values()) for start in starts)
-        return max(bucket_total, *totals.values()), "buckets", totals
     if totals:
         return max(totals.values()), "max_daily" if len(totals) > 1 else "single_source", totals
     return None, None, totals

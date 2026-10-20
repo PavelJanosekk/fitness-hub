@@ -67,7 +67,6 @@ export type EnergyDay = {
   bmr_kcal: number | null;
   base_kcal: number | null;
   steps: number | null;
-  steps_counted: number | null;
   steps_kcal: number | null;
   exercise_kcal: number | null;
   /** steps + training: the headline number */

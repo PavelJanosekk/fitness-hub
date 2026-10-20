@@ -58,12 +58,12 @@ def test_distribute_keeps_only_the_part_inside_the_day() -> None:
     assert sum(buckets.values()) == pytest.approx(100)
 
 
-def test_overlapping_sources_take_max_per_bucket_and_add_up_otherwise(client: TestClient) -> None:
-    # Both carried in the morning; phone only at noon; watch only in the evening
+def test_the_day_is_the_source_with_the_most_steps(client: TestClient) -> None:
+    # Both carried in the morning; phone only at noon; watch only in the evening. No per-bucket merge (E39)
     push(client, "apple_health", steps=steps((at(8), at(8, 15), 1000), (at(12), at(12, 15), 500)))
     result = push(client, "samsung_health", steps=steps((at(8), at(8, 15), 1200), (at(18), at(18, 15), 800)))
 
-    assert result == [{"date": DAY.isoformat(), "steps": 2500, "steps_method": "buckets", "sleep_hours": None}]
+    assert result == [{"date": DAY.isoformat(), "steps": 2000, "steps_method": "max_daily", "sleep_hours": None}]
     breakdown = day_steps(client)
     assert breakdown["source_totals"] == {"apple_health": 1500, "samsung_health": 2000}
     assert len(breakdown["buckets"]) == 3
@@ -89,7 +89,7 @@ def test_a_new_push_replaces_the_day_for_that_source(client: TestClient) -> None
 
     result = push(client, "apple_health", steps=steps((at(9), at(10), 3500)))
 
-    assert result[0]["steps"] == 3600
+    assert result[0]["steps"] == 3500
     assert day_steps(client)["source_totals"] == {"apple_health": 3500, "samsung_health": 100}
 
 
@@ -180,7 +180,7 @@ def test_long_samples_are_untimed_and_only_add_to_the_daily_total(client: TestCl
     push(client, "apple_health", steps=steps((at(8), at(8, 15), 1000), (at(10), at(14), 2000)))
     result = push(client, "samsung_health", steps=steps((at(8), at(8, 15), 1200)))
 
-    assert (result[0]["steps"], result[0]["steps_method"]) == (3000, "buckets")
+    assert (result[0]["steps"], result[0]["steps_method"]) == (3000, "max_daily")
     breakdown = day_steps(client)
     assert breakdown["source_totals"] == {"apple_health": 3000, "samsung_health": 1200}
     assert len(breakdown["buckets"]) == 1

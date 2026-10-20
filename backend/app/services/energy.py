@@ -3,8 +3,8 @@
 Shown next to intake as information only; nothing is subtracted from anything. The headline is the active part
 (steps + training); the base is informational.
 - Base: Mifflin-St Jeor BMR x BASE_FACTOR (digestion and everyday movement other than steps).
-- Steps: net walking cost of 0.5 kcal/kg/km over a stride of 0.415 x height. Steps recorded during foot
-  activities are left out because the activity already counts them.
+- Steps: net walking cost of 0.5 kcal/kg/km over a stride of 0.415 x height, on all of the day's steps. Steps
+  during runs are not taken off: with untimed watch data that would only subtract an average (user's call, E39).
 - Training: Strava's calories when present, else a MET value (Compendium of Physical Activities) or the
   running cost x weight. Both are gross, so the resting energy of the same time (already in the base) is
   taken off.
@@ -17,12 +17,11 @@ from dataclasses import dataclass
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
-from app.models.body import DailyMetric, StepBucket
+from app.models.body import DailyMetric
 from app.models.gym import Workout, WorkoutSet
 from app.models.nutrition import NutritionProfile, Sex
 from app.models.running import Activity
 from app.schemas.body import EnergyDay, EnergyItem
-from app.services.health_ingest import BUCKET, floor_bucket
 from app.services.run_analysis import RUN_TYPES
 from app.timeutils import day_bounds, local_date, now_utc
 
@@ -31,8 +30,6 @@ WALK_COST = 0.5  # net kcal per kg per km
 RUN_COST = 1.0  # gross kcal per kg per km
 STRIDE_PER_HEIGHT = 0.415
 DEFAULT_STRIDE_M = 0.75
-FOOT_TYPES = (*RUN_TYPES, "Walk", "Hike")
-RUN_CADENCE = 165  # steps per minute, when a day has no 15-min buckets to measure the run's steps
 GYM_TYPES = ("WeightTraining", "Workout", "Crossfit")  # a Strava log of a workout already in the gym log
 GYM_MET = 3.5  # resistance training, multiple exercises, rests included
 MAX_GYM = dt.timedelta(hours=2, minutes=30)  # Strong imports and forgotten finishes have inflated durations
@@ -152,27 +149,6 @@ def _sessions(session: Session, lo: dt.datetime, hi: dt.datetime) -> dict[dt.dat
     return by_day
 
 
-def _merged_buckets(session: Session, lo: dt.datetime, hi: dt.datetime) -> dict[dt.datetime, float]:
-    """Highest source per 15-min bucket, as in the daily step merge (E7)."""
-    merged: dict[dt.datetime, float] = {}
-    for bucket in session.exec(
-        select(StepBucket).where(col(StepBucket.bucket_start) >= lo, col(StepBucket.bucket_start) < hi)
-    ):
-        merged[bucket.bucket_start] = max(merged.get(bucket.bucket_start, 0.0), bucket.steps)
-    return merged
-
-
-def _steps_during(item: _Session, buckets: dict[dt.datetime, float]) -> float:
-    """Steps of the 15-min buckets the session covers, prorated for partly covered ones."""
-    total = 0.0
-    start = floor_bucket(item.start)
-    while start < item.end:
-        overlap = min(item.end, start + BUCKET) - max(item.start, start)
-        total += buckets.get(start, 0.0) * (overlap / BUCKET)
-        start += BUCKET
-    return total
-
-
 def _weights(session: Session) -> list[tuple[dt.date, float]]:
     return list(
         session.exec(
@@ -197,8 +173,6 @@ def estimate_days(session: Session, start: dt.date, end: dt.date) -> list[Energy
     profile = session.get(NutritionProfile, 1)
     weights = _weights(session)
     sessions = _sessions(session, lo, hi)
-    buckets = _merged_buckets(session, lo, hi)
-    bucket_days = {local_date(b) for b in buckets}
     steps_by_day = dict(
         session.exec(select(DailyMetric.date, DailyMetric.steps).where(col(DailyMetric.date).between(start, end))).all()
     )
@@ -216,7 +190,6 @@ def estimate_days(session: Session, start: dt.date, end: dt.date) -> list[Energy
         resting_per_hour = basal / 24 if basal is not None else weight  # 1 MET without a profile
 
         exercise = 0.0
-        foot_steps = 0.0
         for item in day_sessions:
             hours = (item.end - item.start).total_seconds() / 3600
             if item.gross_kcal is not None:
@@ -227,22 +200,14 @@ def estimate_days(session: Session, start: dt.date, end: dt.date) -> list[Energy
                 gross = item.met * weight * hours
             item.item.kcal = round(max(0.0, gross - resting_per_hour * hours))
             exercise += item.item.kcal
-            if item.item.activity_type in FOOT_TYPES:
-                if day in bucket_days:
-                    foot_steps += _steps_during(item, buckets)
-                elif item.item.activity_type in RUN_TYPES:
-                    foot_steps += RUN_CADENCE * hours * 60
-                elif item.item.distance_km:
-                    foot_steps += item.item.distance_km * 1000 / stride_m
 
         missing = []
         steps = steps_by_day.get(day)
-        counted_steps = steps_kcal = None
+        steps_kcal = None
         if steps is None:
             missing.append("steps")
         else:
-            counted_steps = round(max(0.0, steps - foot_steps))
-            steps_kcal = round(WALK_COST * weight * counted_steps * stride_m / 1000)
+            steps_kcal = round(WALK_COST * weight * steps * stride_m / 1000)
         base = None
         if basal is None:
             missing.append("profile")
@@ -257,7 +222,6 @@ def estimate_days(session: Session, start: dt.date, end: dt.date) -> list[Energy
                 bmr_kcal=round(basal) if basal is not None else None,
                 base_kcal=base,
                 steps=steps,
-                steps_counted=counted_steps,
                 steps_kcal=steps_kcal,
                 exercise_kcal=round(exercise),
                 active_kcal=active,

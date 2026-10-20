@@ -73,9 +73,7 @@ function EnergyDetail({ day, onOpenTargets }: { day: EnergyDay; onOpenTargets: (
       "Kroky",
       day.steps === null
         ? "chybí data z mobilu i hodinek"
-        : day.steps_counted !== day.steps
-          ? `${formatNumber(day.steps_counted)} z ${formatNumber(day.steps)} (kroky při běhu počítá trénink)`
-          : `${formatNumber(day.steps)} kroků`,
+        : `${formatNumber(day.steps)} kroků`,
       day.steps_kcal,
     ],
     ...day.items.map(

@@ -57,7 +57,6 @@ class EnergyDay(BaseModel):
     bmr_kcal: int | None = None
     base_kcal: int | None = None  # BMR + digestion and everyday movement other than steps
     steps: int | None = None
-    steps_counted: int | None = None  # minus steps taken during runs and walks, which the activity counts
     steps_kcal: int | None = None
     exercise_kcal: int | None = None
     active_kcal: int | None = None  # steps + training, the headline number; null without any weight

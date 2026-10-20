@@ -47,7 +47,7 @@ def steps_of(client: TestClient) -> dict:
     return client.get("/api/metrics/steps-breakdown", params={"date": DAY.isoformat()}).json()
 
 
-def test_records_merge_with_the_iphone_per_bucket(client: TestClient) -> None:
+def test_the_source_with_more_steps_wins(client: TestClient) -> None:
     send(client, {"sequence": 1, "steps": [step("a", utc(8), utc(8, 15), 1200), step("b", utc(18), utc(18, 15), 800)]})
     client.post(
         "/api/webhooks/health",
@@ -64,7 +64,7 @@ def test_records_merge_with_the_iphone_per_bucket(client: TestClient) -> None:
 
     breakdown = steps_of(client)
 
-    assert (breakdown["steps"], breakdown["steps_method"]) == (2500, "buckets")
+    assert (breakdown["steps"], breakdown["steps_method"]) == (2000, "max_daily")
     assert breakdown["source_totals"] == {"samsung_health": 2000, "apple_health": 1500}
 
 
