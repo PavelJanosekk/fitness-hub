@@ -156,6 +156,8 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - KT weight history import earlier than Phase 5 (declined for now in E9)
 - Switch iPhone steps from the iOS Shortcut to the Life Dashboard Companion iOS app once it reaches TestFlight or the App Store (receiver already supports `healthkit_ios`)
 - D4 Frontend test runner (vitest) with the offline-sync cases from the 2026-10-17 harness (outage, 502, 4xx, reopen mid-retry)
+- D5 **Bucket list** (user request 2026-10-20): track the user's bucket-list items. No importer needed: the user pastes the list once and it is filled in via AI (one-time seed, like the habits seed). Item format and fields (category, status, done date, notes…) to be decided at implementation.
+- D6 **Side quests** (user request 2026-10-20): the user's personal to-do list of projects ("learn X", "do Y", "build Z"), seeded once from the user's list the same way as D5. Tie it into **Rutina** (e.g. a weekly task) and the **RPG / Hrdina** layer: one side quest has to be completed every week (a weekly quest with XP reward / penalty). Exact rules to be decided at implementation.
 
 ## Session log
 - **2026-10-17 (1):** Reviewed the original spec and the user's nutrition spec; live-checked the USDA FDC and Open Food Facts APIs. Saved the nutrition spec and the review, got decisions E0/E1/E2/E4, and restructured the docs. Commit `959fa75` on `dev`.
