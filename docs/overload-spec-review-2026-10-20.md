@@ -90,8 +90,8 @@ the facts below). Its problems:
 | Determinism (§11) | computed on read from history + settings | keep; `planned_*` and `role` snapshots keep old sessions interpretable |
 | Templates | JSONB `{exercise_id, sets: [{set_type, weight_kg, reps}]}` | no schema change; their kg × reps only fill exercises without history |
 
-0019 isn't deployed, so all the columns go into one rewritten 0019: downgrade dev, rewrite, upgrade. Prod then gets a
-single migration.
+New columns go into a new migration (0021): 0019 can't be rewritten any more, because E34's 0020 (races, another
+session) already builds on it. None of 0019–0021 is on prod yet, and deploying dev ships them in order.
 
 ## Rules v2 (proposal)
 Blocks: *straight* = every working set; *top_backoff* = the first working set (top) and the rest (back-off). Each block
