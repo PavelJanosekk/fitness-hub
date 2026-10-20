@@ -54,6 +54,7 @@
 | E34 | 2026-10-19 | **Races added / removed in the app** (user request: the half marathon is sold out, but instead of deleting it they want to add and remove race tiles themselves; the half marathon stays for now). `races.source` (`kb` / `user`) and `races.hidden` (migration 0020). A KB sync replaces only `kb` races and keeps the ones the user removed hidden (matched by name + date), so the RunningCoach repo stays the source for its own races while the user's changes survive. Run page: tapping a race tile opens it with **Odebrat závod**, a dashed **Přidat závod** tile opens a form (name, date, 5 / 10 km / half / marathon / other, goal race = boss). Hidden races are left out of the Run page, the coach context and the boss. Query key `coach/kb/v2`. |
 | E35 | 2026-10-20 | **Progressive overload v2** (the user's spec `docs/overload-module-spec.md`; critique and mapping in `docs/overload-spec-review-2026-10-20.md`; the user accepted every recommendation, O8). Replaces E33's rules. Per exercise: strategy (straight / top + back-off) and target RIR (default 1). Each logged set stores its target (`planned_weight_kg`, `planned_reps`) and `role`, plus an `unusual` flag; a confirmed RIR goes into `rpe` (0→10, 1→9, 2→8, 3+→7, null = not confirmed). Per block, from the last comparable session (not unusual, weights as planned), first match wins: comeback after >21 days (~10 % lighter); **weight up** when the first set reaches the top of the range, middle sets the bottom and the last set at most 1 below (reps from the user's own sets at the new weight, else Epley for the first set and the session's own drop-off for the rest; warning when the first set falls below the range); **drop** (a set below the range and ≥ 2 under its target) → repeat the target, *Prověřit propad*, a lighter option; twice in a row → one step lighter; a target missed by 1 → repeat it; otherwise **+1 rep** on the first set until it reaches the top, then on the first later set under its bound. Sets are added only if the exercise opts in (`sets_max`, empty by default). Stall (4 sessions) and decline (3 falling totals) only warn; deload / lighter variants apply to the current workout only. A manual weight change shapes the next plan only when confirmed ("i příště") or repeated. Fatigue between exercises: a hint only; the muscle-group overview comes later. Deploy after the UI. |
 | E36 | 2026-10-20 | **Bucket list + Hrdina tab** (`docs/bucket-list-module-spec.md`): the Rutina nav tab becomes **Hrdina** with sub-tabs Rutina / Bucket list / Postava (side quests later). Fixed 8 categories, rarity 1–4 = 50 / 150 / 400 / 1 000 XP to a new skill **Dobrodružství** (no rust, counts on paused days), no penalties, **no retroactive XP** for the 34 items done before the app (they count for progress and badges). The user's list seeded once, cleaned up (Czech, merged duplicates); the 110 nearby day trips wait for side quests. All ideas accepted: auto-complete (marathon, gym skills, hike, 7 continents) **announced by a modal**, scratch map of the world, map of trips, hall of fame with memories, year goals + year quest, dice, coach tools, season / cost tags, steps. |
+| E37 | 2026-10-20 | **Habit journal + Dovednosti** (`docs/habit-journal-module-spec.md`): every habit gets a log mode `check` / `note` (note + optional dovednost) / `review` (stars + note + optional dovednost); *Vyzkoušet jednu novou věc* and *Učit se novou dovednost* switch to `note`. The sheet opens on tap and **the tick is saved only on Uložit** (J3, user); unticking an entry with content asks first. Dovednosti = a list of the hero's abilities (`abilities`, name unique ignoring case / diacritics; rename, merge, delete), levels by count, +25 XP to Mysl for a new one; Dovednosti card + page on Postava, Deník in Měsíc, coach writes note / stars / dovednost. Ideas accepted: ★ 4–5 entries in Síň slávy, a dovednost completes a same-named *Dovednosti* bucket item, a weekly quest "nová dovednost" when Mysl is weakest, prompt chips from past entries; photos later. |
 
 ## User facts (answers F1–F5, 2026-10-17)
 - **F1:** Strong export is in `data/imports/strong_workouts.csv`: 123 workouts, 2,361 sets, 42 exercises, 2025-08-07 → 2026-10-17. Analysed in review §G1.
@@ -72,7 +73,7 @@
 | O7 | ✅ Habits module decisions H1–H4 → E20 | Before the habits module |
 | O8 | ✅ Progressive overload v2: every recommendation accepted → E35 | Before rules v2 |
 | O9 | ✅ Bucket list + Hrdina tab → E36 | Before the bucket list |
-| O10 | Habit journal + Dovednosti: decisions J1–J8 in `docs/habit-journal-module-spec.md` | Before the habit journal |
+| O10 | ✅ Habit journal + Dovednosti → E37 | Before the habit journal |
 
 ## Phase checklist
 
@@ -168,6 +169,14 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - [x] 8.5 World scratch map + map of trips, hall of fame
 - [x] 8.6 Verify in all themes (minimal, zen, modern; `vite build` ok, precache 74 entries), deploy (backup first)
 
+### Phase 9: Habit journal + Dovednosti (E37)
+`docs/habit-journal-module-spec.md`. Steps, each committed:
+- [ ] 9.1 Backend: migration 0023 (`habits.log_mode`, `abilities`, entry columns on `habit_logs`), day PUT with content, abilities service + routes, ledger (new dovednost XP), board `entries`, tests
+- [ ] 9.2 Backend: coach tools (`set_habits_done` with note / rating / ability, `get_abilities`), weekly quest, bucket auto rule `ability`, Síň slávy entries
+- [ ] 9.3 Frontend: board v2 + mutation, entry sheet, log mode in the habit sheet, Den rows
+- [ ] 9.4 Frontend: Dovednosti card + page, Deník in Měsíc, Síň slávy
+- [ ] 9.5 Verify in all themes, deploy (backup first)
+
 ## Backlog (ideas, not accepted)
 - D1 `Exercise.secondary_muscles` for better volume analysis
 - D2 Race goal + AI-generated marathon plan; auto-link activities to plan items
@@ -178,7 +187,7 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - D4 Frontend test runner (vitest) with the offline-sync cases from the 2026-10-17 harness (outage, 502, 4xx, reopen mid-retry)
 - D5 **Bucket list**: accepted → E36, Phase 8.
 - D6 **Side quests** (user request 2026-10-20; split into quick ones and longer weekend / month ones; the 110 day trips in `data/imports/bucket_list_2026-10-20.csv` are their first pool): the user's personal to-do list of projects ("learn X", "do Y", "build Z"), seeded once from the user's list the same way as D5. Tie it into **Rutina** (e.g. a weekly task) and the **RPG / Hrdina** layer: one side quest has to be completed every week (a weekly quest with XP reward / penalty). Exact rules to be decided at implementation.
-- D7 **Habit journal + Dovednosti** (user request 2026-10-20): habits with a log mode (tick / note + dovednost / stars + note), a list of dovednosti on the hero. Draft `docs/habit-journal-module-spec.md`, decisions pending (O10).
+- D7 **Habit journal + Dovednosti**: accepted → E37, Phase 9.
 
 ## Session log
 - **2026-10-17 (1):** Reviewed the original spec and the user's nutrition spec; live-checked the USDA FDC and Open Food Facts APIs. Saved the nutrition spec and the review, got decisions E0/E1/E2/E4, and restructured the docs. Commit `959fa75` on `dev`.
@@ -318,3 +327,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-20 (12):** 8.6 checks: production `vite build` ok (bucket chunks 12–14 kB, Leaflet stays in its own chunk), screenshots of the bucket list in modern and of Postava. Isolated stack and its DBs (`fitness_bucket`, `_test`) removed. Gotcha: fast-forwarding `dev` with a new migration makes the shared dev backend (auto-reload on the main checkout) 500 on `/api/rpg/*` until `./dev exec app alembic upgrade head` runs; done right after 8.1.
 - **2026-10-20 (13):** E36 deployed to prod at the user's request (backup `data/backups/manual-pre-0022-2026-10-20-1130.dump`, 0022 migrated, health ok, no tracebacks): 132 items / 34 done / 0 XP, 6 countries, 2 continents, the four skill exercises linked, level 12 with the Dobrodružství skill, `/hero/bucket` and `world-110m.json` served.
 - **2026-10-20 (14):** User asked for habit log modes (plain tick / note + dovednost / stars + note like the bucket list) and a list of dovednosti on the hero. No earlier TODO for it (R2 had rejected habit notes for lack of UI). Drafted `docs/habit-journal-module-spec.md` (decisions J1–J8, ideas 1–5); backlog D7, open item O10. Waiting for decisions.
+- **2026-10-20 (15):** E37 decided: J1, J4–J8 as recommended, J2 with an optional dovednost in `review` too, J3 tick only on Uložit; ideas 1, 2, 3, 5 (agent pick at the user's "dle doporučení"), photos later. Phase 9 added.

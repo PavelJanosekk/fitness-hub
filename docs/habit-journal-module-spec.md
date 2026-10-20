@@ -1,6 +1,7 @@
 # Habit journal + Dovednosti (habit log modes)
 
-Status: **draft 2026-10-20, decisions J1–J8 pending (O10)**. Extends the habits module (`docs/habits-module-spec.md`,
+Status: **accepted 2026-10-20 (E37)**: J1, J4–J8 as recommended; **J2: `review` offers an optional dovednost too**;
+**J3: the tick is saved only when the sheet is confirmed**; ideas 1, 2, 3, 5 accepted, 4 (photo) later. Extends the habits module (`docs/habits-module-spec.md`,
 E20) and the Hrdina tab (E36). Numbers marked *(tune)* are starting values.
 
 ## Goal (user, 2026-10-20)
@@ -22,13 +23,13 @@ with `skill`. Postava keeps the radar of RPG skills, and Dovednosti become a car
   habit's add / edit sheet ("Při odškrtnutí: jen odškrtnout / poznámka a dovednost / hodnocení a poznámka").
   Existing habits stay `check`. *Vyzkoušet jednu novou věc* and *Učit se novou dovednost* switch to `note` in the
   migration.
-- **J2 What each mode asks for.** `note`: a note plus one optional dovednost. `review`: stars and a note, with
-  no dovednost. Every field is optional in both modes. *Alternative:* `review` also offers a dovednost, so one
-  sheet has all three fields.
-- **J3 Tick first, then ask.** Tapping the row ticks it at once (optimistic, offline-queued, XP counts as today)
-  and then opens the sheet. **Přeskočit** keeps the bare tick. The row then shows a small "+ poznámka" chip, and
-  tapping it opens the sheet again. A lost signal or a closed sheet never loses the tick, and one-handed use
-  stays fast. *Alternative:* the tick waits for the sheet's **Uložit**.
+- **J2 What each mode asks for (decided: alternative).** `note`: a note plus one optional dovednost. `review`:
+  stars, a note and an optional dovednost. Every field is optional in both modes.
+- **J3 Ask first, tick on confirm (decided: alternative).** Tapping an unticked note / review row only opens
+  the sheet; the tick is written (optimistic, offline-queued) when **Uložit** is pressed, with or without content.
+  Closing the sheet leaves the day unticked. Tapping a ticked row opens the sheet to edit its entry, with
+  **Zrušit splnění** inside (J4 confirm when it has content). Ticks without content (coach, empty save) show a
+  small "+ poznámka" chip.
 - **J4 Unticking an entry with content.** Unticking a day that has a note, stars or a dovednost asks first
   ("Smazat i poznámku?"), because the PUT deletes the row. A bare tick unticks without asking, as today.
 - **J5 Dovednosti list.** A dovednost has a name (unique ignoring case and diacritics, so "lezeni" finds
@@ -79,15 +80,15 @@ with `skill`. Postava keeps the radar of RPG skills, and Dovednosti become a car
 - **Entry sheet** (bottom sheet, like the bucket memory sheet). Title = the habit, date chip.
   - `note`: a textarea ("Co jsi dělal / vyzkoušel?") and a dovednost combobox. It searches the list as you type,
     with recent ones as chips above it, and offers "+ Přidat novou: *Lezení*" when nothing matches.
-  - `review`: the existing `Stars` component and a textarea.
-  - Buttons **Uložit** / **Přeskočit**. A saved entry with a new dovednost shows a small "Nová dovednost!" toast
+  - `review`: the existing `Stars` component, a textarea and the same dovednost combobox.
+  - **Uložit** (ticks), closing = nothing saved; on a ticked day also **Zrušit splnění**. A saved entry with a new dovednost shows a small "Nová dovednost!" toast
     with the XP.
 - **Habit sheet:** the "Při odškrtnutí" segmented control (J1).
 - Offline: the sheet writes through the same queued day mutation (`HabitDayWrite` grows `note`, `rating`,
   `ability`), and `applyDay` puts the entry into the cached board. The abilities list for the combobox comes
   from the board cache plus the abilities query, so a name typed offline shows up at once.
 
-## Ideas (for the user to pick, not in v1 unless chosen)
+## Ideas (1, 2, 3, 5 accepted; 4 later)
 1. Entries with ★ 4–5 from review habits also appear in the bucket list's **Síň slávy**.
 2. A bucket-list item from the *Dovednosti* category completes itself the first time a dovednost of the same
    name is logged (an auto rule like `exercise`).
