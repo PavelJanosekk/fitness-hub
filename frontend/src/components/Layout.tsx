@@ -1,6 +1,8 @@
 import { Bot, Dumbbell, Footprints, LayoutDashboard, Settings, Swords, Utensils } from "lucide-react";
-import { NavLink, Outlet } from "react-router";
+import { Suspense } from "react";
+import { NavLink, Outlet, useLocation } from "react-router";
 import { BucketWatcher } from "./bucket/BucketWatcher";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { EntrySheetHost } from "./habits/EntrySheet";
 import { LevelWatcher } from "./rpg/LevelWatcher";
 
@@ -15,6 +17,7 @@ const NAV = [
 
 /** Phone: content + fixed bottom tab bar (safe-area aware). Desktop (md+): sidebar. */
 export function Layout() {
+  const { pathname } = useLocation();
   return (
     <div className="min-h-dvh md:flex">
       <aside className="hidden md:flex md:w-56 md:flex-col md:gap-1 md:border-r md:border-zinc-800 md:p-4">
@@ -34,7 +37,12 @@ export function Layout() {
       </aside>
 
       <main className="pt-safe mx-auto w-full max-w-3xl px-4 pb-28 md:pb-8">
-        <Outlet />
+        {/* A crashed page keeps the nav usable; switching pages resets the boundary */}
+        <ErrorBoundary resetKey={pathname}>
+          <Suspense fallback={<div className="p-6 text-zinc-500">Načítám…</div>}>
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
       </main>
       <LevelWatcher />
       <BucketWatcher />

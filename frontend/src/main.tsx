@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { App } from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { isGymWrite, registerGymMutations, resumePendingMutations } from "./api/gym";
 import { isHabitWrite, registerHabitMutations } from "./api/habits";
 import "./index.css";
@@ -35,14 +36,17 @@ const persistOptions = {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <PersistQueryClientProvider
-      client={queryClient}
-      persistOptions={persistOptions}
-      onSuccess={() => resumePendingMutations(queryClient)}
-    >
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </PersistQueryClientProvider>
+    {/* Last resort when something outside a page (layout, watchers, providers) crashes */}
+    <ErrorBoundary fullScreen>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={persistOptions}
+        onSuccess={() => resumePendingMutations(queryClient)}
+      >
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </PersistQueryClientProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );
