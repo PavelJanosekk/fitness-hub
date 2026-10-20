@@ -1,6 +1,6 @@
-import { CalendarClock, Check, Dices, Plus, Search, Sparkles, Star } from "lucide-react";
+import { CalendarClock, Check, Dices, Map as MapIcon, Plus, Search, Sparkles, Star, Trophy } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { type BucketBoard, type BucketItem, type Category, useBucketBoard } from "../api/bucket";
 import { DiceSheet } from "../components/bucket/DiceSheet";
 import { ItemForm } from "../components/bucket/ItemForm";
@@ -25,6 +25,8 @@ const TAGS = [
   ["auto", "Splní se samo"],
 ] as const;
 type Tag = (typeof TAGS)[number][0];
+
+const TOOL = "ui-card flex min-h-16 flex-col items-center justify-center gap-1 text-[13px] font-medium active:bg-zinc-800/60";
 
 const normalize = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
@@ -92,10 +94,16 @@ export function BucketList() {
     <div className="space-y-3">
       <Summary board={data} />
       <Planned board={data} onOpen={(id) => setOpenId({ id, mode: "view" })} />
-      <div className="grid grid-cols-1 gap-2">
-        <button onClick={() => setDice(true)} className="ui-card flex min-h-12 items-center justify-center gap-2 text-sm font-medium active:bg-zinc-800/60">
-          <Dices size={18} className="text-emerald-400" /> Kostka osudu
+      <div className="grid grid-cols-3 gap-2">
+        <button onClick={() => setDice(true)} className={TOOL}>
+          <Dices size={20} className="text-emerald-400" /> Kostka osudu
         </button>
+        <Link to="/hero/bucket/map" className={TOOL}>
+          <MapIcon size={20} className="text-emerald-400" /> Mapa
+        </Link>
+        <Link to="/hero/bucket/fame" className={TOOL}>
+          <Trophy size={20} className="text-emerald-400" /> Síň slávy
+        </Link>
       </div>
       <CategoryGrid board={data} value={category} onChange={(c) => setFilter({ c })} />
 

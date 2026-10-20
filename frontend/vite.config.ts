@@ -25,6 +25,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // json: the bucket list's world map (world-110m.json) works offline too
+        globPatterns: ["**/*.{js,css,html,svg,png,json}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
       },

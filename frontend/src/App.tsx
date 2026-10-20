@@ -16,6 +16,9 @@ const Hero = lazy(() => import("./pages/Hero").then((m) => ({ default: m.Hero })
 const HeroLayout = lazy(() => import("./pages/HeroLayout").then((m) => ({ default: m.HeroLayout })));
 const HabitsRedirect = lazy(() => import("./pages/HeroLayout").then((m) => ({ default: m.HabitsRedirect })));
 const BucketList = lazy(() => import("./pages/BucketList").then((m) => ({ default: m.BucketList })));
+// Leaflet only loads with the map
+const BucketMap = lazy(() => import("./pages/BucketMap").then((m) => ({ default: m.BucketMap })));
+const HallOfFame = lazy(() => import("./pages/HallOfFame").then((m) => ({ default: m.HallOfFame })));
 const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
 
 export function App() {
@@ -34,6 +37,8 @@ export function App() {
           <Route path="hero" element={<HeroLayout />}>
             <Route index element={<Habits />} />
             <Route path="bucket" element={<BucketList />} />
+            <Route path="bucket/map" element={<BucketMap />} />
+            <Route path="bucket/fame" element={<HallOfFame />} />
             <Route path="character" element={<Hero />} />
           </Route>
           <Route path="coach" element={<AiCoach />} />
