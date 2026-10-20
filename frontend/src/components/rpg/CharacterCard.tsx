@@ -43,7 +43,7 @@ export function CharacterCard() {
   const { data: c } = useCharacter();
   if (!c) return null;
   return (
-    <Link to="/hero" className="block">
+    <Link to="/hero/character" className="block">
       <Card className="space-y-3">
         <div className="flex items-center gap-3">
           <LevelBadge level={c.level} size={52} />

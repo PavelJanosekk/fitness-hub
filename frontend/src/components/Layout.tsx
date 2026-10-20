@@ -1,4 +1,4 @@
-import { Bot, Dumbbell, Footprints, LayoutDashboard, ListChecks, Settings, Utensils } from "lucide-react";
+import { Bot, Dumbbell, Footprints, LayoutDashboard, Settings, Swords, Utensils } from "lucide-react";
 import { NavLink, Outlet } from "react-router";
 import { LevelWatcher } from "./rpg/LevelWatcher";
 
@@ -7,7 +7,7 @@ const NAV = [
   { to: "/gym", label: "Gym", icon: Dumbbell },
   { to: "/run", label: "Běh", icon: Footprints },
   { to: "/nutrition", label: "Jídlo", icon: Utensils },
-  { to: "/habits", label: "Rutina", icon: ListChecks },
+  { to: "/hero", label: "Hrdina", icon: Swords },
   { to: "/coach", label: "Kouč", icon: Bot },
 ] as const;
 

@@ -13,6 +13,9 @@ const Nutrition = lazy(() => import("./pages/Nutrition").then((m) => ({ default:
 const FoodDatabase = lazy(() => import("./pages/FoodDatabase").then((m) => ({ default: m.FoodDatabase })));
 const Habits = lazy(() => import("./pages/Habits").then((m) => ({ default: m.Habits })));
 const Hero = lazy(() => import("./pages/Hero").then((m) => ({ default: m.Hero })));
+const HeroLayout = lazy(() => import("./pages/HeroLayout").then((m) => ({ default: m.HeroLayout })));
+const HabitsRedirect = lazy(() => import("./pages/HeroLayout").then((m) => ({ default: m.HabitsRedirect })));
+const BucketList = lazy(() => import("./pages/BucketList").then((m) => ({ default: m.BucketList })));
 const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
 
 export function App() {
@@ -27,8 +30,12 @@ export function App() {
           <Route path="run/:id" element={<RunDetail />} />
           <Route path="nutrition" element={<Nutrition />} />
           <Route path="nutrition/foods" element={<FoodDatabase />} />
-          <Route path="habits" element={<Habits />} />
-          <Route path="hero" element={<Hero />} />
+          <Route path="habits" element={<HabitsRedirect />} />
+          <Route path="hero" element={<HeroLayout />}>
+            <Route index element={<Habits />} />
+            <Route path="bucket" element={<BucketList />} />
+            <Route path="character" element={<Hero />} />
+          </Route>
           <Route path="coach" element={<AiCoach />} />
           <Route path="settings" element={<Settings />} />
         </Route>

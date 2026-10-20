@@ -164,7 +164,7 @@ function HabitsTab() {
   const navigate = useNavigate();
   if (board.isPending) return <p className="text-zinc-500">Načítám…</p>;
   if (!habits.length) return <Empty text="Zatím žádné rutiny. Přidej je na stránce Rutina." />;
-  return <MonthView habits={habits} today={isoDate()} onOpenDay={(d) => navigate(`/habits?d=${d}`)} />;
+  return <MonthView habits={habits} today={isoDate()} onOpenDay={(d) => navigate(`/hero?d=${d}`)} />;
 }
 
 function TodayCard({ weight7d }: { weight7d: number | null }) {

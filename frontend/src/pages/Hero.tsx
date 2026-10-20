@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { useState } from "react";
 import { RPG_SUMMARY_PROMPT } from "../api/coach";
 import { type Pause as PauseRow, useCharacter, usePauses, useSavePause, useXpHistory } from "../api/rpg";
-import { PageHeader, Card } from "../components/Layout";
+import { Card } from "../components/Layout";
 import { LevelBadge, signed, XpBar } from "../components/rpg/CharacterCard";
 import { BossCard } from "../components/rpg/BossCard";
 import { BadgesCard, QuestsCard } from "../components/rpg/QuestsCard";
@@ -20,7 +20,6 @@ export function Hero() {
 
   return (
     <>
-      <PageHeader title="Hrdina" />
       <div className="space-y-3">
         {c && (
           <Card className="space-y-4">

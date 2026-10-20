@@ -40,7 +40,7 @@ export function RoutineCard() {
             {weekly.length > 0 && ` · týden ${weeklyMet}/${weekly.length} úkolů`}
           </p>
         </div>
-        <Link to="/habits" className="shrink-0 px-1 py-2 text-[13px] text-zinc-400">
+        <Link to="/hero" className="shrink-0 px-1 py-2 text-[13px] text-zinc-400">
           Vše ›
         </Link>
       </div>
@@ -61,7 +61,7 @@ export function RoutineCard() {
             </button>
           ))}
           {left.length > MAX_ITEMS && (
-            <Link to="/habits" className="block px-1 text-xs text-zinc-500">
+            <Link to="/hero" className="block px-1 text-xs text-zinc-500">
               a {left.length - MAX_ITEMS} další v Rutině
             </Link>
           )}

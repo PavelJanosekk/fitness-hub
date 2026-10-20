@@ -1,9 +1,8 @@
 import { ChevronLeft, ChevronRight, Flame, PartyPopper, Pencil, Plus } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router";
-import { useCharacter } from "../api/rpg";
+import { useSearchParams } from "react-router";
 import { HabitRow, Ring, useHabitDays, useToggleHabit } from "../components/habits/parts";
-import { Card, PageHeader } from "../components/Layout";
+import { Card } from "../components/Layout";
 import { Button, Segmented } from "../components/ui";
 import { addDays, formatDayMonth, isoDate } from "../lib/format";
 import {
@@ -40,7 +39,6 @@ export function Habits() {
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
   const { board, habits, active, paused, forgiven } = useHabitDays();
-  const character = useCharacter();
 
   const open = (next: { v?: "day" | "month"; d?: string }) => {
     const v = next.v ?? view;
@@ -50,30 +48,14 @@ export function Habits() {
 
   return (
     <>
-      <PageHeader
-        title={editing ? "Upravit rutiny" : "Rutina"}
-        action={
-          editing ? (
-            <button onClick={() => setEditing(false)} className="px-1 py-2 font-semibold text-emerald-400">
-              Hotovo
-            </button>
-          ) : (
-            <div className="flex items-center gap-1">
-              {character.data && (
-                <Link to="/hero" className="mr-1 rounded-full border border-emerald-700 px-2.5 py-1 text-xs font-semibold text-emerald-300">
-                  Lv {character.data.level}
-                </Link>
-              )}
-              <button onClick={() => setEditing(true)} aria-label="Upravit rutiny" className="rounded-full p-2 text-zinc-400 active:bg-zinc-800">
-                <Pencil size={20} />
-              </button>
-              <button onClick={() => setAdding(true)} aria-label="Přidat rutinu" className="rounded-full p-2 text-zinc-400 active:bg-zinc-800">
-                <Plus size={22} />
-              </button>
-            </div>
-          )
-        }
-      />
+      {editing && (
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Upravit rutiny</h2>
+          <button onClick={() => setEditing(false)} className="px-1 py-2 font-semibold text-emerald-400">
+            Hotovo
+          </button>
+        </div>
+      )}
 
       {board.isPending ? (
         <p className="text-zinc-500">Načítám…</p>
@@ -92,7 +74,17 @@ export function Habits() {
         </Card>
       ) : (
         <div className="space-y-3">
-          <Segmented options={VIEWS} value={view} onChange={(v) => open({ v })} />
+          <div className="flex items-center justify-between gap-2">
+            <Segmented options={VIEWS} value={view} onChange={(v) => open({ v })} />
+            <div className="flex items-center">
+              <button onClick={() => setEditing(true)} aria-label="Upravit rutiny" className="rounded-full p-2 text-zinc-400 active:bg-zinc-800">
+                <Pencil size={20} />
+              </button>
+              <button onClick={() => setAdding(true)} aria-label="Přidat rutinu" className="rounded-full p-2 text-zinc-400 active:bg-zinc-800">
+                <Plus size={22} />
+              </button>
+            </div>
+          </div>
           {view === "day" ? (
             <DayView habits={habits} day={day} today={today} onDay={(d) => open({ d })} paused={paused.has(day)} forgiven={forgiven.has(day)} />
           ) : (

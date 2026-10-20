@@ -95,7 +95,7 @@ function Moment({ event, onClose }: { event: Event; onClose: () => void }) {
           <Button variant="ghost" onClick={onClose}>
             Zavřít
           </Button>
-          <Link to="/hero" onClick={onClose} className="ui-btn flex min-h-11 items-center justify-center rounded-xl bg-emerald-500 px-4 font-medium text-on-accent">
+          <Link to="/hero/character" onClick={onClose} className="ui-btn flex min-h-11 items-center justify-center rounded-xl bg-emerald-500 px-4 font-medium text-on-accent">
             Hrdina
           </Link>
         </div>
