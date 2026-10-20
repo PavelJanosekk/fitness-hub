@@ -778,11 +778,11 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
               </p>
               {confirmable > 0 && (
                 <Button className="w-full" onClick={() => finish(true)}>
-                  Potvrdit {setsText(confirmable)} a dokončit
+                  Potvrdit zbylé a uložit {setsText(done + confirmable)}
                 </Button>
               )}
               <Button variant={confirmable > 0 ? "ghost" : "primary"} className="mt-2 w-full" onClick={() => finish()}>
-                {done > 0 ? `Uložit jen ${setsText(done)}` : "Dokončit bez sérií"}
+                {done > 0 ? `Zahodit zbylé a uložit ${setsText(done)}` : "Zahodit zbylé a dokončit bez sérií"}
               </Button>
               <Button variant="ghost" className="mt-2 w-full" onClick={() => setConfirmFinish(false)}>
                 Zpět k tréninku
