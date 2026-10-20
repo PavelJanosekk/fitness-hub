@@ -10,7 +10,14 @@ from google.genai import types
 from sqlmodel import Session
 
 from app.models.chat import Assistant
-from app.services.ai_tools import CZECH_WEEKDAYS, ToolContext, build_coach_tools, exercise_catalog, habit_catalog
+from app.services.ai_tools import (
+    CZECH_WEEKDAYS,
+    ToolContext,
+    bucket_catalog,
+    build_coach_tools,
+    exercise_catalog,
+    habit_catalog,
+)
 from app.services.coach_kb import core_context
 from app.services.conversations import get_conversation, load_history, store_turn
 from app.services.gemini_service import Tier, run_assistant
@@ -33,6 +40,10 @@ Pravidla:
   zavolej get_rpg_status a napiš ho jako game master: kolik XP získal a ztratil a proč, stav výprav a bosse,
   dluhy (únava, prokleté návyky, rezavějící dovednosti) a jednu až tři konkrétní rady na příští týden. Čísla ber
   jen z nástroje, nevymýšlej je.
+- Uživatel má bucket list (věci, které chce v životě zažít). Když řekne, že něco z něj zažil, zapiš to nástrojem
+  complete_bucket_items s přesnými názvy z níže uvedeného seznamu (aplikace mu splnění sama oznámí). Když se ptá,
+  co podniknout, zavolej get_bucket_list a navrhni věc, která sedí k plánu: výlet spoj s dlouhým během nebo
+  volným dnem, nic rizikového (adrenalin, nové jídlo na zkoušku) v týdnu závodu ani těsně před ním.
 - Data a dny v týdnu vždy ověř nástrojem get_calendar, nepočítej z hlavy. Týdny jsou pondělí–neděle.
 - U každého čísla si ověř období a jednotky (tempo min/km vs. čas).
 - Díry v datech nebo podivná čísla nejdřív s uživatelem vyjasni, neinterpretuj je."""
@@ -56,6 +67,8 @@ def coach_system_instruction(session: Session, now: dt.datetime) -> str:
     ]
     if habits := habit_catalog(session):
         sections.append("Návyky v rutině uživatele (název [frekvence]):\n" + habits)
+    if bucket := bucket_catalog(session):
+        sections.append("Nesplněné položky bucket listu (přesné názvy):\n" + bucket)
     if knowledge := core_context(session):
         sections.append(knowledge)
     return "\n\n".join(sections)

@@ -17,12 +17,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
+from app.models.bucket import BucketItem
 from app.models.coach import Race
 from app.models.gym import Exercise, MuscleGroup, Workout, WorkoutSet, WorkoutSource
 from app.models.habits import Habit, HabitFrequency, HabitLog
 from app.models.running import Activity, ActivityMetrics, TrainingPlanItem
 from app.schemas.body import MetricUpsert
 from app.schemas.nutrition import QuickAdd
+from app.services import bucket as bucket_svc
 from app.services import habits as habit_svc
 from app.services.coach_kb import plan_weeks, read_document
 from app.services.exercises import resolve_exercise
@@ -88,6 +90,16 @@ def habit_catalog(session: Session) -> str:
         auto = ", plní se i automaticky z dat" if h.auto_rule else ""
         lines.append(f"- {h.title} [{kind}{extra}{auto}]")
     return "\n".join(lines)
+
+
+def bucket_catalog(session: Session) -> str:
+    """Open bucket-list titles for the system prompt (one compact line), so the model uses exact titles."""
+    titles = session.exec(
+        select(BucketItem.title)
+        .where(col(BucketItem.done_on).is_(None), col(BucketItem.done_before_app).is_(False))
+        .order_by(col(BucketItem.id))
+    ).all()
+    return "; ".join(titles)
 
 
 def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
@@ -661,6 +673,96 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
             }
         )
 
+    def get_bucket_list(category: str | None = None, status: str = "open") -> dict[str, Any]:
+        """The user's bucket list (lifelong things to experience): items with category, rarity and the XP they pay,
+        planned date, year goal, season, cost, travel time, steps and auto-completion progress; plus totals, the
+        year quest, visited countries and continents. Use it to suggest what to do (e.g. a trip that fits the
+        training plan, nothing risky in race week) and for questions about the bucket list.
+
+        Args:
+            category: One of travel, expedition, experience, adrenaline, sport, skill, food, wellbeing; omit for all.
+            status: "open", "done" or "all".
+        """
+        on = today(ctx.now)
+        state = bucket_svc.load(session, on)
+        rows = []
+        for s in state.items:
+            item = s.item
+            if (
+                (category and item.category != category)
+                or (status == "open" and s.done)
+                or (status == "done" and not s.done)
+            ):
+                continue
+            rows.append(
+                _compact(
+                    {
+                        "title": item.title,
+                        "category": bucket_svc.CATEGORY_NAMES.get(item.category, item.category),
+                        "rarity": bucket_svc.RARITIES[item.rarity][0],
+                        "xp": s.xp if s.done else bucket_svc.RARITIES[item.rarity][1],
+                        "done_on": s.done_on.isoformat() if s.done_on else None,
+                        "done_before_app": s.source == "before" or None,
+                        "auto": s.auto_label if s.source == "auto" else s.auto_progress,
+                        "planned_for": item.planned_for.isoformat() if item.planned_for and not s.done else None,
+                        "year_goal": item.year_goal == on.year or None,
+                        "season": item.season,
+                        "cost": "€" * item.cost if item.cost else None,
+                        "travel_time": item.travel_time,
+                        "steps": f"{sum(1 for st in s.steps if st.done_on)}/{len(s.steps)}" if s.steps else None,
+                        "memory": item.memory,
+                    }
+                )
+            )
+        done, reached = bucket_svc.year_progress(state, on.year)
+        return {
+            "today": on.isoformat(),
+            "items": rows,
+            "done_total": sum(1 for s in state.items if s.done),
+            "items_total": len(state.items),
+            "year_quest": {
+                "done": done,
+                "target": bucket_svc.YEAR_QUEST_ITEMS,
+                "reached_on": reached and reached.isoformat(),
+            },
+            "countries": [c.code for c in state.countries],
+            "continents": sorted(state.continents),
+        }
+
+    def complete_bucket_items(titles: list[str], date: str | None = None, memory: str | None = None) -> dict[str, Any]:
+        """Mark bucket-list items as done, e.g. "dneska jsem skočil bungee". Only exact titles are saved; anything
+        else comes back with candidates and is NOT saved, so ask the user which one they meant. The app announces a
+        completed item to the user itself.
+
+        Args:
+            titles: Exact item titles from the bucket list.
+            date: Day as YYYY-MM-DD; omit for today.
+            memory: Optional short note in the user's words (where, with whom, how it was).
+        """
+        try:
+            day = dt.date.fromisoformat(date) if date else today(ctx.now)
+        except ValueError:
+            return {"error": f"Invalid date {date!r}, use YYYY-MM-DD"}
+        if day > today(ctx.now):
+            return {"error": "Cannot complete a future day"}
+        saved, unmatched = [], []
+        for title in titles:
+            item, candidates = bucket_svc.resolve(session, title)
+            if item is None:
+                unmatched.append({"input": title, "candidates": [i.title for i, _ in candidates]})
+                continue
+            item.done_on, item.done_before_app = day, False
+            if memory and not item.memory:
+                item.memory = memory
+            session.add(item)
+            saved.append(item.title)
+        session.commit()
+        result: dict[str, Any] = {"date": day.isoformat(), "saved": saved}
+        if unmatched:
+            result["not_saved"] = unmatched
+            result["message"] = "Titles in not_saved did not match exactly and were not saved."
+        return result
+
     return [
         get_calendar,
         get_body_metrics_summary,
@@ -675,6 +777,8 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
         get_habit_summary,
         set_habits_done,
         get_rpg_status,
+        get_bucket_list,
+        complete_bucket_items,
     ]
 
 

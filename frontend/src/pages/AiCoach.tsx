@@ -73,6 +73,11 @@ export function AiCoach() {
         queryClient.invalidateQueries({ queryKey: ["habits"] });
         queryClient.invalidateQueries({ queryKey: ["rpg"] });
       }
+      // The bucket watcher in the layout then announces what the coach completed
+      if (response.tool_calls_made.includes("complete_bucket_items")) {
+        queryClient.invalidateQueries({ queryKey: ["bucket"] });
+        queryClient.invalidateQueries({ queryKey: ["rpg"] });
+      }
     } catch (error) {
       setMessages((m) => [...m, { role: "model", content: `⚠️ ${errorText(error)}` }]);
     } finally {

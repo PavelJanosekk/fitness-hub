@@ -266,3 +266,25 @@ def test_resolve_by_title(empty: Session) -> None:
     assert bk.resolve(empty, "humr")[0] == lobster
     found, candidates = bk.resolve(empty, "bungee")
     assert found is None and candidates[0][0].title == "Bungee jumping"
+
+
+def test_coach_tools_list_and_complete(empty: Session) -> None:
+    from app.services.ai_tools import ToolContext, bucket_catalog, build_coach_tools
+    from app.timeutils import now_utc
+
+    item(empty, "Humr", rarity=2, cost=3)
+    item(empty, "Bungee jumping", rarity=3)
+    item(empty, "Sushi", done_before_app=True)
+    tools = {t.__name__: t for t in build_coach_tools(ToolContext(session=empty, workout_id=None, now=now_utc()))}
+
+    listed = tools["get_bucket_list"]()
+    assert [i["title"] for i in listed["items"]] == ["Humr", "Bungee jumping"]
+    assert listed["items"][0] == {"title": "Humr", "category": "Zážitky", "rarity": "Vzácná", "xp": 150, "cost": "€€€"}
+    assert bucket_catalog(empty) == "Humr; Bungee jumping"
+
+    result = tools["complete_bucket_items"](["Bungee jumping", "bungy"], memory="Most v Lužnici")
+    assert result["saved"] == ["Bungee jumping"]
+    assert result["not_saved"][0]["input"] == "bungy"
+    done = empty.exec(select(BucketItem).where(BucketItem.title == "Bungee jumping")).one()
+    assert done.done_on == today() and done.memory == "Most v Lužnici"
+    assert tools["complete_bucket_items"](["Humr"], date="2999-01-01") == {"error": "Cannot complete a future day"}
