@@ -72,6 +72,7 @@
 | O7 | ✅ Habits module decisions H1–H4 → E20 | Before the habits module |
 | O8 | ✅ Progressive overload v2: every recommendation accepted → E35 | Before rules v2 |
 | O9 | ✅ Bucket list + Hrdina tab → E36 | Before the bucket list |
+| O10 | Habit journal + Dovednosti: decisions J1–J8 in `docs/habit-journal-module-spec.md` | Before the habit journal |
 
 ## Phase checklist
 
@@ -177,6 +178,7 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - D4 Frontend test runner (vitest) with the offline-sync cases from the 2026-10-17 harness (outage, 502, 4xx, reopen mid-retry)
 - D5 **Bucket list**: accepted → E36, Phase 8.
 - D6 **Side quests** (user request 2026-10-20; split into quick ones and longer weekend / month ones; the 110 day trips in `data/imports/bucket_list_2026-10-20.csv` are their first pool): the user's personal to-do list of projects ("learn X", "do Y", "build Z"), seeded once from the user's list the same way as D5. Tie it into **Rutina** (e.g. a weekly task) and the **RPG / Hrdina** layer: one side quest has to be completed every week (a weekly quest with XP reward / penalty). Exact rules to be decided at implementation.
+- D7 **Habit journal + Dovednosti** (user request 2026-10-20): habits with a log mode (tick / note + dovednost / stars + note), a list of dovednosti on the hero. Draft `docs/habit-journal-module-spec.md`, decisions pending (O10).
 
 ## Session log
 - **2026-10-17 (1):** Reviewed the original spec and the user's nutrition spec; live-checked the USDA FDC and Open Food Facts APIs. Saved the nutrition spec and the review, got decisions E0/E1/E2/E4, and restructured the docs. Commit `959fa75` on `dev`.
@@ -315,3 +317,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-20 (11):** 8.5: `/hero/bucket/map` (lazy chunk with Leaflet): **Svět** = scratch map from `world-110m.json` without tiles (visited = accent, countries of open items = amber, tap a country → *Jsem tu teď* / *Byl jsem dřív* / remove; continents chips; add any country from a searchable list for the small ones; visited list with dates and the items behind them), **Výpravy** = OSM map with the items that have coordinates (rarity colours, done ringed, home marker, tap → the item); `/hero/bucket/fame` **Síň slávy** (timeline by year with rarity, XP, stars, memory, auto evidence; items done before the app as chips). Tool row on the bucket list (Kostka osudu, Mapa, Síň slávy). Leaflet's light container background is overridden so the ocean follows the theme. The PWA precache now includes json (the world map works offline). Checked in headless Chrome in minimal and zen.
 - **2026-10-20 (12):** 8.6 checks: production `vite build` ok (bucket chunks 12–14 kB, Leaflet stays in its own chunk), screenshots of the bucket list in modern and of Postava. Isolated stack and its DBs (`fitness_bucket`, `_test`) removed. Gotcha: fast-forwarding `dev` with a new migration makes the shared dev backend (auto-reload on the main checkout) 500 on `/api/rpg/*` until `./dev exec app alembic upgrade head` runs; done right after 8.1.
 - **2026-10-20 (13):** E36 deployed to prod at the user's request (backup `data/backups/manual-pre-0022-2026-10-20-1130.dump`, 0022 migrated, health ok, no tracebacks): 132 items / 34 done / 0 XP, 6 countries, 2 continents, the four skill exercises linked, level 12 with the Dobrodružství skill, `/hero/bucket` and `world-110m.json` served.
+- **2026-10-20 (14):** User asked for habit log modes (plain tick / note + dovednost / stars + note like the bucket list) and a list of dovednosti on the hero. No earlier TODO for it (R2 had rejected habit notes for lack of UI). Drafted `docs/habit-journal-module-spec.md` (decisions J1–J8, ideas 1–5); backlog D7, open item O10. Waiting for decisions.
