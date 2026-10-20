@@ -51,7 +51,7 @@ export function SkillsCard({ skills }: { skills: Skill[] }) {
           );
         })}
       </div>
-      <p className="text-xs text-zinc-500">Dovednost bez XP 14 dní rezaví, od 21 dní ztrácí každý týden 10 % XP (ubere i celkový level).</p>
+      <p className="text-xs text-zinc-500">Vlastnost bez XP 14 dní rezaví, od 21 dní ztrácí každý týden 10 % XP (ubere i celkový level).</p>
     </Card>
   );
 }

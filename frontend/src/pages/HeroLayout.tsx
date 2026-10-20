@@ -7,7 +7,7 @@ import { PageHeader } from "../components/Layout";
 const TABS = [
   { to: "/hero", label: "Rutina", end: true },
   { to: "/hero/bucket", label: "Bucket list", end: false },
-  { to: "/hero/character", label: "Postava", end: true },
+  { to: "/hero/character", label: "Postava", end: false },
 ] as const;
 
 /** The Hrdina tab (E36): Rutina, Bucket list and Postava (character, XP history) as sub-tabs; side quests come later. */

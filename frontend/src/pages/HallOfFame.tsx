@@ -51,7 +51,8 @@ export function HallOfFame() {
             <h2 className="flex items-baseline justify-between px-0.5 pt-1">
               <span className="text-xl font-bold">{year}</span>
               <span className="text-[13px] text-zinc-400">
-                {items.length} · +{formatNumber(xp)} XP
+                {items.length + yearMoments.length}
+                {xp > 0 && ` · +${formatNumber(xp)} XP`}
               </span>
             </h2>
             <ol className="relative space-y-2 border-l-2 border-zinc-800 pl-4">{timeline.map((t) => t.node)}</ol>

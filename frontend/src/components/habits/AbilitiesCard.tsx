@@ -9,7 +9,7 @@ export function AbilitiesCard() {
   const { data } = useAbilities();
   const used = (data ?? []).filter((a) => a.count > 0);
   return (
-    <Link to="/hero/abilities" className="block">
+    <Link to="/hero/character/abilities" className="block">
       <Card className="space-y-2.5 active:bg-zinc-800/60">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">Dovednosti</h2>

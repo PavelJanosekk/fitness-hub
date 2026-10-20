@@ -41,7 +41,7 @@ export function App() {
             <Route path="bucket/map" element={<BucketMap />} />
             <Route path="bucket/fame" element={<HallOfFame />} />
             <Route path="character" element={<Hero />} />
-            <Route path="abilities" element={<Abilities />} />
+            <Route path="character/abilities" element={<Abilities />} />
           </Route>
           <Route path="coach" element={<AiCoach />} />
           <Route path="settings" element={<Settings />} />

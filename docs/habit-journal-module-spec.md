@@ -42,7 +42,7 @@ with `skill`. Postava keeps the radar of RPG skills, and Dovednosti become a car
 - **J7 Where it shows.**
   - **Rutina Den:** a note-mode row shows a pencil icon and the first line of the day's note under its title.
     A review row shows its stars.
-  - **Postava:** a new card **Dovednosti** (count, the last 5 as chips, "Vše"). It opens `/hero/abilities`: a
+  - **Postava:** a new card **Dovednosti** (count, the last 5 as chips, "Vše"). It opens `/hero/character/abilities`: a
     list sorted by last use, each with ×count, first / last date and a level by count *(tune: 1× Nováček,
     3× Začátečník, 10× Pokročilý, 25× Zkušený)*. Tapping one opens its timeline of notes.
   - **Rutina Měsíc:** a **Deník** section, a timeline of every note and rating in the month, filterable by
