@@ -9,6 +9,7 @@ import datetime as dt
 import unicodedata
 from dataclasses import dataclass, field
 
+from sqlalchemy import func
 from sqlmodel import Session, col, select
 
 from app.models.habits import Ability, Habit, HabitLog
@@ -18,6 +19,7 @@ SKILL = "mind"
 # (entries needed, level name) (tune)
 LEVELS = [(1, "Nováček"), (3, "Začátečník"), (10, "Pokročilý"), (25, "Zkušený")]
 MAX_NAME = 60
+MIN_SIMILARITY = 0.3
 
 
 def ability_key(name: str) -> str:
@@ -42,6 +44,34 @@ def find_or_create(session: Session, name: str) -> Ability:
         session.add(ability)
         session.flush()
     return ability
+
+
+def resolve(session: Session, name: str) -> tuple[Ability | None, list[str]]:
+    """For the coach: the ability with this key, else up to 3 similar names (pg_trgm, unaccented); with no
+    similar one, None and [] mean "a new dovednost"."""
+    if exact := find(session, name):
+        return exact, []
+
+    def normalized(value):  # SQL expression
+        return func.f_unaccent(func.lower(value))
+
+    score = func.greatest(
+        func.similarity(normalized(Ability.name), normalized(name)),
+        func.word_similarity(normalized(name), normalized(Ability.name)),
+    )
+    rows = session.exec(select(Ability.name).where(score >= MIN_SIMILARITY).order_by(score.desc()).limit(3))
+    return None, list(rows)
+
+
+def first_days(session: Session, on: dt.date) -> dict[str, tuple[dt.date, str]]:
+    """Ability key -> (the day of its first entry up to `on`, its name), for the bucket list and quests."""
+    query = (
+        select(Ability.key, Ability.name, func.min(HabitLog.date))
+        .join(HabitLog, col(HabitLog.ability_id) == Ability.id)
+        .where(col(HabitLog.date) <= on)
+        .group_by(col(Ability.id))
+    )
+    return {key: (day, name) for key, name, day in session.exec(query)}
 
 
 def level_of(count: int) -> tuple[int, str]:

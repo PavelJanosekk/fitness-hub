@@ -20,6 +20,7 @@ from app.models.bucket import BucketAutoRule, BucketCategory, BucketItem, Bucket
 from app.models.coach import Race
 from app.models.gym import Exercise, Workout, WorkoutSet
 from app.models.running import Activity
+from app.services import abilities as ab
 from app.services.run_analysis import RUN_TYPES
 from app.timeutils import local_date, today
 
@@ -177,6 +178,7 @@ def load(session: Session, on: dt.date | None = None) -> BucketState:
     states = [ItemState(item, steps.get(item.id or 0, [])) for item in items]
 
     pending: list[ItemState] = []
+    learned = ab.first_days(session, on)
     for state in states:
         item = state.item
         if item.done_before_app:
@@ -187,6 +189,13 @@ def load(session: Session, on: dt.date | None = None) -> BucketState:
             pending.append(state)  # needs the other items' countries first
         elif found := _auto(session, item, on):
             state.done_on, state.source, state.auto_label = found[0], "auto", found[1]
+        elif (
+            item.category == BucketCategory.skill
+            and not item.auto_rule
+            and (found := learned.get(ab.ability_key(item.title)))
+        ):
+            # A dovednost of the same name logged in the routine (E37)
+            state.done_on, state.source, state.auto_label = found[0], "auto", f"Dovednost: {found[1]}"
 
     countries = _countries(session, states)
     continents = _continents(countries)

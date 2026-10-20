@@ -164,3 +164,30 @@ def test_new_ability_pays_mind_once_also_on_paused_days(empty: Session) -> None:
 
     assert new == [(d(5), 25, "Nová dovednost: Lezení"), (d(14), 25, "Nová dovednost: Keramika")]
     assert ledger.skills["mind"].xp >= 50
+
+
+def test_same_named_dovednost_completes_a_skill_bucket_item(empty: Session) -> None:
+    from app.models.bucket import BucketItem
+    from app.services import bucket as bk
+
+    habit = add_habit(empty, frequency="weekly")
+    empty.add(BucketItem(title="Lezení", category="skill", rarity=2))
+    empty.add(BucketItem(title="Lezení", category="sport", rarity=2))  # other categories are left alone
+    empty.commit()
+    empty.add(HabitLog(habit_id=habit.id, date=today(), ability_id=ab.find_or_create(empty, "Lezení").id))
+    empty.commit()
+
+    states = {(s.item.category, s.item.title): s for s in bk.load(empty, today()).items}
+
+    skill = states[("skill", "Lezení")]
+    assert (skill.source, skill.done_on, skill.auto_label, skill.xp) == ("auto", today(), "Dovednost: Lezení", 150)
+    assert states[("sport", "Lezení")].source is None
+
+
+def test_resolve_for_the_coach(empty: Session) -> None:
+    ab.find_or_create(empty, "Lezení")
+    empty.commit()
+
+    assert ab.resolve(empty, "LEZENI")[0].name == "Lezení"
+    assert ab.resolve(empty, "Lezeni na skalach") == (None, ["Lezení"])
+    assert ab.resolve(empty, "Keramika") == (None, [])
