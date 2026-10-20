@@ -1,8 +1,8 @@
 # Review: progressive overload spec (2026-10-20)
 
 Source: `docs/overload-module-spec.md` (the user's spec, Czech). It revises E33 (targets v1), which is built and
-verified on dev (`services/overload.py`, migration 0019) but **not deployed**. Nothing below is accepted yet: the
-decisions at the end are open.
+verified on dev (`services/overload.py`, migration 0019) but **not deployed**. **Accepted 2026-10-20 (E35): the user took
+every recommendation below.**
 
 ## Verdict
 The spec is sound and fits the project's rules: deterministic, explainable rules, unknown ≠ 0, history never

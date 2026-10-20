@@ -1,8 +1,8 @@
 # Zadání pro coding agenta: Progressive Overload a doporučování tréninku
 
 > **Status:** original spec provided by the user on 2026-10-20 (in Czech), saved verbatim (only Markdown
-> headings and lists restored). Not accepted as-is: the critique, the mapping onto the current data model and the
-> decisions it needs are in `docs/overload-spec-review-2026-10-20.md`. It revises the first version of the
+> headings and lists restored). Accepted with the defaults and changes of `docs/overload-spec-review-2026-10-20.md`
+> (decision E35), which wins where they differ. It revises the first version of the
 > targets (E33, `docs/PROGRESS.md`), which was built on dev but not deployed.
 
 ## 1. Cíl
