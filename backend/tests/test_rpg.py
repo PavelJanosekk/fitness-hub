@@ -183,7 +183,15 @@ def test_idle_skill_rusts_weekly_and_pause_freezes_it(empty: Session) -> None:
 def test_character_lists_all_skills(client: TestClient, empty: Session) -> None:
     skills = client.get("/api/rpg/character").json()["skills"]
 
-    assert [s["key"] for s in skills] == ["strength", "endurance", "nutrition", "discipline", "mind", "home"]
+    assert [s["key"] for s in skills] == [
+        "strength",
+        "endurance",
+        "nutrition",
+        "discipline",
+        "mind",
+        "home",
+        "adventure",
+    ]
     assert all(s["level"] >= 1 and s["next_level_xp"] > s["level_start_xp"] for s in skills)
 
 

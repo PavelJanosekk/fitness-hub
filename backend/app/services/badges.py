@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from sqlmodel import Session
 
 from app.models.habits import HabitFrequency
+from app.services import bucket as bk
 from app.services import habits as hs
 from app.services import quests as qs
 from app.services.rpg import Ledger
@@ -147,7 +148,69 @@ def compute_badges(session: Session, ledger: Ledger, board: list[hs.HabitDays], 
         unlocked = next((day for lvl, day in sorted(reached.items()) if lvl >= level), None)
         result.append(Badge(f"level_{level}", f"Level {level}", f"Dosáhni levelu {level}", unlocked))
 
+    result.extend(_bucket_badges(bk.load(session, on)))
+
     for badge in result:
         if badge.unlocked_on:
             badge.progress = None
+    return result
+
+
+def _bucket_badges(state: bk.BucketState) -> list[Badge]:
+    """Bucket list (E36): items done before the app count from the day they were added (B6)."""
+    done = [s for s in state.items if s.done]
+    days = [bk.counted_on(s) for s in done]
+    result = [Badge("bucket_first", "První odškrtnutí", "První splněná položka bucket listu", min(days, default=None))]
+    for n in (10, 25, 50, 100):
+        result.append(
+            Badge(
+                f"bucket_{n}",
+                f"{n} zážitků",
+                f"{n} splněných položek bucket listu",
+                _nth(days, n),
+                f"{len(days)} / {n}",
+            )
+        )
+    legendary = [bk.counted_on(s) for s in done if s.item.rarity == 4]
+    result.append(Badge("bucket_legendary", "Legenda", "Splněná legendární položka", min(legendary, default=None)))
+    for key, title, category, n in (
+        ("gourmet", "Gurmán", "food", 20),
+        ("adrenaline", "Adrenalinový junkie", "adrenaline", 5),
+    ):
+        hits = [bk.counted_on(s) for s in done if s.item.category == category]
+        description = f"{n} splněných položek v kategorii {bk.CATEGORY_NAMES[category]}"
+        result.append(Badge(key, title, description, _nth(hits, n), f"{len(hits)} / {n}"))
+    countries = [c.since for c in state.countries]
+    result.append(
+        Badge("countries_10", "Cestovatel", "10 zemí na mapě světa", _nth(countries, 10), f"{len(countries)} / 10")
+    )
+    first: dict[str, dt.date] = {}
+    for c in state.countries:
+        if c.continent:
+            first[c.continent] = min(first.get(c.continent, c.since), c.since)
+    continents = list(first.values())
+    result.append(
+        Badge(
+            "continents_7",
+            "Všech 7 kontinentů",
+            "Navštívené všechny kontinenty",
+            _nth(continents, 7),
+            f"{len(continents)} / 7",
+        )
+    )
+    years: dict[int, list[dt.date]] = {}
+    for s in done:
+        if s.xp and s.done_on:
+            years.setdefault(s.done_on.year, []).append(s.done_on)
+    reached = [d for ds in years.values() if (d := _nth(ds, bk.YEAR_QUEST_ITEMS))]
+    best = max((len(ds) for ds in years.values()), default=0)
+    result.append(
+        Badge(
+            "bucket_year",
+            "Rok dobrodružství",
+            f"{bk.YEAR_QUEST_ITEMS} položek bucket listu za jeden rok",
+            min(reached, default=None),
+            f"nejvíc {best} / {bk.YEAR_QUEST_ITEMS}",
+        )
+    )
     return result

@@ -113,6 +113,11 @@ EXERCISES: list[tuple[str, MuscleGroup, str | None]] = [
     ("Russian Twist", M.core, "bodyweight"),
     ("Side Plank", M.core, "bodyweight"),
     ("Pallof Press (Cable)", M.core, "cable"),
+    # --- Calisthenics skills from the bucket list (E36): logging a set completes the item ---
+    ("Muscle Up", M.back, "bodyweight"),
+    ("L-Sit", M.core, "bodyweight"),
+    ("Handstand", M.shoulders, "bodyweight"),
+    ("Planche", M.shoulders, "bodyweight"),
 ]
 
 

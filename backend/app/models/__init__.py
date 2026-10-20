@@ -21,6 +21,7 @@ from app.models.body import (  # noqa: E402
     HealthSourceStatus,
     StepBucket,
 )
+from app.models.bucket import BucketItem, BucketStep, VisitedCountry  # noqa: E402
 from app.models.chat import ChatConversation, ChatMessage  # noqa: E402
 from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingDay, TrainingWeek  # noqa: E402
 from app.models.gym import Exercise, Workout, WorkoutSet, WorkoutTemplate  # noqa: E402
@@ -45,6 +46,8 @@ __all__ = [
     "ActivityMetrics",
     "ActivityStream",
     "AthleteProfile",
+    "BucketItem",
+    "BucketStep",
     "ChatConversation",
     "ChatMessage",
     "CoachDocument",
@@ -71,6 +74,7 @@ __all__ = [
     "TrainingDay",
     "TrainingPlanItem",
     "TrainingWeek",
+    "VisitedCountry",
     "Workout",
     "WorkoutSet",
     "WorkoutTemplate",

@@ -10,7 +10,19 @@ from sqlmodel import Session
 
 from app.config import settings
 from app.database import SessionDep, engine
-from app.routers import ai_coach, coach_kb, habits, integrations, metrics, nutrition, rpg, running, webhooks, workouts
+from app.routers import (
+    ai_coach,
+    bucket,
+    coach_kb,
+    habits,
+    integrations,
+    metrics,
+    nutrition,
+    rpg,
+    running,
+    webhooks,
+    workouts,
+)
 from app.services import scheduler
 from app.services.nutrition import kt_import
 from app.spa import mount_spa
@@ -34,7 +46,7 @@ def resume_kt_import() -> None:
 
 
 app = FastAPI(title="Fitness Hub", lifespan=lifespan)
-for module in (ai_coach, coach_kb, habits, integrations, metrics, nutrition, rpg, running, webhooks, workouts):
+for module in (ai_coach, bucket, coach_kb, habits, integrations, metrics, nutrition, rpg, running, webhooks, workouts):
     app.include_router(module.router)
 
 

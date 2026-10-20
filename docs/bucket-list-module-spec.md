@@ -1,7 +1,9 @@
 # Bucket list module (+ Hrdina tab)
 
-Status: **draft, decisions B1–B8 pending** (backlog D5; side quests D6 come later). Numbers marked *(tune)* are
-starting values.
+Status: **accepted 2026-10-20 (E36)**: B1–B5, B7, B8 as recommended; **B6: no retroactive XP**; every idea 1–11
+wanted (auto-complete must announce itself with a modal, not happen silently). Backlog D5; side quests D6 later
+(the user: quick ones for a spare moment, longer ones for a weekend / month). Numbers marked *(tune)* are starting
+values.
 
 ## Goal (user, 2026-10-20)
 - A bucket list in the app: add / remove / edit items, categories (travel, fitness, …), a difficulty.
@@ -100,3 +102,24 @@ Dobrovolnictví 2 · Překonat celoživotní strach 3
 **Side-quest pool (D6, not in the bucket list):** the 110 *Výlety – Tipy* rows (name, drive time / km, link) as sent.
 
 The user's original list is saved verbatim in `data/imports/bucket_list_2026-10-20.csv` (gitignored, main checkout).
+
+## Implementation (E36)
+Phase 8 in `docs/PROGRESS.md`. Rules as built (`services/bucket.py`, `/api/bucket`, migration 0022):
+- **Tables:** `bucket_items` (fields of B2 plus `season`, `cost` 1–3, `year_goal` (year), `rating` 1–5, `memory`,
+  `auto_rule` / `auto_exercise_id` / `auto_threshold`, `country_codes` (ISO alpha-2, JSONB), `lat` / `lon`),
+  `bucket_steps` (milestones), `visited_countries` (map; CZ seeded as home). The migration seeds the 132 items above
+  and adds the exercises Muscle Up, L-Sit, Handstand, Planche (also in `app.seed`).
+- **State is live:** done = `done_before_app`, else `done_on` (by hand), else the auto rule's first day:
+  marathon = a run >= 42 km, or >= 40 km on a race day; exercise = a completed set of it; hike = Hike / Walk with
+  elevation gain >= threshold (1 000 m); continents = visited continents >= threshold (7). Countries = map rows plus
+  the codes of completed items; continents from `app/data/continents.py` (Natural Earth 1:50m, public domain).
+- **XP** (skill Dobrodružství, kinds `bucket*`): rarity 50 / 150 / 400 / 1 000 on the completion day; +50 % for a
+  starred year goal done in its year; 25 per finished step; 5 paying items in a calendar year +500 once. Nothing for
+  `done_before_app` or completions more than 7 days before the item was added (B6). Bucket XP also counts on paused
+  days; Dobrodružství never rusts. Un-ticking removes the XP (the ledger is live).
+- **Badges:** first item, 10 / 25 / 50 / 100 items, legendary item, Gurmán (20 food), Adrenalinový junkie (5),
+  Cestovatel (10 countries), all 7 continents, Rok dobrodružství (5 in a year). Items done before the app count from
+  the day they were added.
+- **World map data:** `frontend/public/world-110m.json` (Natural Earth 1:110m, coordinates rounded to 0.01°,
+  properties `c` = ISO code, `k` = continent; 172 kB, 55 kB gzipped). Small countries missing at that scale are added
+  from a list (all 237 codes come with the board).

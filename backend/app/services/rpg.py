@@ -21,6 +21,9 @@ Debuffs (7.5):
 Skills (7.2): every entry is attributed to skills (`XpEntry.skills`). A skill that gained nothing for
 RUST_START_DAYS rusts: from RUST_LOSS_DAYS on it loses RUST_SHARE of its XP every week (a ledger entry, so the total
 and the level drop too); paused days and days before the routine's first day don't count as idle.
+
+Bucket list (E36, services/bucket.py): completed items, steps and the yearly bonus feed the Dobrodružství skill. They
+also count on paused days (a holiday is when bucket-list things happen), and Dobrodružství never rusts.
 """
 
 import datetime as dt
@@ -35,6 +38,7 @@ from app.models.habits import HabitFrequency
 from app.models.nutrition import MealLog, NutritionProfile
 from app.models.rpg import RpgPause
 from app.models.running import Activity
+from app.services import bucket as bk
 from app.services import habits as hs
 from app.services import quests as qs
 from app.services.metrics import intake_by_day
@@ -75,7 +79,9 @@ SKILLS = [
     ("discipline", "Disciplína", "rutina, perfektní dny, spánek"),
     ("mind", "Mysl", "návyky Mysl"),
     ("home", "Domov", "návyky Domov"),
+    ("adventure", "Dobrodružství", "bucket list"),
 ]
+NO_RUST = {"adventure"}  # fed by rare events, not by training
 SKILL_NAMES = {key: name for key, name, _ in SKILLS}
 KIND_SKILL = {
     "gym": "strength",
@@ -92,6 +98,7 @@ KIND_SKILL = {
     "tired": "discipline",
 }
 HABIT_SKILL_NAMES = {"body": "Tělo", "nutrition": "Výživa", "home": "Domov", "discipline": "Disciplína", "mind": "Mysl"}
+BUCKET_KINDS = {"bucket", "bucket_goal", "bucket_step", "bucket_year"}
 TITLES = [
     (1, "Učeň"),
     (5, "Poutník"),
@@ -286,21 +293,12 @@ def _track_skills(
     Like every penalty, rust only exists once the RPG does (`rust_from` = the routine's first day): idle days before
     it are not counted, so old breaks in the training history never cost anything.
     """
-    gained: set[str] = set()
-    for entry in entries:
-        attribution = entry.skills or ({KIND_SKILL[entry.kind]: entry.amount} if entry.kind in KIND_SKILL else {})
-        entry.skills = attribution
-        for key, amount in attribution.items():
-            state = skills.setdefault(key, SkillState(key))
-            state.xp += amount
-            if amount > 0:
-                gained.add(key)
+    gained = _credit_skills(skills, entries, day)
     rust: list[XpEntry] = []
     for key, state in skills.items():
         if key in gained:
-            state.last_gain, state.idle_days = day, 0
             continue
-        if state.last_gain is None or rust_from is None or day < rust_from:
+        if state.last_gain is None or rust_from is None or day < rust_from or key in NO_RUST:
             continue  # never trained, or before the RPG existed: nothing to rust
         state.idle_days += 1
         idle = state.idle_days
@@ -310,6 +308,21 @@ def _track_skills(
             text = f"Rezavění: {SKILL_NAMES[key]} ({idle} dní bez XP)"
             rust.append(XpEntry(day, -loss, "rust", text, {key: -loss}))
     return rust
+
+
+def _credit_skills(skills: dict[str, SkillState], entries: list[XpEntry], day: dt.date) -> set[str]:
+    """Adds the entries' XP to their skills; returns the skills that gained."""
+    gained: set[str] = set()
+    for entry in entries:
+        attribution = entry.skills or ({KIND_SKILL[entry.kind]: entry.amount} if entry.kind in KIND_SKILL else {})
+        entry.skills = attribution
+        for key, amount in attribution.items():
+            state = skills.setdefault(key, SkillState(key))
+            state.xp += amount
+            if amount > 0:
+                gained.add(key)
+                state.last_gain, state.idle_days = day, 0
+    return gained
 
 
 def quest_skills(quest: "qs.Quest") -> dict[str, int]:
@@ -362,6 +375,8 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
         first = min((p[0] for p in pauses), default=on)
         paused, forgiven = hs.exceptions([], list(pauses), first, on)
     gains = _gains_by_day(session, board, on)
+    for gain in bk.gains(bk.load(session, on), on):
+        gains[gain.date].append(XpEntry(gain.date, gain.amount, gain.kind, gain.text, {bk.SKILL: gain.amount}))
     ledger = Ledger(forgiven=forgiven, paused_today=on in paused)
     if not gains and not board:
         return ledger
@@ -392,6 +407,7 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
         if day in paused:
             if day - dt.timedelta(days=1) not in paused:
                 entries.append(XpEntry(day, 0, "pause", "Pauza: dny se nepočítají"))
+            entries.extend(e for e in gains.get(day, []) if e.kind in BUCKET_KINDS)
         else:
             day_gains = gains.get(day, [])
             entries.extend(day_gains)
@@ -448,6 +464,8 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
 
         if day not in paused:
             entries.extend(_track_skills(ledger.skills, entries, day, routine_start))
+        else:
+            _credit_skills(ledger.skills, entries, day)
 
         total += sum(e.amount for e in entries)
         new_level = level_of(total)
