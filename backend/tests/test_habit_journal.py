@@ -191,3 +191,36 @@ def test_resolve_for_the_coach(empty: Session) -> None:
     assert ab.resolve(empty, "LEZENI")[0].name == "Lezení"
     assert ab.resolve(empty, "Lezeni na skalach") == (None, ["Lezení"])
     assert ab.resolve(empty, "Keramika") == (None, [])
+
+
+def coach_tools(session: Session) -> dict:
+    from app.services.ai_tools import ToolContext, build_coach_tools
+
+    now = dt.datetime(2026, 10, 18, 9, 0, tzinfo=dt.UTC)
+    return {fn.__name__: fn for fn in build_coach_tools(ToolContext(session=session, now=now))}
+
+
+def test_coach_saves_an_entry_and_asks_about_a_similar_dovednost(empty: Session) -> None:
+    from google.genai import _extra_utils
+
+    habit = add_habit(empty)
+    ab.find_or_create(empty, "Lezení")
+    empty.commit()
+    tools = coach_tools(empty)
+    args = {"habit_titles": [habit.title], "note": "Stěna Lezec", "rating": 5, "ability": "lezeni"}
+
+    result = _extra_utils.invoke_function_from_dict_args(args, tools["set_habits_done"])
+    assert result["entry_saved"] == {"note": "Stěna Lezec", "rating": 5, "ability": "Lezení"}
+
+    similar = tools["set_habits_done"](habit_titles=[habit.title], date="2026-10-17", ability="Lezení na skalách")
+    assert similar["ability_not_saved"] == {"input": "Lezení na skalách", "similar": ["Lezení"]}
+    assert empty.get(HabitLog, (habit.id, d(17))).ability_id is None  # ticked, no dovednost
+    forced = tools["set_habits_done"](
+        habit_titles=[habit.title], date="2026-10-17", ability="Lezení na skalách", ability_is_new=True
+    )
+    assert forced["entry_saved"]["ability"] == "Lezení na skalách"
+    assert "error" in tools["set_habits_done"](habit_titles=[habit.title, "x"], note="a")
+
+    listed = tools["get_abilities"]()["abilities"]
+    assert [(a["name"], a["times"]) for a in listed] == [("Lezení", 1), ("Lezení na skalách", 1)]
+    assert listed[0]["latest"] == [{"date": "2026-10-18", "habit": habit.title, "note": "Stěna Lezec", "rating": 5}]

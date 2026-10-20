@@ -24,6 +24,7 @@ from app.models.habits import Habit, HabitFrequency, HabitLog
 from app.models.running import Activity, ActivityMetrics, TrainingPlanItem
 from app.schemas.body import MetricUpsert
 from app.schemas.nutrition import QuickAdd
+from app.services import abilities as abilities_svc
 from app.services import bucket as bucket_svc
 from app.services import habits as habit_svc
 from app.services.coach_kb import plan_weeks, read_document
@@ -78,6 +79,9 @@ def exercise_catalog(session: Session) -> str:
     return "\n".join(f"- {e.name} [{e.muscle_group}]" for e in exercises)
 
 
+LOG_MODE_LABELS = {"note": ", s poznámkou a dovedností", "review": ", s hodnocením 1-5, poznámkou a dovedností"}
+
+
 def habit_catalog(session: Session) -> str:
     """'Title [frequency]' lines of the active habits for the system prompt, so the model uses exact titles."""
     habits = session.exec(
@@ -88,7 +92,8 @@ def habit_catalog(session: Session) -> str:
         kind = "denně" if h.frequency == HabitFrequency.daily else f"týdně {h.weekly_target}×"
         extra = ", bonus" if h.is_bonus else ""
         auto = ", plní se i automaticky z dat" if h.auto_rule else ""
-        lines.append(f"- {h.title} [{kind}{extra}{auto}]")
+        mode = LOG_MODE_LABELS.get(h.log_mode, "")
+        lines.append(f"- {h.title} [{kind}{extra}{auto}{mode}]")
     return "\n".join(lines)
 
 
@@ -573,14 +578,30 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
             ),
         }
 
-    def set_habits_done(habit_titles: list[str], done: bool = True, date: str | None = None) -> dict[str, Any]:
+    def set_habits_done(
+        habit_titles: list[str],
+        done: bool = True,
+        date: str | None = None,
+        note: str | None = None,
+        rating: int | None = None,
+        ability: str | None = None,
+        ability_is_new: bool = False,
+    ) -> dict[str, Any]:
         """Tick (or untick) habits of the user's routine, e.g. "ustlal jsem a vzal kreatin". Only exact titles
         are saved; anything else is returned with candidates and NOT saved, so ask the user which one they meant.
+        Habits marked "s poznámkou" / "s hodnocením" take an entry: what the user did (note), stars and the
+        dovednost (skill) it was, e.g. "zkusil jsem lezení, super, 5 hvězd" -> note, rating=5, ability="Lezení".
 
         Args:
-            habit_titles: Exact habit titles from the routine list.
+            habit_titles: Exact habit titles from the routine list. Only one title when note / rating / ability
+                is given.
             done: True ticks, False unticks (for a weekly habit it unticks the whole week).
             date: Day as YYYY-MM-DD; omit for today. For a weekly habit any day of that week.
+            note: Short Czech note of what the user did or tried.
+            rating: Stars 1-5, only when the user rated it.
+            ability: The dovednost, a short noun ("Lezení", "Keramika"). A name like an existing one but not the
+                same is not saved: the candidates come back, ask the user.
+            ability_is_new: True only after the user confirmed that a similar-looking name is a new dovednost.
         """
         try:
             day = dt.date.fromisoformat(date) if date else today(ctx.now)
@@ -588,6 +609,24 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
             return {"error": f"Invalid date {date!r}, use YYYY-MM-DD"}
         if day > today(ctx.now):
             return {"error": "Cannot tick a future day"}
+        content: dict[str, Any] = {}
+        if note is not None or rating is not None or ability is not None:
+            if len(habit_titles) != 1 or not done:
+                return {"error": "note / rating / ability need exactly one habit title and done=True"}
+            if rating is not None and not 1 <= rating <= 5:
+                return {"error": "rating must be 1-5"}
+            if note is not None:
+                content["note"] = note[:2000]
+            if rating is not None:
+                content["rating"] = rating
+        ability_candidates: list[str] = []
+        if ability and ability.strip():
+            match, ability_candidates = abilities_svc.resolve(session, ability)
+            if match is not None:
+                content["ability"] = match.name
+            elif not ability_candidates or ability_is_new:
+                ability_candidates = []
+                content["ability"] = ability.strip()[: abilities_svc.MAX_NAME]
         saved, unmatched = [], []
         for title in habit_titles:
             habit, candidates = habit_svc.resolve_habit(session, title)
@@ -608,9 +647,14 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
                 if done and day < habit.start_date:
                     habit.start_date = day
                     session.add(habit)
-                habit_svc.set_day(session, habit, day, done)
+                habit_svc.set_day(session, habit, day, done, content)
             saved.append(habit.title)
         result: dict[str, Any] = {"date": day.isoformat(), "done": done, "saved": saved}
+        if saved and content:
+            result["entry_saved"] = content
+        if ability_candidates:
+            result["ability_not_saved"] = {"input": ability, "similar": ability_candidates}
+            result["ability_message"] = "The dovednost was not saved: ask if it is one of `similar` or a new one."
         if unmatched:
             result["not_saved"] = unmatched
             result["message"] = "Titles in not_saved did not match exactly and were not saved."
@@ -672,6 +716,36 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
                 "xp_changes_last_7_days": recent,
             }
         )
+
+    def get_abilities(entries_per_ability: int = 3) -> dict[str, Any]:
+        """The user's Dovednosti: abilities the hero picked up through the routine ("Vyzkoušet jednu novou věc",
+        "Učit se novou dovednost"), each with how many times, first / last day, level and the latest notes and
+        stars. Use it for questions like "co nového jsem letos zkusil?" or to suggest what to try next.
+
+        Args:
+            entries_per_ability: How many of the latest entries to return per dovednost (0-10).
+        """
+        keep = max(0, min(entries_per_ability, 10))
+        rows = []
+        for state in abilities_svc.load(session, today(ctx.now)):
+            _, level_name = abilities_svc.level_of(state.count)
+            latest = [
+                _compact({"date": e.date.isoformat(), "habit": e.habit_title, "note": e.note, "rating": e.rating})
+                for e in reversed(state.entries[-keep:] if keep else [])
+            ]
+            rows.append(
+                _compact(
+                    {
+                        "name": state.ability.name,
+                        "times": state.count,
+                        "first": state.first_on.isoformat() if state.first_on else None,
+                        "last": state.last_on.isoformat() if state.last_on else None,
+                        "level": level_name if state.count else None,
+                        "latest": latest or None,
+                    }
+                )
+            )
+        return {"today": today(ctx.now).isoformat(), "abilities": rows}
 
     def get_bucket_list(category: str | None = None, status: str = "open") -> dict[str, Any]:
         """The user's bucket list (lifelong things to experience): items with category, rarity and the XP they pay,
@@ -777,6 +851,7 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
         get_habit_summary,
         set_habits_done,
         get_rpg_status,
+        get_abilities,
         get_bucket_list,
         complete_bucket_items,
     ]
