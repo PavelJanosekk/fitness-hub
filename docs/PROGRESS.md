@@ -9,7 +9,7 @@
 5. Phase 5 done except deferred barcode scanning. **E30 smart dish lookup live on prod** (2026-10-19); next: the user tries it on real dishes (watch whether DuckDuckGo blocks the server). The user starts the KT history import in Nastavení (prod). The user still has to put the KT credentials into `.env` before 5.5.
 6. **E34 races managed in the app** (2026-10-19): live on prod since 2026-10-20 (deployed together with E35, migration 0020).
 7. **E35 progressive overload v2 live on prod** (2026-10-20, together with E33's columns and E34 races; migrations 0019–0021). Next: the user tries the targets on real workouts (bench next: 40 × 7, 6). Phase C later: fatigue hints beyond the drop text, the muscle-group overview (scenario 11), rest-based comparability.
-8. **E36 bucket list + Hrdina tab (Phase 8) on dev** (2026-10-20): all of 8.1–8.5 done and verified; dev DB migrated to 0022. **Not deployed:** waiting for the user to try it on dev (:8443) and ask for the deploy (backup first, migration 0022).
+8. **E36 bucket list + Hrdina tab (Phase 8) live on prod** (2026-10-20, migration 0022). Next: the user tries it on the iPhone; side quests (D6) are the follow-up.
 **Stacks:** prod `docker compose …` → http://127.0.0.1:8010 (`fitness-hub-app-1`, `-db-1`, `-backup-1`); dev `./dev …` → backend http://127.0.0.1:8020, Vite :5173. Ops guide: `docs/operations.md`.
 **Git:** work happens on the `dev` branch. Commit after each verified step. `master` stays at the initial spec until merged. Never commit `.env` or `data/`.
 
@@ -165,7 +165,7 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - [x] 8.3 Completion modal (global watcher: auto, coach and manual completions), year goals strip + year quest, dice
 - [x] 8.4 Coach tools (`get_bucket_list`, `complete_bucket_items`) + prompt rule
 - [x] 8.5 World scratch map + map of trips, hall of fame
-- [ ] 8.6 Verify in all themes ✅ (minimal, zen, modern; `vite build` ok, precache 74 entries), deploy (backup first) — waits for the user
+- [x] 8.6 Verify in all themes (minimal, zen, modern; `vite build` ok, precache 74 entries), deploy (backup first)
 
 ## Backlog (ideas, not accepted)
 - D1 `Exercise.secondary_muscles` for better volume analysis
@@ -314,3 +314,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-20 (10):** 8.4 coach: tools `get_bucket_list(category, status)` and `complete_bucket_items(titles, date, memory)` (exact titles only, others come back with candidates), the open titles as one line in the coach prompt, a prompt rule (log completions, suggest items that fit the plan, nothing risky in race week), Kouč refreshes the bucket board after a completion so the watcher announces it. 371 tests (the SDK conversion test covers the new signatures). No live Gemini call (free quota).
 - **2026-10-20 (11):** 8.5: `/hero/bucket/map` (lazy chunk with Leaflet): **Svět** = scratch map from `world-110m.json` without tiles (visited = accent, countries of open items = amber, tap a country → *Jsem tu teď* / *Byl jsem dřív* / remove; continents chips; add any country from a searchable list for the small ones; visited list with dates and the items behind them), **Výpravy** = OSM map with the items that have coordinates (rarity colours, done ringed, home marker, tap → the item); `/hero/bucket/fame` **Síň slávy** (timeline by year with rarity, XP, stars, memory, auto evidence; items done before the app as chips). Tool row on the bucket list (Kostka osudu, Mapa, Síň slávy). Leaflet's light container background is overridden so the ocean follows the theme. The PWA precache now includes json (the world map works offline). Checked in headless Chrome in minimal and zen.
 - **2026-10-20 (12):** 8.6 checks: production `vite build` ok (bucket chunks 12–14 kB, Leaflet stays in its own chunk), screenshots of the bucket list in modern and of Postava. Isolated stack and its DBs (`fitness_bucket`, `_test`) removed. Gotcha: fast-forwarding `dev` with a new migration makes the shared dev backend (auto-reload on the main checkout) 500 on `/api/rpg/*` until `./dev exec app alembic upgrade head` runs; done right after 8.1.
+- **2026-10-20 (13):** E36 deployed to prod at the user's request (backup `data/backups/manual-pre-0022-2026-10-20-1130.dump`, 0022 migrated, health ok, no tracebacks): 132 items / 34 done / 0 XP, 6 countries, 2 continents, the four skill exercises linked, level 12 with the Dobrodružství skill, `/hero/bucket` and `world-110m.json` served.
