@@ -69,6 +69,7 @@
 | O6 | ✅ `tailscale serve` (E13) | Phase 4 |
 | O7 | ✅ Habits module decisions H1–H4 → E20 | Before the habits module |
 | O8 | ✅ Progressive overload v2: every recommendation accepted → E35 | Before rules v2 |
+| O9 | Bucket list + Hrdina tab: decisions B1–B8 in `docs/bucket-list-module-spec.md` | Before the bucket list |
 
 ## Phase checklist
 
@@ -163,7 +164,7 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - KT weight history import earlier than Phase 5 (declined for now in E9)
 - Switch iPhone steps from the iOS Shortcut to the Life Dashboard Companion iOS app once it reaches TestFlight or the App Store (receiver already supports `healthkit_ios`)
 - D4 Frontend test runner (vitest) with the offline-sync cases from the 2026-10-17 harness (outage, 502, 4xx, reopen mid-retry)
-- D5 **Bucket list** (user request 2026-10-20): track the user's bucket-list items. No importer needed: the user pastes the list once and it is filled in via AI (one-time seed, like the habits seed). Item format and fields (category, status, done date, notes…) to be decided at implementation.
+- D5 **Bucket list** (user request 2026-10-20): now drafted in `docs/bucket-list-module-spec.md` (O9); the user's list is in `data/imports/bucket_list_2026-10-20.csv`.
 - D6 **Side quests** (user request 2026-10-20): the user's personal to-do list of projects ("learn X", "do Y", "build Z"), seeded once from the user's list the same way as D5. Tie it into **Rutina** (e.g. a weekly task) and the **RPG / Hrdina** layer: one side quest has to be completed every week (a weekly quest with XP reward / penalty). Exact rules to be decided at implementation.
 
 ## Session log
@@ -295,3 +296,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-20 (3):** Deployed dev to prod at the user's request (backup `data/backups/manual-pre-0021-2026-10-20-0759.dump`; prod was at 0018, so 0019 E33, 0020 E34 races and 0021 E35 ran on start). Health ok, no tracebacks; prod bench target 40 × 7, 6 (*+1 opakování*, first set); the new GymLogger chunk is served.
 - **2026-10-20 (4):** Gym finish sheet (user request): when some sets are unticked it offers **Potvrdit zbylé a uložit N** (ticks every unticked set that has reps, then finishes) or **Zahodit zbylé a uložit M**; sets without reps are always dropped. Frontend only. Verified in headless Chrome on dev (both paths, server sets checked), deployed to prod.
 - **2026-10-20 (5):** Active workout: swipe a set left to reveal a red trash button (`components/gym/SwipeToDelete.tsx`); tapping it, a second left swipe or one long swipe deletes the set (completed ones on the server too). Verified with real touch events in headless Chrome on dev, deployed to prod.
+- **2026-10-20 (6):** User asked to start the bucket list: the Rutina tab becomes Hrdina with sub-tabs (Rutina, Bucket list, later side quests), categories, difficulty, bonus XP, add / remove in the app, and sent their list (~260 rows). Drafted `docs/bucket-list-module-spec.md` (decisions B1–B8, ideas, cleaned seed mapping: Czech titles, merged duplicates, 34 items done before the app; the 110 day trips held for side quests). Original saved verbatim in `data/imports/`. Waiting for decisions (O9).
