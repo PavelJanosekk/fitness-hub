@@ -32,6 +32,7 @@ import { ExercisePicker } from "../components/gym/ExercisePicker";
 import { ExerciseSheet } from "../components/gym/ExerciseSheet";
 import { AddSetButton, SetLabel, TableHeader, cellInput, selectAll } from "../components/gym/SetTable";
 import { PrBadges } from "../components/gym/PersonalRecords";
+import { SwipeToDelete } from "../components/gym/SwipeToDelete";
 import { SetMeta, TargetLine, TargetSheet, asTarget, kgText } from "../components/gym/Target";
 import { TemplateDetail } from "../components/gym/TemplateDetail";
 import { TemplateEditor } from "../components/gym/TemplateEditor";
@@ -530,10 +531,11 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
     update(workout.exercises.map((e, i) => (i === exerciseIndex ? { ...e, sets: [...e.sets, set] } : e)));
   };
 
-  const removeSet = (exerciseIndex: number, setIndex: number) => {
-    const set = workout.exercises[exerciseIndex].sets[setIndex];
-    if (set.completed) sync.deleteSet({ setId: set.id });
-    update(workout.exercises.map((e, i) => (i === exerciseIndex ? { ...e, sets: e.sets.filter((_, j) => j !== setIndex) } : e)));
+  // By id and on the stored workout: a swiped row is removed only after its animation, when this render may be stale
+  const removeSet = (setId: string) => {
+    const set = workout.exercises.flatMap((e) => e.sets).find((s) => s.id === setId);
+    if (set?.completed) sync.deleteSet({ setId });
+    patchActiveWorkout((w) => ({ ...w, exercises: w.exercises.map((e) => ({ ...e, sets: e.sets.filter((s) => s.id !== setId) })) }));
   };
 
   const addExercise = async (exercise: Exercise) => {
@@ -657,16 +659,18 @@ function ActiveWorkoutView({ workout }: { workout: ActiveWorkout }) {
               <div className="space-y-1">
                 {exercise.sets.map((set, setIndex) => (
                   <Fragment key={set.id}>
-                    <SetRow
-                      index={setIndex}
-                      set={set}
-                      types={exercise.sets.map((x) => x.set_type)}
-                      ghost={exercise.last?.sets[setIndex]}
-                      onChange={(patch) => changeSet(exerciseIndex, setIndex, patch)}
-                      onCommit={(patch, weightBefore) => commitSet(exerciseIndex, setIndex, patch, weightBefore)}
-                      onToggle={() => toggleComplete(exerciseIndex, setIndex)}
-                      onRemove={() => removeSet(exerciseIndex, setIndex)}
-                    />
+                    <SwipeToDelete label={`Smazat sérii ${setIndex + 1}`} onDelete={() => removeSet(set.id)}>
+                      <SetRow
+                        index={setIndex}
+                        set={set}
+                        types={exercise.sets.map((x) => x.set_type)}
+                        ghost={exercise.last?.sets[setIndex]}
+                        onChange={(patch) => changeSet(exerciseIndex, setIndex, patch)}
+                        onCommit={(patch, weightBefore) => commitSet(exerciseIndex, setIndex, patch, weightBefore)}
+                        onToggle={() => toggleComplete(exerciseIndex, setIndex)}
+                        onRemove={() => removeSet(set.id)}
+                      />
+                    </SwipeToDelete>
                     {set.completed && (
                       <SetMeta
                         set={set}
