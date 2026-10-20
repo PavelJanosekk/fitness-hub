@@ -4,7 +4,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from app.models.gym import MuscleGroup, SetType
+from app.models.gym import MuscleGroup, ProgressionStrategy, SetRole, SetType
 
 
 class ORMModel(BaseModel):
@@ -22,6 +22,8 @@ class ProgressionSettings(BaseModel):
     rep_max: int | None = Field(default=None, ge=1, le=50)
     weight_step: float | None = Field(default=None, gt=0, le=50)
     sets_max: int | None = Field(default=None, ge=1, le=10)
+    target_rir: int | None = Field(default=None, ge=0, le=3)
+    strategy: ProgressionStrategy | None = None
 
     @model_validator(mode="after")
     def _range_in_order(self) -> Self:
@@ -51,6 +53,8 @@ class ExerciseRead(ORMModel):
     rep_max: int | None
     weight_step: float | None
     sets_max: int | None
+    target_rir: int | None
+    strategy: ProgressionStrategy | None
 
 
 class SetIn(BaseModel):
@@ -66,6 +70,12 @@ class SetIn(BaseModel):
     completed: bool = True
     completed_at: AwareDatetime | None = None  # defaults to "now" when a set is first completed
     notes: str | None = None
+    # The target the set was planned with and its role (E35); `unusual` keeps the exercise's session in this workout
+    # out of the progression
+    planned_weight_kg: float | None = None
+    planned_reps: int | None = Field(default=None, ge=0)
+    role: SetRole | None = None
+    unusual: bool = False
 
 
 class NestedSetIn(SetIn):
@@ -87,6 +97,10 @@ class SetRead(ORMModel):
     completed: bool
     completed_at: dt.datetime | None
     notes: str | None
+    planned_weight_kg: float | None
+    planned_reps: int | None
+    role: SetRole | None
+    unusual: bool
     updated_at: dt.datetime
 
 
@@ -144,29 +158,69 @@ class LastPerformanceSet(ORMModel):
     duration_s: int | None
     distance_m: float | None
     rpe: float | None
+    planned_weight_kg: float | None
+    planned_reps: int | None
+    role: SetRole | None
 
 
 class TargetSet(BaseModel):
     set_type: SetType
     weight_kg: float | None
     reps: int | None
-    changed: bool = False  # the set this session's step added or changed
+    role: SetRole | None  # None: outside the progression (warm-up, drop set, a set at another weight)
+    changed: bool = False  # differs from the last comparable session
+    priority: bool = False  # the set this session's step pushes (+1 rep, or the added set)
+
+
+TargetReason = Literal[
+    "plus_rep",  # +1 rep on the priority set
+    "weight_up",  # the block met the conditions for more weight
+    "return_up",  # ... to a weight it has lifted before
+    "add_set",  # opt-in volume progression (sets_max)
+    "hold",  # the last target was missed by a rep: repeat it
+    "check_drop",  # a set fell well short: repeat the target, look at the context
+    "lower",  # a drop twice in a row: one weight step lighter
+    "comeback",  # a break of more than COMEBACK_DAYS: ~10 % lighter
+    "no_data",  # no comparable session: repeat the last known values
+]
+TargetWarning = Literal[
+    "stall",  # several sessions at one weight without a better total
+    "decline",  # the block total fell several sessions in a row
+    "big_jump",  # the first set at the new weight is expected below the rep range
+    "low_confidence",  # fewer than 2 comparable sessions, or the strategy changed since
+    "last_not_comparable",  # the last session was unusual or not lifted as planned: the target ignores it
+]
+
+
+class TargetBlock(BaseModel):
+    role: SetRole
+    reason: TargetReason
+    weight_kg: float  # the block's target weight (0 = no load)
+
+
+class TargetSuggestion(BaseModel):
+    """An easier variant for the current workout only (E35): the plan stays as it is."""
+
+    kind: Literal["deload", "lighter"]
+    sets: list[TargetSet]
 
 
 class ProgressionTarget(BaseModel):
-    """What to lift next time to keep progressing (E33): the last session's sets with one step applied."""
+    """What to lift next time to keep progressing (E35): the last comparable session with one step per block."""
 
-    # comeback / deload: lighter after a break or a stall; lighter: below the rep range; weight: + step at the top of
-    # the range; sets: one more set; reps: +1 rep on the weakest set
-    kind: Literal["comeback", "deload", "lighter", "weight", "sets", "reps"]
-    weight_kg: float  # the working weight of the target (0 = no load)
-    sets: list[TargetSet]  # every planned set in order, warm-ups and other weights as last time
-    stalled_sessions: int  # sessions in a row at the last working weight without beating its best
-    days_since: int  # since the last session
+    strategy: ProgressionStrategy
+    sets: list[TargetSet]  # every planned set in order; warm-ups and other sets as last time
+    blocks: list[TargetBlock]  # straight: one; top_backoff: top, then back-off
+    warnings: list[TargetWarning] = []
+    suggestion: TargetSuggestion | None = None
+    fatigue_from: str | None = None  # on a drop: an earlier exercise of the same muscle group in that workout
+    stalled_sessions: int  # sessions in a row at the first block's weight without beating its best total
+    days_since: int  # since the last session of the exercise
     rep_min: int
     rep_max: int
     weight_step: float
-    sets_max: int
+    sets_max: int | None
+    target_rir: int
 
 
 class LastPerformance(BaseModel):

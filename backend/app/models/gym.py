@@ -3,6 +3,7 @@ import uuid
 from enum import StrEnum
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy import CheckConstraint, Index, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -30,6 +31,19 @@ class SetType(StrEnum):
     failure = "failure"
 
 
+class SetRole(StrEnum):
+    """The planned role of a working set in its exercise's progression (E35)."""
+
+    straight = "straight"
+    top = "top"
+    backoff = "backoff"
+
+
+class ProgressionStrategy(StrEnum):
+    straight = "straight"  # every working set at one weight
+    top_backoff = "top_backoff"  # a top set, then lighter back-off sets
+
+
 class WorkoutSource(StrEnum):
     manual = "manual"
     ai = "ai"
@@ -51,17 +65,21 @@ class Exercise(SQLModel, table=True):
             "AND (weight_step IS NULL OR weight_step > 0) AND (sets_max IS NULL OR sets_max >= 1)",
             name="progression_settings",
         ),
+        CheckConstraint("target_rir IS NULL OR target_rir BETWEEN 0 AND 3", name="target_rir_range"),
+        one_of("strategy", ProgressionStrategy),
     )
 
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
     muscle_group: str
     equipment: str | None = None
-    # Progression targets (E33); null = the default for the equipment (services/overload.py)
+    # Progression targets (E33, E35); null = the default for the equipment (services/overload.py)
     rep_min: int | None = None
     rep_max: int | None = None
     weight_step: float | None = None
-    sets_max: int | None = None
+    sets_max: int | None = None  # opt-in: add sets up to this before reps; null = never add sets
+    target_rir: int | None = None  # guidance only; null = 1, 0 = to failure
+    strategy: str | None = None  # ProgressionStrategy; null = straight
 
 
 class Workout(SQLModel, table=True):
@@ -92,6 +110,7 @@ class WorkoutSet(SQLModel, table=True):
     __tablename__ = "workout_sets"
     __table_args__ = (
         one_of("set_type", SetType),
+        one_of("role", SetRole),
         CheckConstraint("rpe IS NULL OR rpe BETWEEN 1 AND 10", name="rpe_range"),
     )
 
@@ -105,10 +124,15 @@ class WorkoutSet(SQLModel, table=True):
     reps: int | None = None
     duration_s: int | None = None
     distance_m: float | None = None
-    rpe: float | None = None
+    rpe: float | None = None  # the gym logger stores a confirmed RIR as 10 - RIR (3+ -> 7); null = not confirmed
     completed: bool = True
     completed_at: dt.datetime | None = Field(default=None, sa_type=AwareDateTime)
     notes: str | None = None
+    # The target the set was planned with (E35); null = no plan (imports, AI dictation, sets added by hand)
+    planned_weight_kg: float | None = None
+    planned_reps: int | None = None
+    role: str | None = None  # SetRole as planned; null = no plan or outside the progression (warm-up, drop)
+    unusual: bool = Field(default=False, sa_column_kwargs={"server_default": sa.false()})  # kept out of the progression
     updated_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
 
 
