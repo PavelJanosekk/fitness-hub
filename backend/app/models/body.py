@@ -21,6 +21,7 @@ class HealthRecordKind(StrEnum):
 
 class DailyMetricKind(StrEnum):
     steps_total = "steps_total"
+    steps_untimed = "steps_untimed"  # steps of records too long to place in buckets (whole-day records)
     sleep_minutes = "sleep_minutes"
     resting_hr = "resting_hr"
     weight_kg = "weight_kg"

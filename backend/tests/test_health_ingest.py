@@ -174,3 +174,13 @@ def test_webhooks_are_disabled_without_a_configured_token(client: TestClient, mo
     response = client.post("/api/webhooks/health", json=body, headers={"X-Webhook-Token": TOKEN})
 
     assert response.status_code == 503
+
+
+def test_long_samples_are_untimed_and_only_add_to_the_daily_total(client: TestClient) -> None:
+    push(client, "apple_health", steps=steps((at(8), at(8, 15), 1000), (at(10), at(14), 2000)))
+    result = push(client, "samsung_health", steps=steps((at(8), at(8, 15), 1200)))
+
+    assert (result[0]["steps"], result[0]["steps_method"]) == (3000, "buckets")
+    breakdown = day_steps(client)
+    assert breakdown["source_totals"] == {"apple_health": 3000, "samsung_health": 1200}
+    assert len(breakdown["buckets"]) == 1

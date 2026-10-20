@@ -8,8 +8,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import Session
 
 from app.config import settings
+from app.services.health_connect import rebuild_all
 
 PRAGUE = ZoneInfo("Europe/Prague")
 DAY = dt.date(2026, 10, 14)
@@ -183,3 +185,29 @@ def test_malformed_payload_is_a_422(client: TestClient) -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_whole_day_records_count_only_toward_the_daily_total(client: TestClient) -> None:
+    # Samsung Health writes one record for the whole day; spread over buckets it would win every quiet bucket
+    send(client, {"sequence": 1, "steps": [step("day", utc(0), utc(23, 59), 9600)]})
+    client.post(
+        "/api/webhooks/health",
+        json={
+            "source": "apple_health",
+            "days": [DAY.isoformat()],
+            "steps": [{"start": utc(8), "end": utc(8, 15), "count": 1000}],
+        },
+        headers={"X-Webhook-Token": TOKEN},
+    )
+
+    breakdown = steps_of(client)
+
+    assert (breakdown["steps"], breakdown["steps_method"]) == (9600, "max_daily")
+    assert breakdown["source_totals"] == {"samsung_health": 9600, "apple_health": 1000}
+    assert [row["per_source"] for row in breakdown["buckets"]] == [{"apple_health": 1000}]
+
+
+def test_rebuild_all_recomputes_stored_days(client: TestClient, session: Session) -> None:
+    send(client, {"sequence": 1, "steps": [step("a", utc(9), utc(9, 30), 700)]})
+
+    assert [(m.date, m.steps) for m in rebuild_all(session)] == [(DAY, 700)]

@@ -3,10 +3,14 @@
 Steps from the iPhone and the watch overlap whenever both are carried. Interval data is spread over
 15-minute buckets; per bucket the higher source wins, and the day is the sum of those maxima. Without
 interval data the day falls back to the highest daily total. A manual value always wins.
+
+Records longer than an hour carry no usable timing (Samsung Health writes one whole-day record), so they
+only count toward their source's daily total (steps_untimed), never into the buckets (E38).
 """
 
 import datetime as dt
 from collections import defaultdict
+from collections.abc import Iterable
 
 from sqlmodel import Session, col, delete, select
 
@@ -24,6 +28,7 @@ from app.schemas.health import BucketRow, DayMerge, HealthPush, StepsBreakdown
 from app.timeutils import day_bounds, local_date, now_utc
 
 BUCKET = dt.timedelta(minutes=15)
+UNTIMED_AFTER = dt.timedelta(hours=1)
 SLEEP_SOURCE_PRIORITY = (HealthSource.manual, HealthSource.samsung_health, HealthSource.apple_health)
 
 
@@ -48,6 +53,33 @@ def distribute(
             buckets[bucket] = buckets.get(bucket, 0.0) + count * overlap / total_seconds
         bucket += BUCKET
     return buckets
+
+
+def split_steps(
+    samples: Iterable[tuple[dt.datetime, dt.datetime, float]], lo: dt.datetime, hi: dt.datetime
+) -> tuple[dict[dt.datetime, float], float]:
+    """The part of each sample inside [lo, hi): timed ones spread over buckets, longer ones summed as untimed."""
+    buckets: dict[dt.datetime, float] = defaultdict(float)
+    untimed = 0.0
+    for start, end, count in samples:
+        parts = distribute(start, end, count, lo, hi)
+        if end - start > UNTIMED_AFTER:
+            untimed += sum(parts.values())
+        else:
+            for bucket, steps in parts.items():
+                buckets[bucket] += steps
+    return buckets, untimed
+
+
+def _store_steps(
+    session: Session, source: str, day: dt.date, buckets: dict[dt.datetime, float], untimed: float
+) -> None:
+    session.add_all(StepBucket(source=source, bucket_start=b, steps=v) for b, v in buckets.items())
+    key = (day, source, DailyMetricKind.steps_untimed)
+    if untimed > 0:
+        session.merge(DailySourceMetric(date=day, source=source, metric=DailyMetricKind.steps_untimed, value=untimed))
+    elif (stale := session.get(DailySourceMetric, key)) is not None:
+        session.delete(stale)
 
 
 def _merged_minutes(sessions: list[tuple[dt.datetime, dt.datetime]]) -> float:
@@ -78,14 +110,11 @@ def ingest(session: Session, push: HealthPush) -> list[DayMerge]:
             delete(DailySourceMetric).where(DailySourceMetric.date == day, DailySourceMetric.source == push.source)
         )
 
-        buckets: dict[dt.datetime, float] = defaultdict(float)
-        for sample in push.steps:
-            for start, steps in distribute(sample.start, sample.end, sample.count, lo, hi).items():
-                buckets[start] += steps
-        session.add_all(StepBucket(source=push.source, bucket_start=b, steps=v) for b, v in buckets.items())
+        buckets, untimed = split_steps(((s.start, s.end, s.count) for s in push.steps), lo, hi)
+        _store_steps(session, push.source, day, buckets, untimed)
 
         for value in push.daily:
-            if value.date == day:
+            if value.date == day and value.metric != DailyMetricKind.steps_untimed:
                 session.merge(DailySourceMetric(date=day, source=push.source, metric=value.metric, value=value.value))
 
         night = [s for s in push.sleep_sessions if local_date(s.end) == day]
@@ -128,11 +157,8 @@ def rebuild_day_from_records(session: Session, source: str, day: dt.date, origin
             col(HealthRecord.end) >= lo,
         )
     ).all()
-    buckets: dict[dt.datetime, float] = defaultdict(float)
-    for record in filter(counts, step_records):
-        for start, steps in distribute(record.start, record.end, record.value, lo, hi).items():
-            buckets[start] += steps
-    session.add_all(StepBucket(source=source, bucket_start=b, steps=v) for b, v in buckets.items())
+    buckets, untimed = split_steps(((r.start, r.end, r.value) for r in step_records if counts(r)), lo, hi)
+    _store_steps(session, source, day, buckets, untimed)
 
     nights = session.exec(
         select(HealthRecord).where(
@@ -172,6 +198,9 @@ def _merge_steps(
     per_source: dict[str, dict[dt.datetime, float]], daily: dict[tuple[str, str], float]
 ) -> tuple[float | None, str | None, dict[str, float]]:
     totals = {src: sum(b.values()) for src, b in per_source.items()}
+    for (src, metric), value in daily.items():
+        if metric == DailyMetricKind.steps_untimed:
+            totals[src] = totals.get(src, 0.0) + value
     for (src, metric), value in daily.items():
         if metric == DailyMetricKind.steps_total and src != HealthSource.manual:
             totals[src] = value  # a device's own daily total beats a possibly incomplete interval sum

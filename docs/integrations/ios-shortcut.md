@@ -3,8 +3,7 @@
 Apple Health steps reach the app through a Shortcut that posts the iPhone's step samples to
 `POST /api/webhooks/health` (E6, SPEC §6.5).
 
-> **Not yet built on the real iPhone.** The action names below are the English ones (a Czech iPhone shows
-> translated names). The server side has been tested with the payload shape this Shortcut is meant to produce.
+> Built on the real iPhone on 2026-10-20 (iOS with English action names; search them in *Search Actions*).
 
 ## How it works
 
@@ -20,6 +19,8 @@ Apple Health steps reach the app through a Shortcut that posts the iPhone's step
 ## Before you start
 
 - **Tailscale** on the iPhone with **VPN On Demand** on, so the request reaches the server from anywhere.
+- **Settings → Apps → Shortcuts → Advanced → Allow Sharing Large Amounts of Data** on. Without it iOS refuses to
+  send the samples ("This action is trying to share 132 Health items, which is not allowed").
 - The webhook token. On the server: `grep '^WEBHOOK_TOKEN=' .env`. Copy the value after `=` (a password manager
   or Universal Clipboard avoids typing 43 characters).
 
@@ -28,17 +29,17 @@ Apple Health steps reach the app through a Shortcut that posts the iPhone's step
 Name it **Fitness Hub kroky**. Actions in order:
 
 1. **Date**: *Current Date*.
-2. **Adjust Date**: *Subtract 1 day* from *Date*. Then another **Adjust Date**: *Get Start of Day* of that
-   result. Rename the variable (tap it → Rename) to `Od` (start of yesterday).
-3. **Format Date**: *Date* (current), format *Custom* `yyyy-MM-dd` → rename to `Dnes`.
-   **Format Date**: the date from step 2's first Adjust Date, *Custom* `yyyy-MM-dd` → rename to `Vcera`.
+2. **Adjust Date**: *Subtract 1 day*. Then another **Adjust Date**: *Get Start of Day*. Then **Set Variable** `Od`.
+3. **Format Date**: `Od`, *Custom* `yyyy-MM-dd`. **Set Variable** `Vcera`.
+   Then a new **Date** action (*Current Date*; the variable picker offers no Current Date of its own),
+   **Format Date** of it, *Custom* `yyyy-MM-dd`, and **Set Variable** `Dnes`.
 4. **Find Health Samples**:
    - *Type* is **Steps**;
-   - *Start Date* **is after** `Od`;
+   - *Start Date* **is in the last 3 days** (there is no "is after" filter; samples outside `days` are ignored);
    - optional, if other apps write steps into Apple Health: *Source* is your iPhone;
    - *Sort by* Start Date, **Limit off**, *Group by* **None**. Grouping into hours would smear steps across
      the hour and break the 15-minute merge with the watch.
-5. **If** *Health Samples* → *Count* **is** `0`: **Stop This Shortcut**. **End If**. (This is the guard.)
+5. **Set Variable** `Vzorky`, **Count** items in `Vzorky`, **If** *Count* **is** `0`: **Stop This Shortcut**. **End If**. (This is the guard.)
 6. **Repeat with Each** item in *Health Samples*:
    1. **Format Date**: *Repeat Item* → *Start Date*, format **ISO 8601**, *Include ISO 8601 Time* on.
    2. **Format Date**: *Repeat Item* → *End Date*, same format.

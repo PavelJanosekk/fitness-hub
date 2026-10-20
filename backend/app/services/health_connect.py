@@ -8,7 +8,7 @@ by uuid and every touched day is rebuilt from all stored records, so a repeated 
 import datetime as dt
 from dataclasses import dataclass, field
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.config import settings
 from app.models.body import (
@@ -128,3 +128,27 @@ def ingest_health_connect(session: Session, payload: HCPayload) -> HealthConnect
         session.merge(HealthSourceStatus(source=source, last_received_at=now_utc(), last_day=max(touched)))
     session.commit()
     return result
+
+
+def rebuild_all(session: Session) -> list[DayMerge]:
+    """Rebuild every day that has stored step records, e.g. after a change to how records become buckets."""
+    days: set[tuple[str, dt.date]] = set()
+    for record in session.exec(select(HealthRecord).where(HealthRecord.kind == HealthRecordKind.steps)):
+        day = local_date(record.start)
+        while day <= local_date(record.end):
+            days.add((record.source, day))
+            day += dt.timedelta(days=1)
+    origins = allowed_origins()
+    for source, day in sorted(days):
+        rebuild_day_from_records(session, source, day, origins)
+    results = [recompute_day(session, day) for day in sorted({day for _, day in days})]
+    session.commit()
+    return results
+
+
+if __name__ == "__main__":
+    from app.database import engine
+
+    with Session(engine) as session:
+        for merged in rebuild_all(session):
+            print(merged.date, merged.steps, merged.steps_method)

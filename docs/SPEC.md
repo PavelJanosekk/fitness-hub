@@ -338,7 +338,7 @@ Per-source daily values. Used when a source sends totals instead of intervals, a
 - Every field except `source`/`days` is optional. Each sender sends what it can (intervals preferred, daily totals as fallback).
 
 **Step merge algorithm [E7]** (`services/health_ingest.py`, re-run for each affected day after every push)
-1. Interval samples are distributed into **15-min buckets** (`step_buckets`) in proportion to their time overlap.
+1. Interval samples are distributed into **15-min buckets** (`step_buckets`) in proportion to their time overlap. Samples **longer than 1 hour** carry no usable timing (Samsung Health writes one whole-day record to Health Connect), so they never enter the buckets: their in-day part is stored as the source's `steps_untimed` daily value and only adds to that source's daily total **[E38]**.
 2. When **two or more sources have interval data** for the day: for each bucket, the merged value is **max over sources**, and the day total is the **sum** of those maxima. When both devices are carried, they count the same walking, so the max avoids double counting. When only one is carried or worn, that one fills the bucket, so steps taken with only the phone or only the watch are added together.
 3. **Fallback** when a source has only a daily total: day total = **max** over the sources' daily totals. A source's bucket sum counts as its daily total.
 4. The result is written to `DailyMetric.steps`. `GET /api/metrics/steps-breakdown?date=` returns per-source totals, the method used (`buckets` or `max_daily`), the merged total and the merged bucket series, so the number is explainable.
