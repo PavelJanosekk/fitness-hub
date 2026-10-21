@@ -1,7 +1,7 @@
 import { Check, CloudOff, Footprints, Moon, Settings } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { newEntryId, useDayIntake, useEnergy, useMetrics, useQuickAddKcal, useSaveWeight, useStepsBreakdown, useWeekly } from "../api/queries";
+import { useEnergy, useMetrics, useSaveRestingHr, useSaveWeight, useStepsBreakdown, useWeekly } from "../api/queries";
 import { useCharacter } from "../api/rpg";
 import type { MetricDay } from "../api/types";
 import { EnergyChart, WeeklyGymChart, WeeklyRunChart, WeightChart } from "../components/charts/DashboardCharts";
@@ -167,26 +167,21 @@ function HabitsTab() {
   return <MonthView habits={habits} today={isoDate()} onOpenDay={(d) => navigate(`/hero?d=${d}`)} />;
 }
 
+/** Quick morning entries: weight and resting HR (E41). */
 function TodayCard({ weight7d }: { weight7d: number | null }) {
   const [weight, setWeight] = useState("");
-  const [kcal, setKcal] = useState("");
-  const [protein, setProtein] = useState("");
+  const [bpm, setBpm] = useState("");
   const saveWeight = useSaveWeight();
-  const quickAdd = useQuickAddKcal();
-  const intake = useDayIntake(isoDate());
-  const totals = intake.data?.totals;
+  const saveRestingHr = useSaveRestingHr();
+  const restingHr = parseDecimal(bpm);
+  const validHr = restingHr !== null && restingHr >= 25 && restingHr <= 150;
 
   const submitWeight = () => {
     const value = parseDecimal(weight);
     if (value) saveWeight.mutate(value, { onSuccess: () => setWeight("") });
   };
-  const submitKcal = () => {
-    const value = parseDecimal(kcal);
-    if (!value) return;
-    quickAdd.mutate(
-      { id: newEntryId(), kcal: value, protein_g: parseDecimal(protein) ?? undefined },
-      { onSuccess: () => (setKcal(""), setProtein("")) },
-    );
+  const submitRestingHr = () => {
+    if (validHr) saveRestingHr.mutate(Math.round(restingHr), { onSuccess: () => setBpm("") });
   };
 
   return (
@@ -205,18 +200,14 @@ function TodayCard({ weight7d }: { weight7d: number | null }) {
           <Status mutation={saveWeight} />
         </div>
         <div>
-          <label className="mb-1.5 block text-sm text-zinc-400">
-            Rychlý zápis jídla
-            {totals && <span className="text-zinc-500"> · dnes {formatNumber(totals.kcal)} kcal{totals.protein_g !== null && `, ${formatNumber(totals.protein_g)} g B`}</span>}
-          </label>
+          <label className="mb-1.5 block text-sm text-zinc-400">Ranní klidový tep (bpm)</label>
           <div className="flex gap-2">
-            <DecimalInput ariaLabel="Kalorie" placeholder="kcal" value={kcal} onChange={setKcal} />
-            <DecimalInput ariaLabel="Bílkoviny v gramech" placeholder="B g" value={protein} onChange={setProtein} className="max-w-20" />
-            <Button onClick={submitKcal} disabled={!parseDecimal(kcal)}>
-              Přidat
+            <DecimalInput ariaLabel="Klidový tep" placeholder="52" value={bpm} onChange={setBpm} />
+            <Button onClick={submitRestingHr} disabled={!validHr}>
+              Uložit
             </Button>
           </div>
-          <Status mutation={quickAdd} />
+          <Status mutation={saveRestingHr} />
         </div>
       </div>
     </Card>

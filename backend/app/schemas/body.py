@@ -11,6 +11,7 @@ class MetricUpsert(BaseModel):
     calories_out: int | None = Field(default=None, ge=0)
     steps: int | None = Field(default=None, ge=0)
     sleep_hours: float | None = Field(default=None, ge=0, le=24)
+    resting_hr: int | None = Field(default=None, ge=25, le=150)  # morning resting HR, entered by hand (E41)
     notes: str | None = None
 
 

@@ -170,7 +170,7 @@ def test_files_keep_unknown_values_empty(session: Session, data: None) -> None:
     files = build_files(session)
     assert set(files) == {
         "README.md", "activities.csv", "gym_workouts.csv", "gym_sets.csv", "nutrition_items.csv",
-        "nutrition_daily.csv", "daily_metrics.csv", "weeks.csv", "profile.md",
+        "nutrition_daily.csv", "daily_metrics.csv", "weeks.csv", "targets_daily.csv", "profile.md",
     }  # fmt: skip
 
     run, ride = rows(files, "activities.csv")
@@ -270,7 +270,7 @@ def test_export_records_state_and_runs_once_a_day(session: Session, data: None) 
         result = export_now(session, http)
     current = session.get(RepoExportState, 1)
     assert current is not None and current.last_commit_sha == result.commit_sha and current.last_error is None
-    assert current.last_changed_files == 9
+    assert current.last_changed_files == 10
     assert not export_due(session, current.last_success_at + dt.timedelta(minutes=1))
     tomorrow = dt.datetime.combine(current.last_success_at.astimezone(settings.tz).date(), dt.time(5),
                                    tzinfo=settings.tz) + dt.timedelta(days=1)  # fmt: skip

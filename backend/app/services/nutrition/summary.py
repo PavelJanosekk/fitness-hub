@@ -19,6 +19,7 @@ from app.schemas.nutrition import MealItemRead, MealRead
 from app.services.nutrition import ITEM_MACROS, item_values
 from app.services.nutrition.micro_refs import Ref, effective_values, refs_for
 from app.services.nutrition.nutrients import ALL
+from app.services.nutrition.targets import DayTarget, Mode, day_target
 from app.timeutils import day_bounds
 
 MEAL_ORDER = {meal_type.value: index for index, meal_type in enumerate(MealType)}
@@ -49,6 +50,8 @@ class DaySummary(BaseModel):
     training_day: bool
     meals: list[MealRead]
     nutrients: list[NutrientTotal]
+    target: DayTarget  # the day's kcal target and where it comes from (E41)
+    fueling_kcal: float  # eaten during runs: in the totals, but not compared with the target
 
 
 def _item_nutrients(
@@ -136,18 +139,18 @@ def is_training_day(session: Session, day: dt.date) -> bool:
     return bool(session.exec(select(or_(workout, activity))).one())
 
 
-def _targets(profile: NutritionProfile | None, training_day: bool) -> dict[str, float]:
-    if profile is None:
-        return {}
-    kcal = (profile.kcal_target_training_day if training_day else None) or profile.kcal_target
-    candidates = {
-        "kcal": kcal,
-        "protein_g": profile.protein_target_g,
-        "carbs_g": profile.carbs_target_g,
-        "fat_g": profile.fat_target_g,
-        "fiber_g": profile.fiber_target_g,
+def _targets(profile: NutritionProfile | None, target: DayTarget) -> dict[str, float | None]:
+    """Targets per nutrient; a key with None means "no target" (off mode), a missing key falls back to the EU
+    reference."""
+    candidates: dict[str, float | None] = {
+        "kcal": target.kcal,
+        "protein_g": target.protein_g,
+        "carbs_g": target.carbs_g,
+        "fat_g": target.fat_g,
+        "fiber_g": profile.fiber_target_g if profile else None,
     }
-    return {k: v for k, v in candidates.items() if v is not None}
+    no_target = {"kcal", "protein_g", "carbs_g", "fat_g"} if target.mode == Mode.off else set()
+    return {k: v for k, v in candidates.items() if v is not None or k in no_target}
 
 
 def day_summary(session: Session, day: dt.date) -> DaySummary:
@@ -158,16 +161,22 @@ def day_summary(session: Session, day: dt.date) -> DaySummary:
         for _, item, food in rows
     ]
     per_item = [values for _, values, _ in items]
+    fueling = [meal.meal_type == MealType.fueling for meal, _, _ in rows]
     day_kcal = sum(values["kcal"] or 0 for values in per_item)
     training_day = is_training_day(session, day)
-    targets = _targets(session.get(NutritionProfile, 1), training_day)
+    profile = session.get(NutritionProfile, 1)
+    day_goal = day_target(session, day, profile)
+    targets = _targets(profile, day_goal)
     totals = []
     for nutrient in ALL:
         known = [(v[nutrient.key], v["kcal"] or 0) for v in per_item if v[nutrient.key] is not None]
         amount = round(sum(value for value, _ in known), 3) if known else None
         coverage = round(sum(kcal for _, kcal in known) / day_kcal, 3) if day_kcal > 0 else None
         target = targets.get(nutrient.key, nutrient.reference)
-        percent = round(amount / target * 100, 1) if amount is not None and target else None
+        # Fueling during runs is covered by the run itself, so it doesn't eat into the target
+        counted = [v[nutrient.key] for v, during_run in zip(per_item, fueling, strict=True) if not during_run]
+        counted_amount = sum(v for v in counted if v is not None) if any(v is not None for v in counted) else None
+        percent = round(counted_amount / target * 100, 1) if counted_amount is not None and target else None
         sources, unknown = _sources(nutrient.key, items)
         totals.append(
             NutrientTotal(
@@ -182,4 +191,12 @@ def day_summary(session: Session, day: dt.date) -> DaySummary:
                 unknown=unknown,
             )
         )
-    return DaySummary(date=day, training_day=training_day, meals=day_meals(session, day), nutrients=totals)
+    fueling_kcal = sum((v["kcal"] or 0) for v, during_run in zip(per_item, fueling, strict=True) if during_run)
+    return DaySummary(
+        date=day,
+        training_day=training_day,
+        meals=day_meals(session, day),
+        nutrients=totals,
+        target=day_goal,
+        fueling_kcal=round(fueling_kcal, 1),
+    )

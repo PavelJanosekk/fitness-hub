@@ -49,6 +49,19 @@ export function useSaveWeight() {
   });
 }
 
+/** Morning resting HR, entered by hand (E41): feeds the weekly base proposal. */
+export function useSaveRestingHr() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["metrics", "resting-hr"],
+    mutationFn: (resting_hr: number) => api("/api/metrics", { method: "POST", body: { date: isoDate(), resting_hr } }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["nutrition", "targets"] });
+    },
+  });
+}
+
 export function useQuickAddKcal() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -28,6 +28,9 @@ from app.timeutils import day_bounds, local_date, now_utc
 
 BUCKET = dt.timedelta(minutes=15)
 UNTIMED_AFTER = dt.timedelta(hours=1)
+# A device's day total below this is a placeholder, not data: Samsung Health writes a whole-day record of 1 step
+# on days the watch wasn't worn (E41)
+MIN_DEVICE_STEPS = 50
 SLEEP_SOURCE_PRIORITY = (HealthSource.manual, HealthSource.samsung_health, HealthSource.apple_health)
 
 
@@ -204,6 +207,7 @@ def _merge_steps(
         if metric == DailyMetricKind.steps_total and src != HealthSource.manual:
             # The higher one: records can be incomplete, and the forwarder's own total can lag the records
             totals[src] = max(totals.get(src, 0.0), value)
+    totals = {src: value for src, value in totals.items() if value >= MIN_DEVICE_STEPS}
     manual = daily.get((HealthSource.manual, DailyMetricKind.steps_total))
     if manual is not None:
         return manual, "manual", totals

@@ -3,10 +3,9 @@ import { type Profile, useProfile, useSaveProfile } from "../../api/nutrition";
 import { Button, DecimalInput, Sheet, parseDecimal } from "../ui";
 
 const FIELDS: readonly (readonly [keyof Profile, string])[] = [
-  ["kcal_target", "Kalorie (kcal)"],
-  ["kcal_target_training_day", "Kalorie v tréninkový den"],
+  ["kcal_target", "Základ (kcal)"],
+  ["maintenance_offset_kcal", "Udržování: + kcal"],
   ["protein_target_g", "Bílkoviny (g)"],
-  ["carbs_target_g", "Sacharidy (g)"],
   ["fat_target_g", "Tuky (g)"],
   ["fiber_target_g", "Vláknina (g)"],
   ["height_cm", "Výška (cm)"],
@@ -15,7 +14,7 @@ const FIELDS: readonly (readonly [keyof Profile, string])[] = [
 
 const toText = (value: number | null) => (value === null ? "" : String(value).replace(".", ","));
 
-/** Daily targets; empty fields fall back to EU reference intakes. */
+/** The base and fixed macros of the daily target (E41); runs add to the base, carbs are the rest. */
 export function TargetsSheet({ onClose }: { onClose: () => void }) {
   const profile = useProfile();
   return (
@@ -39,7 +38,10 @@ function TargetsForm({ profile, onDone }: { profile: Profile; onDone: () => void
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-zinc-400">Prázdná pole = evropské referenční hodnoty (2000 kcal, 50 g bílkovin…).</p>
+      <p className="text-sm text-zinc-400">
+        Denní cíl = základ + běhy (0,75 × váha × km, threshold a LR 1,0 × váha × km; LR napůl den předem). Sacharidy jsou zbytek po
+        bílkovinách a tucích. V režimu udržování se k základu přičte navýšení (prázdné = 500).
+      </p>
       <div className="grid grid-cols-2 gap-3">
         {FIELDS.map(([key, label]) => (
           <label key={key} className="text-sm text-zinc-400">

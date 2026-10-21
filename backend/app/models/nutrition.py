@@ -18,6 +18,7 @@ class MealType(StrEnum):
     afternoon_snack = "afternoon_snack"
     dinner = "dinner"
     second_dinner = "second_dinner"  # KalorickéTabulky "Druhá večeře"
+    fueling = "fueling"  # during a run (gels, drinks): counts as intake, not against the day's target (E41)
     other = "other"
 
 
@@ -155,12 +156,12 @@ class NutritionProfile(SQLModel, table=True):
     sex: str | None = None
     birth_year: int | None = None
     height_cm: float | None = None
-    kcal_target: float | None = None
-    kcal_target_training_day: float | None = None  # falls back to kcal_target
+    kcal_target: float | None = None  # the base of the daily target; runs add to it (E41)
     protein_target_g: float | None = None
-    carbs_target_g: float | None = None
-    fat_target_g: float | None = None
+    fat_target_g: float | None = None  # carbs are the rest of the day's target
+    maintenance_offset_kcal: float | None = None  # added to the base in maintenance mode; null = 500
     fiber_target_g: float | None = None
+    base_proposal_handled_on: dt.date | None = None  # Monday whose base proposal was accepted or dismissed
     updated_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
 
 

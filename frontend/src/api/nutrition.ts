@@ -4,7 +4,7 @@ import type { Tier } from "./coach";
 import type { Meal, MealItem } from "./types";
 
 export type FoodSource = "usda" | "openfoodfacts" | "kaloricke_tabulky" | "custom" | "web_estimate" | "recipe";
-export type MealType = "breakfast" | "morning_snack" | "lunch" | "afternoon_snack" | "dinner" | "second_dinner" | "other";
+export type MealType = "breakfast" | "morning_snack" | "lunch" | "afternoon_snack" | "dinner" | "second_dinner" | "fueling" | "other";
 
 export const MEAL_TYPES: readonly (readonly [MealType, string])[] = [
   ["breakfast", "Snídaně"],
@@ -13,6 +13,7 @@ export const MEAL_TYPES: readonly (readonly [MealType, string])[] = [
   ["afternoon_snack", "Odpolední svačina"],
   ["dinner", "Večeře"],
   ["second_dinner", "Druhá večeře"],
+  ["fueling", "Během běhu"],
   ["other", "Ostatní"],
 ];
 export const mealTypeLabel = (type: string) => MEAL_TYPES.find(([key]) => key === type)?.[1] ?? type;
@@ -106,7 +107,32 @@ export type NutrientTotal = {
   unknown: string[]; // items of the day without this value
 };
 export type NutrientSource = { name: string; amount: number; estimated: boolean };
-export type DaySummary = { date: string; training_day: boolean; meals: Meal[]; nutrients: NutrientTotal[] };
+export type DaySummary = {
+  date: string;
+  training_day: boolean;
+  meals: Meal[];
+  nutrients: NutrientTotal[];
+  target: DayTarget;
+  fueling_kcal: number; // eaten during runs: in the totals, not compared with the target
+};
+
+export type TargetMode = "cut" | "maintenance" | "off";
+export type TargetPart = { label: string; key: string; km: number; kcal: number; source: "plan" | "strava" };
+/** The day's kcal target and where it comes from (E41); kcal is null in off mode or without a base. */
+export type DayTarget = {
+  date: string;
+  mode: TargetMode;
+  base_kcal: number | null;
+  weight_used_kg: number | null;
+  parts: TargetPart[];
+  extra_kcal: number;
+  kcal: number | null;
+  protein_g: number | null;
+  fat_g: number | null;
+  carbs_g: number | null;
+};
+export type BaseProposal = { monday: string; current_base: number; new_base: number; reason: string; details: Record<string, number> };
+export type Targets = { today: DayTarget; tomorrow: DayTarget; proposal: BaseProposal | null };
 
 export type Portion = { label: string; grams: number };
 export type Food = Required<Macros> & {
@@ -167,23 +193,24 @@ export type Profile = {
   sex: "male" | "female" | null;
   birth_year: number | null;
   height_cm: number | null;
-  kcal_target: number | null;
-  kcal_target_training_day: number | null;
+  kcal_target: number | null; // the base of the daily target
   protein_target_g: number | null;
-  carbs_target_g: number | null;
   fat_target_g: number | null;
+  maintenance_offset_kcal: number | null; // null = +500
   fiber_target_g: number | null;
 };
 
 export const nutritionKeys = {
-  // v2: nutrients gained sources / unknown; persisted v1 entries lack them
-  summary: (date: string) => ["nutrition", "summary-v2", date] as const,
+  // v3: gained target / fueling_kcal (E41); persisted v2 entries lack them
+  summary: (date: string) => ["nutrition", "summary-v3", date] as const,
+  targets: (date: string) => ["nutrition", "targets", date] as const,
   // v2: Food gained micro_refs / borrowed (E26); persisted v1 entries lack them
   foods: (q: string, source: string) => ["nutrition", "foods-v3", q, source] as const,
   food: (id: number) => ["nutrition", "food-v3", id] as const,
   // v2: gained reference (persisted with staleTime Infinity, so the key must change)
   nutrients: ["nutrition", "nutrients-v2"] as const,
-  profile: ["nutrition", "profile"] as const,
+  // v2: training-day kcal and carbs removed, maintenance offset added (E41)
+  profile: ["nutrition", "profile-v2"] as const,
 };
 
 export const useDaySummary = (date: string) =>
@@ -220,6 +247,18 @@ function useInvalidateIntake() {
     queryClient.invalidateQueries({ queryKey: ["nutrition"] });
     queryClient.invalidateQueries({ queryKey: ["metrics"] });
   };
+}
+
+export const useTargets = (date: string) =>
+  useQuery({ queryKey: nutritionKeys.targets(date), queryFn: () => api<Targets>(`/api/nutrition/targets?date=${date}`) });
+
+/** Accept (the base changes) or dismiss this week's base proposal. */
+export function useDecideProposal() {
+  const invalidate = useInvalidateIntake();
+  return useMutation({
+    mutationFn: (accept: boolean) => api<BaseProposal>("/api/nutrition/targets/proposal", { method: "POST", body: { accept } }),
+    onSettled: invalidate,
+  });
 }
 
 export function useSaveProfile() {

@@ -63,7 +63,8 @@ Zapisování jídla:
 - Hotové jídlo, které uživatel nerozepíše na suroviny (Bún chả, svíčková, pizza, kebab): jedna položka
   s is_dish=true a canonical_name_cs = název jídla ("Bún chả"). Když místo gramů řekne porce, talíř nebo kus,
   dej portions (např. 1) a amount_g odhadni. Neznámé jídlo aplikace sama dohledá podle receptu.
-- meal_type urči z kontextu a denní doby. Den: zapisuj k dni, který má uživatel v aplikaci otevřený (uvedený níže);
+- meal_type urči z kontextu a denní doby; co snědl nebo vypil během běhu (gel, iont, med) je fueling.
+  Den: zapisuj k dni, který má uživatel v aplikaci otevřený (uvedený níže);
   date předej jen tehdy, když uživatel výslovně řekne jiný den ("včera", "v sobotu").
 - Když nástroj vrátí "needs_confirmation", nic se neuložilo: stručně řekni, co navrhuješ, a uživatel to
   v aplikaci potvrdí jedním ťuknutím. U položky s "recipe" řekni, že hodnoty jsou spočítané z receptu
@@ -229,7 +230,8 @@ def build_nutrition_tools(ctx: NutritionContext) -> list[Callable[..., dict[str,
         otherwise returns status "needs_confirmation" and the user confirms the proposed foods in the app.
 
         Args:
-            meal_type: One of breakfast, morning_snack, lunch, afternoon_snack, dinner, second_dinner, other.
+            meal_type: One of breakfast, morning_snack, lunch, afternoon_snack, dinner, second_dinner, fueling
+                (eaten or drunk during a run: gels, sports drink, honey), other.
             items: Every food of the meal with its amount in grams.
             date: YYYY-MM-DD only when the user names another day than the one open in the app.
         """
@@ -307,6 +309,13 @@ def build_nutrition_tools(ctx: NutritionContext) -> list[Callable[..., dict[str,
         return {
             "date": day.isoformat(),
             "training_day": summary.training_day,
+            "kcal_target_breakdown": {
+                "mode": summary.target.mode,
+                "base_kcal": summary.target.base_kcal,
+                "runs": [p.label for p in summary.target.parts] or None,
+                "kcal_target": summary.target.kcal,
+            },
+            "fueling_kcal": summary.fueling_kcal or None,  # eaten during runs; not counted against the target
             "nutrients": [
                 _compact(
                     {

@@ -214,9 +214,8 @@ class ProfileUpdate(BaseModel):
     sex: Literal["male", "female"] | None = None
     birth_year: int | None = Field(default=None, ge=1900, le=2100)
     height_cm: float | None = Field(default=None, gt=50, lt=260)
-    kcal_target: float | None = Field(default=None, gt=0, lt=10000)
-    kcal_target_training_day: float | None = Field(default=None, gt=0, lt=10000)
+    kcal_target: float | None = Field(default=None, gt=0, lt=10000)  # base of the daily target (E41)
     protein_target_g: float | None = Field(default=None, ge=0, lt=1000)
-    carbs_target_g: float | None = Field(default=None, ge=0, lt=2000)
     fat_target_g: float | None = Field(default=None, ge=0, lt=1000)
+    maintenance_offset_kcal: float | None = Field(default=None, ge=-2000, le=2000)
     fiber_target_g: float | None = Field(default=None, ge=0, lt=200)

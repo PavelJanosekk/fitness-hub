@@ -94,18 +94,18 @@ def test_summary_reports_coverage_and_borrows_reference_micros(client: TestClien
     assert summary["training_day"] is False
 
 
-def test_profile_targets_and_training_days(client: TestClient, session: Session) -> None:
-    client.put("/api/nutrition/profile", json={"kcal_target": 2400, "kcal_target_training_day": 2800})
+def test_profile_base_is_the_target_without_runs(client: TestClient, session: Session) -> None:
+    client.put("/api/nutrition/profile", json={"kcal_target": 2400, "protein_target_g": 175, "fat_target_g": 50})
     start, _ = day_bounds(D)
     session.add(Workout(id=uuid.uuid4(), name="Push", started_at=start + dt.timedelta(hours=17)))
     session.commit()
 
-    summary = client.get("/api/nutrition/summary", params={"date": D.isoformat()}).json()
-    rest_day = client.get("/api/nutrition/summary", params={"date": (D + dt.timedelta(days=1)).isoformat()}).json()
-
-    assert (summary["training_day"], nutrient(summary, "kcal")["target"]) == (True, 2800)
-    assert nutrient(rest_day, "kcal")["target"] == 2400
+    summary = client.get("/api/nutrition/summary", params={"date": "2026-11-02"}).json()
+    assert nutrient(summary, "kcal")["target"] == 2400  # the gym adds nothing (E41)
+    assert nutrient(summary, "carbs_g")["target"] == 313  # (2400 - 175·4 - 50·9) / 4, half up
     assert client.get("/api/nutrition/profile").json()["kcal_target"] == 2400
+    gym_day = client.get("/api/nutrition/summary", params={"date": D.isoformat()}).json()
+    assert gym_day["training_day"] is True
 
 
 def test_food_database_search_create_edit_and_guarded_delete(client: TestClient, session: Session) -> None:

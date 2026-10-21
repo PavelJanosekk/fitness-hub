@@ -56,6 +56,7 @@ from app.services.nutrition.nutrients import ALL as ALL_NUTRIENTS
 from app.services.nutrition.nutrients import MICRO_KEYS
 from app.services.nutrition.resolver import Candidate, MealItemInput, confirm_aliases, materialize, portion_amount
 from app.services.nutrition.summary import DaySummary, day_meals, day_summary, read_item
+from app.services.nutrition.targets import DayTarget, Proposal, base_proposal, day_target, handle_proposal
 from app.timeutils import now_utc, today
 
 router = APIRouter(prefix="/api/nutrition", tags=["nutrition"])
@@ -165,6 +166,47 @@ def get_day(session: SessionDep, date: dt.date | None = None) -> DayIntake:
 def get_summary(session: SessionDep, date: dt.date | None = None) -> DaySummary:
     """Meals plus every tracked nutrient with its coverage and target (profile, else EU reference)."""
     return day_summary(session, date or today())
+
+
+class ProposalRead(BaseModel):
+    monday: dt.date
+    current_base: float
+    new_base: float
+    reason: str
+    details: dict[str, float]
+
+
+class TargetsRead(BaseModel):
+    today: DayTarget
+    tomorrow: DayTarget  # the day before a long run already has a higher target
+    proposal: ProposalRead | None  # this week's suggested base change (cut mode, Mondays from 2026-11-09)
+
+
+class ProposalDecision(BaseModel):
+    accept: bool
+
+
+def _proposal_read(proposal: Proposal | None) -> ProposalRead | None:
+    return ProposalRead(**vars(proposal)) if proposal else None
+
+
+@router.get("/targets", response_model=TargetsRead)
+def get_targets(session: SessionDep, date: dt.date | None = None) -> TargetsRead:
+    day = date or today()
+    return TargetsRead(
+        today=day_target(session, day),
+        tomorrow=day_target(session, day + dt.timedelta(days=1)),
+        proposal=_proposal_read(base_proposal(session, day)),
+    )
+
+
+@router.post("/targets/proposal", response_model=ProposalRead)
+def decide_proposal(body: ProposalDecision, session: SessionDep) -> ProposalRead:
+    """Accept (the base changes) or dismiss this week's proposal; 404 when there is none."""
+    proposal = handle_proposal(session, body.accept)
+    if proposal is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No proposal this week")
+    return ProposalRead(**vars(proposal))
 
 
 @router.put("/items/{item_id}", response_model=MealItemRead)

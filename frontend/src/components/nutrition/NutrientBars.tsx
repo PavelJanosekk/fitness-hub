@@ -21,7 +21,7 @@ function Bar({ percent, tone = "bg-emerald-500" }: { percent: number | null; ton
 const digits = (unit: string) => (unit === "g" || unit === "kcal" ? 0 : 1);
 
 /** Today's kcal against the target plus the four macros. */
-export function MacroSummary({ nutrients, trainingDay }: { nutrients: NutrientTotal[]; trainingDay: boolean }) {
+export function MacroSummary({ nutrients, trainingDay, fuelingKcal = 0 }: { nutrients: NutrientTotal[]; trainingDay: boolean; fuelingKcal?: number }) {
   const byKey = Object.fromEntries(nutrients.map((n) => [n.key, n]));
   const kcal = byKey.kcal;
   const over = (kcal?.percent ?? 0) > 105;
@@ -39,6 +39,7 @@ export function MacroSummary({ nutrients, trainingDay }: { nutrients: NutrientTo
         {trainingDay && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">tréninkový den</span>}
       </div>
       <Bar percent={kcal?.percent ?? null} tone={over ? "bg-amber-400" : "bg-emerald-500"} />
+      {fuelingKcal > 0 && <p className="mt-1 text-xs text-zinc-500">z toho {formatNumber(fuelingKcal)} kcal během běhu, do cíle se nepočítá</p>}
       <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
         {MACROS.map((key, index) => {
           const n = byKey[key];

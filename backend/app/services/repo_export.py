@@ -23,8 +23,9 @@ from app.models.body import DailyMetric, DailyMetricKind, DailySourceMetric
 from app.models.coach import TrainingWeek
 from app.models.export import RepoExportState
 from app.models.gym import Exercise, Workout, WorkoutSet
-from app.models.nutrition import Food, MealLog, MealLogItem, NutritionProfile
+from app.models.nutrition import Food, MealLog, MealLogItem, MealType, NutritionProfile
 from app.models.running import Activity, ActivityMetrics
+from app.services.nutrition import targets
 from app.services.run_analysis import RUN_TYPES
 from app.timeutils import local_date, now_utc, today
 
@@ -211,10 +212,12 @@ def nutrition_csvs(session: Session) -> tuple[str, str, dict[dt.date, dict[str, 
             meal.logged_date, meal.meal_type, item.label, (food.name_cs or food.name_en) if food else None,
             _num(item.amount_g, 0), *(_num(v) for v in values.values()), food.source if food else "quick_add",
         ])  # fmt: skip
-        day = days.setdefault(meal.logged_date, {"items": 0, "missing_kcal": 0, "meals": set()} | {
+        day = days.setdefault(meal.logged_date, {"items": 0, "missing_kcal": 0, "meals": set(), "fueling": 0.0} | {
             column: None for column in values
         })  # fmt: skip
         day["items"] += 1
+        if meal.meal_type == MealType.fueling:
+            day["fueling"] += values["kcal"] or 0
         day["meals"].add(meal.meal_type)
         if values["kcal"] is None:
             day["missing_kcal"] += 1
@@ -228,11 +231,11 @@ def nutrition_csvs(session: Session) -> tuple[str, str, dict[dt.date, dict[str, 
         item_rows,
     )  # fmt: skip
     daily_text = _csv(
-        ["date", "kcal", "protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g", "items", "items_missing_kcal",
-         "meals_logged"],
+        ["date", "kcal", "protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g", "fueling_kcal", "items",
+         "items_missing_kcal", "meals_logged"],
         (
             [day, *(_num(d[c]) for c in ("kcal", "protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g")),
-             d["items"], d["missing_kcal"], len(d["meals"])]
+             _num(d["fueling"]), d["items"], d["missing_kcal"], len(d["meals"])]
             for day, d in sorted(days.items())
         ),
     )  # fmt: skip
@@ -315,23 +318,73 @@ def weeks_csv(
     )  # fmt: skip
 
 
+TARGETS_FROM = targets.MODES[0][0]
+
+
+def targets_csv(session: Session) -> str:
+    """The day's kcal target and its parts for every day since the first mode + today + tomorrow (E41)."""
+    profile = session.get(NutritionProfile, 1)
+    last = today() + dt.timedelta(days=1)
+    rows = []
+    day = TARGETS_FROM
+    while day <= last:
+        t = targets.day_target(session, day, profile)
+        rows.append([
+            day, t.mode, _num(t.base_kcal, 0), t.weight_used_kg, t.runs_text or None,
+            _num(t.extra_kcal) if t.parts else None,
+            _num(t.kcal, 0), _num(t.protein_g, 0), _num(t.fat_g, 0), _num(t.carbs_g, 0),
+        ])  # fmt: skip
+        day += dt.timedelta(days=1)
+    return _csv(
+        ["date", "mode", "base_kcal", "weight_used_kg", "runs", "extra_kcal", "kcal_target", "protein_target_g",
+         "fat_target_g", "carbs_target_g"],
+        rows,
+    )  # fmt: skip
+
+
+MODE_LABELS = {targets.Mode.cut: "hubnutí", targets.Mode.maintenance: "udržování", targets.Mode.off: "bez cíle"}
+
+
 def profile_md(session: Session) -> str:
-    targets = session.get(NutritionProfile, 1)
+    profile = session.get(NutritionProfile, 1)
     lines = ["# Profil a cíle (z aplikace Fitness Hub)", ""]
-    if targets is None:
+    if profile is None:
         return "\n".join([*lines, "Nutriční cíle nejsou nastavené.", ""])
+    offset = profile.maintenance_offset_kcal
     for label, value, unit in (
-        ("Pohlaví", targets.sex, ""),
-        ("Rok narození", targets.birth_year, ""),
-        ("Výška", targets.height_cm, " cm"),
-        ("Cíl kcal", targets.kcal_target, " kcal"),
-        ("Cíl kcal v tréninkový den", targets.kcal_target_training_day, " kcal"),
-        ("Cíl bílkovin", targets.protein_target_g, " g"),
-        ("Cíl sacharidů", targets.carbs_target_g, " g"),
-        ("Cíl tuků", targets.fat_target_g, " g"),
-        ("Cíl vlákniny", targets.fiber_target_g, " g"),
+        ("Pohlaví", profile.sex, ""),
+        ("Rok narození", profile.birth_year, ""),
+        ("Výška", profile.height_cm, " cm"),
+        ("Základ kcal (režim hubnutí)", profile.kcal_target, " kcal"),
+        (
+            "Navýšení základu v režimu udržování",
+            targets.DEFAULT_MAINTENANCE_OFFSET if offset is None else offset,
+            " kcal",
+        ),
+        ("Bílkoviny", profile.protein_target_g, " g"),
+        ("Tuky", profile.fat_target_g, " g"),
+        ("Vláknina", profile.fiber_target_g, " g"),
     ):
         lines.append(f"- {label}: {value}{unit}" if value is not None else f"- {label}: neznámé")
+    k = targets.K_FACTOR
+    lines += [
+        "",
+        "## Denní cíl kalorií",
+        "",
+        f"cíl = základ + Σ k × váha × km (běhy dne kromě LR) + ½ LR dnes + ½ LR zítra, zaokrouhleno na "
+        f"{targets.ROUND_KCAL} kcal. k = {k[targets.RunKind.easy]} easy/strides/kopce, "
+        f"{k[targets.RunKind.threshold]} threshold a LR. Váha = průměr vážení za 7 dní. Sacharidy = zbytek po "
+        "bílkovinách a tucích. Plán běhů = denní řádky `04_timeline_plan.md`, odběhnuté km nahradí plánované.",
+        "Jídlo během běhu (`fueling`) se do cíle nepočítá.",
+        "",
+        "## Režimy",
+        "",
+    ]
+    for (start, mode), following in zip(targets.MODES, [*targets.MODES[1:], None], strict=True):
+        until = f"–{following[0] - dt.timedelta(days=1)}" if following else " →"
+        lines.append(f"- {start}{until}: `{mode}` ({MODE_LABELS[mode]})")
+    current = targets.day_target(session, today(), profile)
+    lines += ["", f"Dnes ({current.date}): režim `{current.mode}`, cíl {_num(current.kcal, 0) or '–'} kcal."]
     return "\n".join([*lines, ""])
 
 
@@ -354,11 +407,18 @@ Soubory:
 - `gym_sets.csv` — každá série. `rir` = opakování v záloze (prázdné = nepotvrzeno), `planned_*`/`role` = plán
   progrese, `unusual` = série mimo progresi. Váha 0 = vlastní váha.
 - `nutrition_items.csv` — každá položka jídelníčku s gramy a makry.
-- `nutrition_daily.csv` — denní součty; `items_missing_kcal` = položky bez známých kcal (součet je pak podhodnocený).
-- `daily_metrics.csv` — váha, kroky, spánek, klidový tep po dnech.
+- `nutrition_daily.csv` — denní součty (včetně jídla během běhu); `fueling_kcal` = z toho kcal snědené během
+  běhu (gely, iont), které se do cíle nepočítají; `items_missing_kcal` = položky bez známých kcal (součet je pak
+  podhodnocený).
+- `targets_daily.csv` — denní cíl od 21. 10. 2026 do zítřka: `mode` (cut / maintenance / off), `base_kcal`,
+  `weight_used_kg` (průměr vážení za 7 dní), `runs` (např. `easy:7.0;long_run_tomorrow:10.0`; odběhnuté km
+  nahrazují plánované), `extra_kcal`, `kcal_target` a makra. Dny v režimu `off` cíl nemají. Minulé dny se
+  přepočítávají s dnešními daty (např. pozdějším vážením).
+- `daily_metrics.csv` — váha, kroky, spánek, klidový tep po dnech. Denní součet kroků pod 50 z hodinek je
+  zástupná hodnota (Samsung Health bez hodinek), proto je prázdný.
 - `weeks.csv` — týdenní přehled: běh vs. plán z `04_timeline_plan.md`, posilovna, průměrný příjem (jen přes
   dny se záznamem, počet v `nutrition_days`), průměrná váha a kroky.
-- `profile.md` — nutriční cíle a základní údaje.
+- `profile.md` — nutriční cíle, vzorec denního cíle a kalendář režimů.
 """
 
 
@@ -376,6 +436,7 @@ def build_files(session: Session) -> dict[str, str]:
         "nutrition_daily.csv": daily_nutrition,
         "daily_metrics.csv": metrics_text,
         "weeks.csv": weeks_csv(session, activities, intake, body),
+        "targets_daily.csv": targets_csv(session),
         "profile.md": profile_md(session),
     }
 

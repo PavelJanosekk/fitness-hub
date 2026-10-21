@@ -21,11 +21,15 @@ def upsert_daily_metric(session: Session, body: MetricUpsert) -> DailyMetric:
     """Partial upsert; only non-null fields overwrite. Manual steps/sleep win over device data."""
     day = body.date or today()
     metric = session.get(DailyMetric, day) or DailyMetric(date=day)
-    for field, value in body.model_dump(exclude={"date", "steps", "sleep_hours"}).items():
+    for field, value in body.model_dump(exclude={"date", "steps", "sleep_hours", "resting_hr"}).items():
         if value is not None:
             setattr(metric, field, value)
     session.add(metric)
-    manual = {DailyMetricKind.steps_total: body.steps, DailyMetricKind.sleep_minutes: body.sleep_hours}
+    manual = {
+        DailyMetricKind.steps_total: body.steps,
+        DailyMetricKind.sleep_minutes: body.sleep_hours,
+        DailyMetricKind.resting_hr: body.resting_hr,
+    }
     for kind, value in manual.items():
         if value is not None:
             stored = value * 60 if kind == DailyMetricKind.sleep_minutes else value
