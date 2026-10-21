@@ -41,5 +41,25 @@ the only rhythm). Categories are provisional until the user's list arrives. Numb
   a 1 h radius.
 
 ## Seed
-Sent by the user at the end of implementation (CSV `Typ,Kategorie,Úkol,Stav`); cleaned up like B7 (Czech titles,
-typos, duplicates merged) and seeded with the 100 day trips in one migration.
+- **Day trips (done, migration 0029):** the 100 *Výlety – Tipy* rows → 95 quests (category Výlet, 1 den): Czech
+  titles with diacritics; merged: hrad + zámek Boskovice, zámek
+  Lysice + park, Plumlov přehrada + zámek, Svatý Hostýn + Hostýnské vrchy, Holedná obora + rozhledna. Drive time and
+  km stored as numbers (`travel_minutes`, `distance_km`); the Google search links were dropped, the app links a map
+  search instead.
+- **The user's list** (CSV `Typ,Kategorie,Úkol,Stav`) comes at the end; cleaned up like B7 and seeded in its own
+  migration, categories refined then.
+
+## Implementation (E45, Phase 10)
+- `side_quests` table (`app/models/side_quests.py`): title, category, duration, note, link, travel_minutes,
+  distance_km, active, done_on, done_before_app, memory, rating, created_at.
+- `services/side_quests.py`: XP by duration on `done_on` to the category's skill (Učení / Tvoření → Mysl, Jídlo →
+  Výživa, Aktivita / Výlet → Dobrodružství), ledger kind `side_quest`, counts on paused days; no XP for
+  `done_before_app` or completions > 7 days before the quest was added.
+- Weekly quest `side` in `services/quests.py` from 2026-10-26: 1 paying side quest in the week, 80 XP Dobrodružství.
+- Badges: side_first, side_10 / 50 / 100, side_weeks (10 weeks in a row), trips_near (all trips ≤ 60 min).
+- API `/api/side-quests` (GET board, POST, PATCH, DELETE); coach tools `get_side_quests`, `complete_side_quests`
+  (titles resolved by `bucket.resolve_title`), prompt rule. No catalog in the system prompt (saves tokens).
+- Frontend: Hrdina sub-tab **Questy** (`/hero/quests`, `pages/SideQuests.tsx`): weekly card, Rozjeté, status /
+  category / duration filters, search, dice (random open quest of the current filter), list grouped by category;
+  `components/sideQuests/QuestSheet.tsx` (detail, map link for trips, Rozjet / Odložit, complete with date ★ memory,
+  edit, delete) and `QuestForm.tsx`. Query key `sideQuests/board/v1`.

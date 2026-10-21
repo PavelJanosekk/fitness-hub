@@ -19,6 +19,7 @@ const BucketList = lazy(() => import("./pages/BucketList").then((m) => ({ defaul
 // Leaflet only loads with the map
 const BucketMap = lazy(() => import("./pages/BucketMap").then((m) => ({ default: m.BucketMap })));
 const HallOfFame = lazy(() => import("./pages/HallOfFame").then((m) => ({ default: m.HallOfFame })));
+const SideQuests = lazy(() => import("./pages/SideQuests").then((m) => ({ default: m.SideQuests })));
 const Abilities = lazy(() => import("./pages/Abilities").then((m) => ({ default: m.Abilities })));
 const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
 
@@ -40,6 +41,7 @@ export function App() {
             <Route path="bucket" element={<BucketList />} />
             <Route path="bucket/map" element={<BucketMap />} />
             <Route path="bucket/fame" element={<HallOfFame />} />
+            <Route path="quests" element={<SideQuests />} />
             <Route path="character" element={<Hero />} />
             <Route path="character/abilities" element={<Abilities />} />
           </Route>
