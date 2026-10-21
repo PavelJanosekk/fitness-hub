@@ -43,6 +43,7 @@ from app.models.nutrition import (  # noqa: E402
 )
 from app.models.rpg import RpgPause  # noqa: E402
 from app.models.running import Activity, ActivityMetrics, ActivityStream, TrainingPlanItem  # noqa: E402
+from app.models.side_quests import SideQuest  # noqa: E402
 
 __all__ = [
     "Ability",
@@ -77,6 +78,7 @@ __all__ = [
     "RecipeComponent",
     "RepoExportState",
     "RpgPause",
+    "SideQuest",
     "StepBucket",
     "TrainingDay",
     "TrainingPlanItem",

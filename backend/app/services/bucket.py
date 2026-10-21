@@ -20,6 +20,7 @@ from app.models.bucket import BucketAutoRule, BucketCategory, BucketItem, Bucket
 from app.models.coach import Race
 from app.models.gym import Exercise, Workout, WorkoutSet
 from app.models.running import Activity
+from app.models.side_quests import SideQuest
 from app.services import abilities as ab
 from app.services.run_analysis import RUN_TYPES
 from app.timeutils import local_date, today
@@ -274,17 +275,24 @@ MIN_SIMILARITY = 0.3
 
 def resolve(session: Session, title: str) -> tuple[BucketItem | None, list[tuple[BucketItem, float]]]:
     """Item by title: exact (case- and accent-insensitive) match, else pg_trgm candidates (best first)."""
+    return resolve_title(session, BucketItem, title)
+
+
+def resolve_title[T: (BucketItem, SideQuest)](
+    session: Session, model: type[T], title: str
+) -> tuple[T | None, list[tuple[T, float]]]:
+    """A row of `model` by its title (bucket items, side quests): exact match, else trigram candidates."""
 
     def normalized(value):  # SQL expression
         return func.f_unaccent(func.lower(value))
 
     query = title.strip()
-    exact = session.exec(select(BucketItem).where(normalized(BucketItem.title) == normalized(query))).first()
+    exact = session.exec(select(model).where(normalized(model.title) == normalized(query))).first()
     if exact is not None:
         return exact, [(exact, 1.0)]
     score = func.greatest(
-        func.similarity(normalized(BucketItem.title), normalized(query)),
-        func.word_similarity(normalized(query), normalized(BucketItem.title)),
+        func.similarity(normalized(model.title), normalized(query)),
+        func.word_similarity(normalized(query), normalized(model.title)),
     )
-    rows = session.exec(select(BucketItem, score).where(score >= MIN_SIMILARITY).order_by(score.desc()).limit(3))
-    return None, [(item, round(float(s), 2)) for item, s in rows]
+    rows = session.exec(select(model, score).where(score >= MIN_SIMILARITY).order_by(score.desc()).limit(3))
+    return None, [(row, round(float(s), 2)) for row, s in rows]

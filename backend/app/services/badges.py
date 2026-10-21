@@ -13,6 +13,7 @@ from app.models.habits import HabitFrequency
 from app.services import bucket as bk
 from app.services import habits as hs
 from app.services import quests as qs
+from app.services import side_quests as sq
 from app.services.rpg import Ledger
 
 MARATHON_KM = 42.0
@@ -149,6 +150,7 @@ def compute_badges(session: Session, ledger: Ledger, board: list[hs.HabitDays], 
         result.append(Badge(f"level_{level}", f"Level {level}", f"Dosáhni levelu {level}", unlocked))
 
     result.extend(_bucket_badges(bk.load(session, on)))
+    result.extend(_side_quest_badges(sq.load(session, on)))
 
     for badge in result:
         if badge.unlocked_on:
@@ -211,6 +213,50 @@ def _bucket_badges(state: bk.BucketState) -> list[Badge]:
             f"{bk.YEAR_QUEST_ITEMS} položek bucket listu za jeden rok",
             min(reached, default=None),
             f"nejvíc {best} / {bk.YEAR_QUEST_ITEMS}",
+        )
+    )
+    return result
+
+
+SIDE_WEEKS = 10
+
+
+def _side_quest_badges(states: list[sq.QuestState]) -> list[Badge]:
+    """Side quests (E45): quests done before the app count from the day they were added; the weekly streak only
+    counts paying completions (like the weekly quest)."""
+    days = [s.counted_on for s in states if s.done]
+    result = [Badge("side_first", "První side quest", "První splněný side quest", min(days, default=None))]
+    for n in (10, 50, 100):
+        result.append(
+            Badge(f"side_{n}", f"{n} side questů", f"{n} splněných side questů", _nth(days, n), f"{len(days)} / {n}")
+        )
+    first_in_week: dict[dt.date, dt.date] = {}
+    for day in sorted(sq.paying_days(states)):
+        first_in_week.setdefault(hs.week_start(day), day)
+    streak, best, unlocked, previous = 0, 0, None, None
+    for week in sorted(first_in_week):
+        streak = streak + 1 if previous == week - dt.timedelta(weeks=1) else 1
+        previous, best = week, max(best, streak)
+        if streak == SIDE_WEEKS and unlocked is None:
+            unlocked = first_in_week[week]
+    result.append(
+        Badge(
+            "side_weeks",
+            "Vytrvalý dobrodruh",
+            f"Side quest {SIDE_WEEKS} týdnů v řadě",
+            unlocked,
+            f"nejvíc {best} / {SIDE_WEEKS}",
+        )
+    )
+    near = [s for s in states if s.quest.category == "trip" and (s.quest.travel_minutes or 0) <= sq.NEAR_TRIP_MINUTES]
+    near_done = [s.counted_on for s in near if s.done]
+    result.append(
+        Badge(
+            "trips_near",
+            "Znalec okolí",
+            f"Všechny výlety do {sq.NEAR_TRIP_MINUTES} minut autem",
+            max(near_done) if near and len(near_done) == len(near) else None,
+            f"{len(near_done)} / {len(near)}",
         )
     )
     return result

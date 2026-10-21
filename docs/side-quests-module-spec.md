@@ -1,6 +1,7 @@
 # Side quests module (D6)
 
-Status: **draft 2026-10-21, waiting for the user's decisions (O12)**. Numbers marked *(tune)* are starting values.
+Status: **accepted 2026-10-21 (E45)**: all as recommended except S7 (dropped: no daily tip, the weekly side quest is
+the only rhythm). Categories are provisional until the user's list arrives. Numbers marked *(tune)* are starting values.
 
 ## Goal (user, 2026-10-20 / 2026-10-21)
 - A personal list of side quests: projects and small adventures ("learn X", "do Y", "build Z", nearby day trips),
@@ -10,7 +11,7 @@ Status: **draft 2026-10-21, waiting for the user's decisions (O12)**. Numbers ma
   is seeded once by a migration, like the bucket list and habits seeds.
 - Tie-in with Rutina and the RPG layer (Hrdina): "every day at least one side quest from a list" (2026-10-20),
   "one side quest has to be completed every week" (backlog D6). Exact rules decided here.
-- The 110 *Výlety – Tipy* day trips (≤ 2.5 h drive) from `data/imports/bucket_list_2026-10-20.csv` are the first
+- The 100 *Výlety – Tipy* day trips (≤ 2.5 h drive) from `data/imports/bucket_list_2026-10-20.csv` are the first
   pool (B5 of the bucket-list spec).
 
 ## Decisions (agent recommendation first)
@@ -21,19 +22,17 @@ Status: **draft 2026-10-21, waiting for the user's decisions (O12)**. Numbers ma
   memory + ★ on completion, sort order, created_at. *Active* = "rozjeto" for the longer ones, shown on top.
 - **S3 Duration (Typ)** — a fixed set, the seed's values mapped onto it: **Chvilka** (≤ 1 h) · **1 den** ·
   **Víkend** · **Týden** · **Měsíc+**.
-- **S4 Categories (Kategorie)** — a fixed set with icon + colour like the bucket list, built from the seed's
-  distinct values once the data arrives (Czech labels, e.g. Learn → Učení), plus **Výlet** for the 110 day trips.
-  Each category maps to a skill: Učení → Mysl, Výlet → Dobrodružství, Tvoření / projekty → Mysl, pohyb → Výdrž …
+- **S4 Categories (Kategorie)** — provisional, from the user's quick split (Learn, Make, Cook/eat, Activity) plus
+  the day trips: **Učení** (→ Mysl) · **Tvoření** (→ Mysl) · **Jídlo** (→ Výživa) · **Aktivita** (→ Dobrodružství)
+  · **Výlet** (→ Dobrodružství). To be split smarter when the list arrives (user, 2026-10-21).
 - **S5 XP by duration** *(tune)*: Chvilka 20 · 1 den 50 · Víkend 120 · Týden 250 · Měsíc+ 500, to the category's
   skill, on `done_on` in the live ledger (multiplier / tired apply); un-ticking removes it. (Bucket: 50–1 000.)
-- **S6 Weekly side quest** — a new weekly quest in `quests.py`: **"Side quest týdne: dokonči aspoň 1 side quest"**,
-  80 XP, counts toward the all-quests bonus; unfinished = "Výprava nesplněna" (no extra penalty, as all quests).
-  Starts the Monday after release so old weeks keep their quests.
-- **S7 Daily tip (not a duty)** — "Dnešní side quest" card on Rutina (day view) and on top of Questy: one open
-  Chvilka / 1 den quest picked deterministically per day (weekend → Víkend / Výlet), with *Jiný* (reroll) and
-  *Splněno*. No penalty for skipping; "every day at least one" stays a nudge, not hard mode.
+- **S6 Weekly side quest** — a new weekly quest in `quests.py`: **"Side quest týdne: dokonči 1 side quest"**,
+  any duration (user, 2026-10-21), 80 XP to Dobrodružství, counts toward the all-quests bonus; unfinished =
+  "Výprava nesplněna" (no extra penalty, as all quests). From Monday 2026-10-26 so old weeks keep their quests.
+- **S7 Daily tip** — **dropped** (user: no side quest every day, one per week is the rhythm).
 - **S8 Dobrodružství rust** — stays off (simpler; side quests mostly go to other skills anyway).
-- **S9 Questy page** — tip card, active quests, filters (duration chips, category, open / done, search), rows
+- **S9 Questy page** — weekly quest card, active quests, filters (duration chips, category, open / done, search), rows
   grouped by duration with a check, item sheet (detail, complete with date / memory / ★, edit, delete), add form.
   The trips show travel time + link; a "Kostka" (random by filter) like the bucket list.
 - **S10 Coach** — tools `complete_side_quest` (fuzzy title, like bucket) and `suggest_side_quest`
@@ -43,4 +42,4 @@ Status: **draft 2026-10-21, waiting for the user's decisions (O12)**. Numbers ma
 
 ## Seed
 Sent by the user at the end of implementation (CSV `Typ,Kategorie,Úkol,Stav`); cleaned up like B7 (Czech titles,
-typos, duplicates merged) and seeded with the 110 day trips in one migration.
+typos, duplicates merged) and seeded with the 100 day trips in one migration.

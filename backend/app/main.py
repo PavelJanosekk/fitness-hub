@@ -21,6 +21,7 @@ from app.routers import (
     nutrition,
     rpg,
     running,
+    side_quests,
     webhooks,
     workouts,
 )
@@ -58,6 +59,7 @@ for module in (
     nutrition,
     rpg,
     running,
+    side_quests,
     webhooks,
     workouts,
 ):

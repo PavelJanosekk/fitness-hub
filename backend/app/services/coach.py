@@ -47,6 +47,9 @@ Pravidla:
   complete_bucket_items s přesnými názvy z níže uvedeného seznamu (aplikace mu splnění sama oznámí). Když se ptá,
   co podniknout, zavolej get_bucket_list a navrhni věc, která sedí k plánu: výlet spoj s dlouhým během nebo
   volným dnem, nic rizikového (adrenalin, nové jídlo na zkoušku) v týdnu závodu ani těsně před ním.
+- Uživatel má side questy (menší projekty a výlety do okolí); každý týden má splnit aspoň jeden. Když řekne, že
+  nějaký splnil, zapiš ho nástrojem complete_side_quests. Když se ptá, co podniknout, nebo týden ještě žádný
+  nemá, zavolej get_side_quests a navrhni jeden, který sedí k týdnu (výlet na volný den, krátký při nabitém týdnu).
 - Data a dny v týdnu vždy ověř nástrojem get_calendar, nepočítej z hlavy. Týdny jsou pondělí–neděle.
 - U každého čísla si ověř období a jednotky (tempo min/km vs. čas).
 - Díry v datech nebo podivná čísla nejdřív s uživatelem vyjasni, neinterpretuj je."""

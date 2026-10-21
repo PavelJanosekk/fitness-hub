@@ -25,6 +25,8 @@ and the level drop too); paused days and days before the routine's first day don
 Bucket list (E36, services/bucket.py): completed items, steps and the yearly bonus feed the Dobrodružství skill. They
 also count on paused days (a holiday is when bucket-list things happen), and Dobrodružství never rusts.
 Dovednosti (E37, services/abilities.py): the first entry of a new dovednost pays Mysl, also on a paused day.
+Side quests (E45, services/side_quests.py): a completed quest pays by duration to its category's skill, also on a
+paused day.
 """
 
 import datetime as dt
@@ -43,6 +45,7 @@ from app.services import abilities as ab
 from app.services import bucket as bk
 from app.services import habits as hs
 from app.services import quests as qs
+from app.services import side_quests as sq
 from app.services.metrics import intake_by_day
 from app.services.run_analysis import RUN_TYPES
 from app.services.workouts import WORKING_SET, personal_records
@@ -81,7 +84,7 @@ SKILLS = [
     ("discipline", "Disciplína", "rutina, perfektní dny, spánek"),
     ("mind", "Mysl", "návyky Mysl"),
     ("home", "Domov", "návyky Domov"),
-    ("adventure", "Dobrodružství", "bucket list"),
+    ("adventure", "Dobrodružství", "bucket list, side questy"),
 ]
 NO_RUST = {"adventure"}  # fed by rare events, not by training
 SKILL_NAMES = {key: name for key, name, _ in SKILLS}
@@ -102,7 +105,7 @@ KIND_SKILL = {
 HABIT_SKILL_NAMES = {"body": "Tělo", "nutrition": "Výživa", "home": "Domov", "discipline": "Disciplína", "mind": "Mysl"}
 BUCKET_KINDS = {"bucket", "bucket_goal", "bucket_step", "bucket_year"}
 # Rare events that also count on paused days
-EVENT_KINDS = BUCKET_KINDS | {"ability_new"}
+EVENT_KINDS = BUCKET_KINDS | {"ability_new", "side_quest"}
 TITLES = [
     (1, "Učeň"),
     (5, "Poutník"),
@@ -386,6 +389,8 @@ def build_ledger(session: Session, on: dt.date | None = None) -> Ledger:
     gains = _gains_by_day(session, board, on)
     for gain in bk.gains(bk.load(session, on), on):
         gains[gain.date].append(XpEntry(gain.date, gain.amount, gain.kind, gain.text, {bk.SKILL: gain.amount}))
+    for side in sq.gains(sq.load(session, on)):
+        gains[side.date].append(XpEntry(side.date, side.amount, side.kind, side.text, {side.skill: side.amount}))
     for gain in ab.gains(ab.load(session, on), on):
         gains[gain.date].append(XpEntry(gain.date, gain.amount, gain.kind, gain.text, {ab.SKILL: gain.amount}))
     ledger = Ledger(forgiven=forgiven, paused_today=on in paused)

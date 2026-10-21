@@ -9,6 +9,7 @@ before it started (the plan week, the previous 4 weeks of gym / habits), so they
 - habit: 5 days of the weakest daily routine habit of the previous 4 weeks
 - ability (E37, weeks from ABILITY_QUEST_FROM so earlier weeks keep their quests): one new dovednost, when Mysl got
   the least skill XP of the previous 4 weeks and a note / review habit exists to log it
+- side (E45, weeks from SIDE_QUEST_FROM): complete one side quest of any duration, once the list has any
 Each completed quest pays XP on the day it is completed; all of them pay a bonus. A finished week's open quests are
 recorded as failed (no reward). Values are (tune).
 """
@@ -25,12 +26,14 @@ from app.models.habits import HabitFrequency
 from app.models.running import Activity
 from app.services import abilities as ab
 from app.services import habits as hs
+from app.services import side_quests as sq
 from app.services.run_analysis import RUN_TYPES
 from app.services.workouts import WORKING_SET
 from app.timeutils import day_bounds, local_date
 
-QUEST_XP = {"run": 150, "gym": 100, "muscle": 80, "home": 80, "habit": 60, "ability": 60}
+QUEST_XP = {"run": 150, "gym": 100, "muscle": 80, "home": 80, "habit": 60, "ability": 60, "side": 80}
 ABILITY_QUEST_FROM = dt.date(2026, 10, 26)
+SIDE_QUEST_FROM = dt.date(2026, 10, 26)
 TRAINED_SKILLS = ("strength", "endurance", "nutrition", "discipline", "mind", "home")  # not the rare Dobrodružství
 ALL_QUESTS_XP = 100
 MUSCLE_SETS = 6
@@ -57,6 +60,8 @@ class History:
     group_sets: dict[dt.date, Counter[str]] = field(default_factory=lambda: defaultdict(Counter))
     plan_km: dict[dt.date, float] = field(default_factory=dict)  # week start -> planned km (lower bound)
     new_abilities: Counter[dt.date] = field(default_factory=Counter)  # first entries of dovednosti per day
+    side_quests: Counter[dt.date] = field(default_factory=Counter)  # paying side quests completed per day
+    side_quests_since: dt.date | None = None  # the day the first side quest was added
 
 
 def load_history(session: Session, start: dt.date, end: dt.date) -> History:
@@ -85,6 +90,9 @@ def load_history(session: Session, start: dt.date, end: dt.date) -> History:
             history.gym_days[day] += 1
     for day, _ in ab.first_days(session, end).values():
         history.new_abilities[day] += 1
+    side = sq.load(session, end)
+    history.side_quests.update(sq.paying_days(side))
+    history.side_quests_since = min((local_date(s.quest.created_at) for s in side), default=None)
     for week in session.exec(select(TrainingWeek)):
         if week.km_min:
             history.plan_km[week.week_start] = week.km_min
@@ -179,6 +187,10 @@ def week_quests(
         if weakest == "mind":
             quests.append(Quest("ability", "Vyzkoušej novou dovednost", 1, "×", QUEST_XP["ability"], "mind"))
 
+    since = history.side_quests_since
+    if monday >= SIDE_QUEST_FROM and since is not None and since <= sunday:
+        quests.append(Quest("side", "Dokonči side quest", 1, "×", QUEST_XP["side"], "adventure"))
+
     # Progress day by day, so the completion day is known
     for day in _days(monday, min(on, monday + dt.timedelta(days=6))):
         for quest in quests:
@@ -196,6 +208,8 @@ def week_quests(
                 quest.progress += 1
             elif quest.key == "ability":
                 quest.progress += history.new_abilities[day]
+            elif quest.key == "side":
+                quest.progress += history.side_quests[day]
             if quest.done_on is None and quest.progress >= quest.target - 1e-9:
                 quest.done_on = day
     for quest in quests:

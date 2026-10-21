@@ -22,11 +22,13 @@ from app.models.coach import Race
 from app.models.gym import Exercise, MuscleGroup, Workout, WorkoutSet, WorkoutSource
 from app.models.habits import Habit, HabitFrequency, HabitLog
 from app.models.running import Activity, ActivityMetrics, TrainingPlanItem
+from app.models.side_quests import SideQuest
 from app.schemas.body import MetricUpsert
 from app.schemas.nutrition import QuickAdd
 from app.services import abilities as abilities_svc
 from app.services import bucket as bucket_svc
 from app.services import habits as habit_svc
+from app.services import side_quests as side_svc
 from app.services.coach_kb import plan_weeks, read_document
 from app.services.exercises import resolve_exercise
 from app.services.metrics import daily_series, upsert_daily_metric
@@ -837,6 +839,93 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
             result["message"] = "Titles in not_saved did not match exactly and were not saved."
         return result
 
+    def get_side_quests(
+        category: str | None = None, duration: str | None = None, status: str = "open"
+    ) -> dict[str, Any]:
+        """The user's side quests: smaller projects and adventures ("learn X", "make Y", nearby day trips) with
+        category, duration, the XP they pay, drive time for trips and whether they are started ("rozjeto"); plus this
+        week's quest (complete one side quest a week). Use it to suggest a side quest that fits the week (a trip on a
+        rest day or after a long run, a short one on a busy week) and for questions about side quests.
+
+        Args:
+            category: One of learn, make, food, activity, trip; omit for all.
+            duration: One of moment (up to an hour), day, weekend, week, month; omit for all.
+            status: "open", "active" (started), "done" or "all".
+        """
+        on = today(ctx.now)
+        states = side_svc.load(session, on)
+        rows = []
+        for s in states:
+            quest = s.quest
+            if (
+                (category and quest.category != category)
+                or (duration and quest.duration != duration)
+                or (status == "open" and s.done)
+                or (status == "active" and (s.done or not quest.active))
+                or (status == "done" and not s.done)
+            ):
+                continue
+            rows.append(
+                _compact(
+                    {
+                        "title": quest.title,
+                        "category": side_svc.CATEGORIES[quest.category][0],
+                        "duration": side_svc.DURATIONS[quest.duration][0],
+                        "xp": s.xp if s.done else side_svc.full_xp(quest),
+                        "active": quest.active or None,
+                        "drive_min": quest.travel_minutes,
+                        "km": quest.distance_km,
+                        "done_on": quest.done_on.isoformat() if quest.done_on else None,
+                        "done_before_app": quest.done_before_app or None,
+                        "note": quest.note,
+                        "memory": quest.memory,
+                    }
+                )
+            )
+        monday = on - dt.timedelta(days=on.weekday())
+        week = [s.quest.title for s in states if s.xp and s.quest.done_on and s.quest.done_on >= monday]
+        return {
+            "today": on.isoformat(),
+            "items": rows,
+            "done_total": sum(1 for s in states if s.done),
+            "items_total": len(states),
+            "this_week_done": week,
+        }
+
+    def complete_side_quests(titles: list[str], date: str | None = None, memory: str | None = None) -> dict[str, Any]:
+        """Mark side quests as done, e.g. "byl jsem v Macoše". Exact titles (accents and case don't matter) are
+        saved; anything else comes back with candidates and is NOT saved, so ask the user which one they meant (call
+        get_side_quests to see the titles).
+
+        Args:
+            titles: Side quest titles.
+            date: Day as YYYY-MM-DD; omit for today.
+            memory: Optional short note in the user's words (how it was).
+        """
+        try:
+            day = dt.date.fromisoformat(date) if date else today(ctx.now)
+        except ValueError:
+            return {"error": f"Invalid date {date!r}, use YYYY-MM-DD"}
+        if day > today(ctx.now):
+            return {"error": "Cannot complete a future day"}
+        saved, unmatched = [], []
+        for title in titles:
+            quest, candidates = bucket_svc.resolve_title(session, SideQuest, title)
+            if quest is None:
+                unmatched.append({"input": title, "candidates": [q.title for q, _ in candidates]})
+                continue
+            quest.done_on, quest.done_before_app, quest.active = day, False, False
+            if memory and not quest.memory:
+                quest.memory = memory
+            session.add(quest)
+            saved.append(quest.title)
+        session.commit()
+        result: dict[str, Any] = {"date": day.isoformat(), "saved": saved}
+        if unmatched:
+            result["not_saved"] = unmatched
+            result["message"] = "Titles in not_saved did not match exactly and were not saved."
+        return result
+
     return [
         get_calendar,
         get_body_metrics_summary,
@@ -854,6 +943,8 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
         get_abilities,
         get_bucket_list,
         complete_bucket_items,
+        get_side_quests,
+        complete_side_quests,
     ]
 
 
