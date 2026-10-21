@@ -121,7 +121,7 @@ export function QuickActions({ date }: { date: string }) {
         <div>
           {current.map((action) => (
             <div key={action.id} className={`qa-fold ${leavingId === action.id ? "qa-leaving" : ""}`}>
-              <div className="min-h-0">
+              <div className="min-h-0 min-w-0">
                 <ActionCard action={action} state={state(action)} onLog={() => log(action)} />
               </div>
             </div>

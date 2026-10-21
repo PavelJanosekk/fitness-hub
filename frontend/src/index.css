@@ -340,6 +340,8 @@ input[type="number"] {
   /* Logged: after the check the card folds away (rows 1fr → 0fr) */
   .qa-fold {
     display: grid;
+    /* minmax(0, 1fr): the cell may shrink below the card's long nowrap text, so it truncates (iOS Safari) */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 1fr;
   }
   .qa-fold + .qa-fold {
