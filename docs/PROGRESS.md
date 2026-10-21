@@ -87,6 +87,7 @@
 | O9 | ✅ Bucket list + Hrdina tab → E36 | Before the bucket list |
 | O10 | ✅ Habit journal + Dovednosti → E37 | Before the habit journal |
 | O11 | TODO (user will sort it out later): threshold days in the plan are written per interval ("T 3× 1,5 km"), so `training_days` parses the first number (1.5 km) instead of the session total and the E41 target comes out low. Fix in the plan text (total km in the day line) or a parser rule agreed with the user | Before threshold weeks (from 2026-11-02) |
+| O12 | TODO: side quests (D6) decisions S1–S11 in `docs/side-quests-module-spec.md` | Before side quests |
 
 ## Phase checklist
 
@@ -380,3 +381,5 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-21 (36):** E44 deployed to prod at the user's request (backup `manual-2026-10-21-1208.dump`, no migration, health ok; prod 20.10. now shows one Oběd with 4 items).
 - **2026-10-21 (37):** E42 follow-up (user): the quick actions show only when Jídlo is on today, not on past days.
 - **2026-10-21 (38):** quick actions only on today deployed to prod at the user's request (frontend only, no backup needed; health ok).
+
+- **2026-10-21 (38):** User asked to start side quests (D6): add / remove like the bucket list, no import mechanism, the list (`Typ,Kategorie,Úkol,Stav`) comes at the end. Drafted `docs/side-quests-module-spec.md` (S1–S11). Waiting for decisions (O12).
