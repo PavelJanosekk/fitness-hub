@@ -27,7 +27,7 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.database import SessionDep, engine
-from app.models.nutrition import Food, FoodSource, MealLog, MealLogItem, MealType, NutritionProfile
+from app.models.nutrition import Food, FoodSource, MealLog, MealLogItem, MealType, NutritionProfile, QuickAction
 from app.routers.ai_coach import ChatRequest, GeminiDep, audio_part, run_gemini
 from app.schemas.nutrition import (
     AutofillRead,
@@ -41,11 +41,14 @@ from app.schemas.nutrition import (
     MealItemRead,
     MealRead,
     ProfileUpdate,
+    QuickActionLog,
+    QuickActionRead,
+    QuickActionUpsert,
     QuickAdd,
     Totals,
 )
 from app.services.gemini_service import Tier
-from app.services.nutrition import kt_import, mapper, off
+from app.services.nutrition import kt_import, mapper, off, quick_actions
 from app.services.nutrition import quick_add as quick_add_meal
 from app.services.nutrition.assistant import NutritionTurn, nutrition_turn
 from app.services.nutrition.autofill import AutofillUnavailableError, autofill
@@ -232,6 +235,34 @@ def delete_item(item_id: uuid.UUID, session: SessionDep) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.get("/quick-actions", response_model=list[QuickActionRead])
+def list_quick_actions(session: SessionDep) -> list[QuickActionRead]:
+    return quick_actions.list_actions(session)
+
+
+@router.put("/quick-actions/{action_id}", response_model=QuickActionRead)
+def put_quick_action(action_id: uuid.UUID, body: QuickActionUpsert, session: SessionDep) -> QuickActionRead:
+    """Idempotent upsert by the client UUID; the items replace the old ones (E42)."""
+    return quick_actions.read_action(session, quick_actions.upsert_action(session, action_id, body))
+
+
+@router.delete("/quick-actions/{action_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_quick_action(action_id: uuid.UUID, session: SessionDep) -> Response:
+    if (action := session.get(QuickAction, action_id)) is not None:
+        session.delete(action)
+        session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/quick-actions/{action_id}/log", response_model=list[MealItemRead])
+def log_quick_action(action_id: uuid.UUID, body: QuickActionLog, session: SessionDep) -> list[MealItemRead]:
+    """Log the action's foods into its meal of the day; undo = DELETE /items/{id} for the returned ids."""
+    action = session.get(QuickAction, action_id)
+    if action is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown quick action")
+    return [read_item(item, food) for item, food in quick_actions.log_action(session, action, body)]
+
+
 class NutrientInfo(BaseModel):
     key: str
     label: str
@@ -324,7 +355,9 @@ def delete_food(food_id: int, session: SessionDep) -> Response:
         session.commit()
     except IntegrityError:
         session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, "The food is used in logged meals or recipes") from None
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "The food is used in logged meals, recipes or quick actions"
+        ) from None
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

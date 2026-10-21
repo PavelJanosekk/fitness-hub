@@ -37,6 +37,8 @@ from app.models.nutrition import (  # noqa: E402
     MealLog,
     MealLogItem,
     NutritionProfile,
+    QuickAction,
+    QuickActionItem,
     RecipeComponent,
 )
 from app.models.rpg import RpgPause  # noqa: E402
@@ -69,6 +71,8 @@ __all__ = [
     "MealLog",
     "MealLogItem",
     "NutritionProfile",
+    "QuickAction",
+    "QuickActionItem",
     "Race",
     "RecipeComponent",
     "RepoExportState",

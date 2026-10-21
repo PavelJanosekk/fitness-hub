@@ -225,3 +225,49 @@ class KTImportState(SQLModel, table=True):
     warnings: list[str] = Field(default_factory=list, sa_type=JSONB)
     last_error: str | None = None
     updated_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
+
+
+class QuickActionColor(StrEnum):
+    """Accent palette names the frontend themes per theme (E42)."""
+
+    emerald = "emerald"
+    amber = "amber"
+    red = "red"
+    sky = "sky"
+    violet = "violet"
+
+
+class QuickAction(SQLModel, table=True):
+    """A one-tap meal on Jídlo (E42): its foods go into `meal_type` of the open day. Offered while the local time
+    is inside [start_minute, end_minute)."""
+
+    __tablename__ = "quick_actions"
+    __table_args__ = (
+        one_of("meal_type", MealType),
+        one_of("color", QuickActionColor),
+        CheckConstraint("start_minute >= 0 AND start_minute < end_minute AND end_minute <= 1440", name="window"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)  # client-generated
+    name: str
+    emoji: str = "🍽️"
+    color: str = QuickActionColor.emerald
+    meal_type: str
+    start_minute: int
+    end_minute: int
+    position: int = 0
+    created_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
+    updated_at: dt.datetime = Field(default_factory=now_utc, sa_type=AwareDateTime)
+
+
+class QuickActionItem(SQLModel, table=True):
+    """One food of a quick action; a food used here can't be deleted (RESTRICT, like logged items)."""
+
+    __tablename__ = "quick_action_items"
+    __table_args__ = (CheckConstraint("amount_g > 0", name="amount_positive"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    quick_action_id: uuid.UUID = Field(foreign_key="quick_actions.id", ondelete="CASCADE", index=True)
+    food_id: int = Field(foreign_key="foods.id", ondelete="RESTRICT", index=True)
+    amount_g: float
+    position: int = 0

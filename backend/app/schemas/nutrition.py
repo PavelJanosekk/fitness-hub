@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.nutrition import MealType
+from app.models.nutrition import MealType, QuickActionColor
 
 
 class QuickAdd(BaseModel):
@@ -219,3 +219,50 @@ class ProfileUpdate(BaseModel):
     fat_target_g: float | None = Field(default=None, ge=0, lt=1000)
     maintenance_offset_kcal: float | None = Field(default=None, ge=-2000, le=2000)
     fiber_target_g: float | None = Field(default=None, ge=0, lt=200)
+
+
+class QuickActionItemIn(BaseModel):
+    food_id: int
+    amount_g: float = Field(gt=0, le=5000)
+
+
+class QuickActionUpsert(BaseModel):
+    """A quick action as the editor saves it (E42); the items replace the old ones."""
+
+    name: str = Field(min_length=1, max_length=60)
+    emoji: str = Field(default="🍽️", min_length=1, max_length=16)
+    color: QuickActionColor = QuickActionColor.emerald
+    meal_type: MealType
+    start_minute: int = Field(ge=0, lt=1440)
+    end_minute: int = Field(gt=0, le=1440)
+    position: int = 0
+    items: list[QuickActionItemIn] = Field(min_length=1, max_length=15)
+
+
+class QuickActionItemRead(BaseModel):
+    food_id: int
+    food_name: str
+    amount_g: float
+    kcal: float
+    protein_g: float
+
+
+class QuickActionRead(BaseModel):
+    id: uuid.UUID
+    name: str
+    emoji: str
+    color: str
+    meal_type: str
+    start_minute: int
+    end_minute: int
+    position: int
+    items: list[QuickActionItemRead]
+    kcal: float
+    protein_g: float
+
+
+class QuickActionLog(BaseModel):
+    """One client id per item of the action, in order: a retry logs nothing twice."""
+
+    date: dt.date | None = None  # defaults to today in APP_TZ
+    item_ids: list[uuid.UUID] = Field(min_length=1, max_length=15)

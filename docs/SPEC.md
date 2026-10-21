@@ -415,6 +415,12 @@ The coach is one of **two separate assistants** (the nutrition assistant arrives
 - Meal type `fueling` ("Během běhu"): in the totals, excluded from % of target; `DaySummary.fueling_kcal`, `target` (breakdown). Resting HR: `POST /api/metrics {resting_hr}` stores a manual `daily_source_metrics` row; Přehled has the field next to weight (the quick kcal entry is gone).
 - Export: `targets_daily.csv` (2026-10-21 → tomorrow), `fueling_kcal` in `nutrition_daily.csv`, formula and modes in `profile.md`.
 
+### 6.11 Quick actions on Jídlo (`/api/nutrition/quick-actions`) [E42]
+- `quick_actions`: client UUID, `name`, `emoji`, `color` (accent palette name: emerald / amber / red / sky / violet, themed per theme), `meal_type` (fixed), `start_minute` < `end_minute` (minutes of the local day, 0–1440), `position`. `quick_action_items`: ordered `food_id` (FK, RESTRICT: a food used in an action can't be deleted) + `amount_g`.
+- `GET` lists actions by position with each item's food name, kcal and protein and the action's totals. `PUT /{id}` upserts the action and replaces its items (1–15, unknown food = 422). `DELETE /{id}`. `POST /{id}/log {date, item_ids}` logs every item into the day's meal of the action's type through the normal item upsert; the client ids (one per item) make a retry harmless, and the undo deletes those items.
+- Jídlo: the actions whose window contains the current local time are big tinted cards (emoji, name, items, kcal / protein, +). A tap logs into the open day and shows a toast with Zpět. **Vše** lists all actions by relevance (in the window first, then by the circular distance to the window), each with add and edit, plus *Nová rychlá akce*. The editor: name, emoji, color, meal (changing it re-fills an untouched window), from–to, foods with grams (local food search), live totals, delete.
+- Migration 0027 seeds *Vločky s proteinem* (50 g `ovesné vločky` + 30 g Just whey, breakfast 5:00–11:00, amber) and *Tvaroh s proteinem* (250 g `Tvaroh polotučný 3,8% Pilos` + 30 g Just whey, afternoon snack 14:00–18:00, sky) when those foods exist.
+
 ## 7. Gemini Coach Implementation (`backend/app/services/`)
 
 **IMPORTANT FOR AGENT:** the code is the reference. Read it rather than re-deriving it from an old sample.
