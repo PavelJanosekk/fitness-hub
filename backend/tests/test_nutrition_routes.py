@@ -64,6 +64,26 @@ def test_items_upsert_join_the_meal_and_edit_in_place(client: TestClient, sessio
     assert day["totals"]["kcal"] == 325
 
 
+def test_moving_an_item_joins_the_other_meal_and_drops_the_empty_one(client: TestClient, session: Session) -> None:
+    chicken, rice = food(session, name_en="Chicken"), food(session, name_en="Rice")
+    moved = uuid.uuid4()
+    put_item(client, chicken.id, 150, moved)
+    put_item(client, rice.id, 100, meal_type="breakfast")
+
+    for _ in range(2):  # idempotent
+        response = client.post(f"/api/nutrition/items/{moved}/move", json={"meal_type": "breakfast"})
+        assert response.status_code == 200, response.text
+    day = client.get("/api/nutrition/day", params={"date": D.isoformat()}).json()
+    to_empty = client.post(f"/api/nutrition/items/{moved}/move", json={"meal_type": "dinner"})
+    after = client.get("/api/nutrition/day", params={"date": D.isoformat()}).json()
+
+    assert response.json()["kcal"] == 150
+    assert [(m["meal_type"], len(m["items"])) for m in day["meals"]] == [("breakfast", 2)]
+    assert to_empty.status_code == 200
+    assert [(m["meal_type"], len(m["items"])) for m in after["meals"]] == [("breakfast", 1), ("dinner", 1)]
+    assert client.post(f"/api/nutrition/items/{uuid.uuid4()}/move", json={"meal_type": "lunch"}).status_code == 404
+
+
 def test_summary_reports_coverage_and_borrows_reference_micros(client: TestClient, session: Session) -> None:
     chicken = food(session, micros={"iron_mg": 1.0, "vitamin_c_mg": 0.0}, kcal=200, name_en="Chicken")
     pepper = food(session, micros={"iron_mg": 2.0, "vitamin_c_mg": 100.0}, kcal=30, name_en="Pepper")

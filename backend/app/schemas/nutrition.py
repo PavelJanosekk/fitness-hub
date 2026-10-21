@@ -181,6 +181,12 @@ class ItemUpsert(BaseModel):
     label: str | None = Field(default=None, max_length=200)
 
 
+class ItemMove(BaseModel):
+    """Move an eaten item into another meal of the same day (drag and drop on Jídlo, E43)."""
+
+    meal_type: MealType
+
+
 class RecipeIngredientIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     grams: float = Field(gt=0, le=5000)

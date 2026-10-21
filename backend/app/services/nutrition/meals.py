@@ -64,3 +64,27 @@ def upsert_item(
     session.add(item)
     session.commit()
     return item
+
+
+def move_item(session: Session, item: MealLogItem, meal_type: str) -> MealLogItem:
+    """Idempotent: the item joins the day's latest meal of that type (or starts one); a meal left empty is
+    deleted, as when its last item is removed."""
+    source = session.get(MealLog, item.meal_log_id)
+    if source is None or source.meal_type == meal_type:
+        return item
+    target = session.exec(
+        select(MealLog)
+        .where(MealLog.logged_date == source.logged_date, MealLog.meal_type == meal_type)
+        .order_by(col(MealLog.created_at).desc())
+    ).first()
+    if target is None:
+        target = MealLog(logged_date=source.logged_date, meal_type=meal_type)
+        session.add(target)
+        session.flush()
+    item.meal_log_id = target.id
+    session.add(item)
+    session.flush()
+    if session.exec(select(MealLogItem.id).where(MealLogItem.meal_log_id == source.id)).first() is None:
+        session.delete(source)
+    session.commit()
+    return item

@@ -576,7 +576,8 @@ function ActionEditor({ action, nextPosition, onClose }: { action: QuickAction |
   );
 }
 
-function UndoToast({ toast, onUndo, onClose }: { toast: Toast; onUndo: () => void; onClose: () => void }) {
+/** Also used by moving items between meals on Jídlo (E43). */
+export function UndoToast({ toast, onUndo, onClose }: { toast: { title: string; detail: string } | { error: string }; onUndo: () => void; onClose: () => void }) {
   return createPortal(
     <div className="qa-toast-wrap pointer-events-none fixed inset-x-0 z-50 flex justify-center px-4">
       <div role="status" className="qa-toast pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-900 py-2 pr-2 pl-4">

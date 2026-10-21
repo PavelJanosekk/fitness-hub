@@ -270,6 +270,7 @@ Per-source daily values. Used when a source sends totals instead of intervals, a
 - `POST /api/nutrition/quick-add`: `{id (client UUID), date?, meal_type?, kcal, protein_g?, carbs_g?, fat_g?, label?}` → creates/upserts a `MealLog` + one `MealLogItem`. Used by the Dashboard quick input.
 - `GET /api/nutrition/day?date=YYYY-MM-DD`: meals + items + day totals.
 - `DELETE /api/nutrition/items/{item_id}`: idempotent delete.
+- `POST /api/nutrition/items/{item_id}/move {meal_type}`: moves an item into the latest meal of that type on the same day (or starts one); a meal left empty is deleted. Idempotent; unknown item = 404 **[E43]**.
 
 ### 6.3 Gym & Workouts (`/api/workouts`, `/api/exercises`)
 - `GET /api/exercises`: list all exercises (seed 30 common gym exercises on startup, idempotent).
@@ -420,6 +421,9 @@ The coach is one of **two separate assistants** (the nutrition assistant arrives
 - `GET` lists actions by position with each item's food name, kcal and protein and the action's totals. `PUT /{id}` upserts the action and replaces its items (1–15, unknown food = 422). `DELETE /{id}`. `POST /{id}/log {date, item_ids}` logs every item into the day's meal of the action's type through the normal item upsert; the client ids (one per item) make a retry harmless, and the undo deletes those items.
 - Jídlo: the actions whose window contains the current local time are big tinted cards (emoji, name, items, kcal / protein, +). A tap logs into the open day and shows a toast with Zpět. **Vše** lists all actions by relevance (in the window first, then by the circular distance to the window), each with add and edit, plus *Nová rychlá akce*. The editor: name, emoji, color, meal (changing it re-fills an untouched window), from–to, foods with grams (local food search), live totals, delete. Page order on Jídlo: summary, quick actions, Jídla, assistant, vitamins. **Done for the day:** logged items carry `meal_log_items.quick_action_id` (migration 0028, FK SET NULL, old items unmarked), and an action whose items are in the open day is hidden from the cards after its check + fold animation; *Vše* marks it *Zapsáno* (adding again stays possible). Zpět or deleting the items brings it back. When every in-window action is done the strip says *Na teď máš zapsáno* + the next one. The assistant card has no suggested prompts (user).
 - Migration 0027 seeds *Vločky s proteinem* (50 g `ovesné vločky` + 30 g Just whey, breakfast 5:00–11:00, amber) and *Tvaroh s proteinem* (250 g `Tvaroh polotučný 3,8% Pilos` + 30 g Just whey, afternoon snack 14:00–18:00, sky) when those foods exist.
+
+### 6.12 Moving items between meals on Jídlo [E43]
+- Holding an item row (~0.4 s without moving) picks it up; a quicker swipe still scrolls and a tap still opens the item. While an item is up, every meal type is a drop zone in meal order: the logged meals plus a dashed zone for each type with nothing yet, so an item can start a new meal. The page scrolls so the row stays under the finger, auto-scrolls near the screen edges, and the meal under the finger is highlighted. Dropping on another meal calls the move endpoint (§6.2) with an optimistic update and shows the undo toast (*Přesunuto do: …*, Zpět moves the item back). Same day only.
 
 ## 7. Gemini Coach Implementation (`backend/app/services/`)
 

@@ -37,6 +37,7 @@ from app.schemas.nutrition import (
     FoodCreate,
     FoodRead,
     FoodUpdate,
+    ItemMove,
     ItemUpsert,
     MealItemRead,
     MealRead,
@@ -54,7 +55,7 @@ from app.services.nutrition.assistant import NutritionTurn, nutrition_turn
 from app.services.nutrition.autofill import AutofillUnavailableError, autofill
 from app.services.nutrition.foods import create_food, read_food, search_foods, update_food
 from app.services.nutrition.lookup import lookup_dish
-from app.services.nutrition.meals import MealEntry, save_meal, upsert_item
+from app.services.nutrition.meals import MealEntry, move_item, save_meal, upsert_item
 from app.services.nutrition.nutrients import ALL as ALL_NUTRIENTS
 from app.services.nutrition.nutrients import MICRO_KEYS
 from app.services.nutrition.resolver import Candidate, MealItemInput, confirm_aliases, materialize, portion_amount
@@ -219,6 +220,16 @@ def put_item(item_id: uuid.UUID, body: ItemUpsert, session: SessionDep) -> MealI
     if food is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Unknown food")
     return read_item(upsert_item(session, item_id, body, food), food)
+
+
+@router.post("/items/{item_id}/move", response_model=MealItemRead)
+def move_item_route(item_id: uuid.UUID, body: ItemMove, session: SessionDep) -> MealItemRead:
+    """Move an item into another meal type of its day (E43); repeating it changes nothing."""
+    item = session.get(MealLogItem, item_id)
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown item")
+    item = move_item(session, item, body.meal_type)
+    return read_item(item, session.get(Food, item.food_id) if item.food_id else None)
 
 
 @router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)

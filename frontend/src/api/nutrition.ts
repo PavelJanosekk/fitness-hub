@@ -299,6 +299,42 @@ export function usePutItem() {
   });
 }
 
+/** Move an item into another meal type of its day (E43). The open day's meals update at once, so the dropped
+ * item lands where the finger let go instead of snapping back until the refetch. */
+export function useMoveItem(date: string) {
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateIntake();
+  return useMutation({
+    mutationKey: ["nutrition", "move-item"],
+    mutationFn: ({ id, meal_type }: { id: string; meal_type: MealType }) =>
+      api<MealItem>(`/api/nutrition/items/${id}/move`, { method: "POST", body: { meal_type } }),
+    onMutate: async ({ id, meal_type }) => {
+      const key = nutritionKeys.summary(date);
+      await queryClient.cancelQueries({ queryKey: key });
+      queryClient.setQueryData<DaySummary>(key, (day) => day && { ...day, meals: moveInMeals(day.meals, id, meal_type) });
+    },
+    onSettled: invalidate,
+  });
+}
+
+function moveInMeals(meals: Meal[], id: string, mealType: MealType): Meal[] {
+  const item = meals.flatMap((m) => m.items).find((i) => i.id === id);
+  const source = meals.find((m) => m.items.some((i) => i.id === id));
+  if (!item || !source || source.meal_type === mealType) return meals;
+  // the server joins the latest meal of the type; the list is in meal order, so the last one is close enough
+  const target = meals.filter((m) => m.meal_type === mealType).at(-1);
+  let next = meals
+    .map((m) => (m === source ? { ...m, items: m.items.filter((i) => i.id !== id) } : m))
+    .map((m) => (m === target ? { ...m, items: [...m.items, item] } : m))
+    .filter((m) => m.items.length > 0);
+  if (!target) {
+    next = [...next, { id: `moving-${id}`, logged_date: source.logged_date, meal_type: mealType, notes: null, items: [item] }];
+    const order = (m: Meal) => MEAL_TYPES.findIndex(([type]) => type === m.meal_type);
+    next.sort((a, b) => order(a) - order(b));
+  }
+  return next;
+}
+
 export function useDeleteItem() {
   const invalidate = useInvalidateIntake();
   return useMutation({
