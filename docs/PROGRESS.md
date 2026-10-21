@@ -194,7 +194,7 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - [x] Verified on a copy of the dev DB in minimal, zen and modern (log + Zpět, Vše, create / edit / delete, the "Teď nic" state)
 - [x] Deployed to prod 2026-10-21 (manual backup first)
 - [x] Follow-up (user): a logged action hides for that day (fold animation, `quick_action_id` on items, migration 0028); the assistant's suggested prompts removed
-- [ ] Deploy the follow-up on request
+- [x] Follow-up deployed to prod 2026-10-21 (backup `manual-2026-10-21-0938.dump`, 0027 → 0028)
 
 ## Backlog (ideas, not accepted)
 - D1 `Exercise.secondary_muscles` for better volume analysis
@@ -363,3 +363,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-21 (29):** **E41** from the coach agent's export review. Found: steps = 1 on 19.9./24.9. come from Samsung Health whole-day records of 1 step (fixed in the merge); the gym gap 21.7.–15.10.2026 is in the Strong export itself (count per month matches the DB exactly; Aug/Sep 2025 have 13/17 workouts). User decisions: constants in code except base/protein/fat/maintenance offset (profile), plan from `training_days`, no freezing, no timezone fix, quick weight entry kept, quick kcal entry replaced by resting HR.
 - **2026-10-21 (30):** E41 deployed to prod at the user's request (0025 → 0026, health ok, no restarts). Gym gap 22.7.–16.10.2026 recorded as trained-but-unlogged (F6) and noted in the export README.
 - **2026-10-21 (31):** **E42** quick actions on Jídlo (one tap logs a saved meal, Zpět undoes, Vše sorted by time relevance, editor) and the assistant card moved below Jídla (user). Tested on a copy of the dev DB in all three themes. Manual backup `manual-2026-10-21-0916.dump`, then deployed to prod (0026 → 0027, health ok, both actions seeded from the user's foods).
+- **2026-10-21 (32):** E42 follow-up (user): a logged quick action hides for the day (check + fold, `meal_log_items.quick_action_id`, migration 0028), the assistant's suggested prompts removed. Backup `manual-2026-10-21-0938.dump`, deployed to prod (health ok). Today's prod breakfast (oats 50 g + whey 30 g) was logged before 0028, so it is unmarked.
