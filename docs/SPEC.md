@@ -406,6 +406,15 @@ The coach is one of **two separate assistants** (the nutrition assistant arrives
 - A public repo is refused (`PublicRepoError`) unless the user confirmed it: `POST /api/export/sync?confirm_public=true` stores `repo_export_state.public_ok_repo`; without it the endpoint answers 409 `{"code": "public_repo", "repo"}` and Nastavení shows a confirmation modal. `DELETE /api/export/public-consent` revokes it. `GET /api/export` = status (`public_ok`, last success/error/commit).
 - Scheduler: an hourly check runs the export once per local day after `EXPORT_HOUR`; a failure is retried the next hour.
 
+### 6.10 Daily kcal target from running (`/api/nutrition/targets`) [E41]
+- `services/nutrition/targets.py`: `day_target(day)` = base + Σ k·weight·km (the day's runs except LR) + ½·weight·km of today's LR + ½ of tomorrow's **planned** LR, rounded to 50 kcal half up; k = 0.75 easy/strides/hills, 1.0 threshold/LR. Weight = mean of the weigh-ins of the 7 days up to the day, else the last known one; no weight = no run kcal. Protein and fat from the profile, carbs = (kcal − 4·P − 9·F)/4 half up. Gym adds nothing.
+- Runs: the day's `training_days` line (midpoint of a km range) typed by keywords (long run/LR, threshold/tempo/T, kopce, strides, else easy). Strava runs of the local day replace planned ones in order and keep the planned type; extra runs are easy. Nothing is frozen: every day is computed on demand.
+- Modes (code constants): 2026-10-21 cut, 2026-12-21 maintenance, 2027-01-04 cut, 2027-01-28 off, 2027-02-15 maintenance. Maintenance base = base + `maintenance_offset_kcal` (null = 500); off = no kcal/macro targets.
+- Profile (`/api/nutrition/profile`): `kcal_target` = base, `protein_target_g`, `fat_target_g`, `maintenance_offset_kcal`, `fiber_target_g` (migration 0026 drops `kcal_target_training_day` and `carbs_target_g`).
+- Base proposal (cut, Mondays from 2026-11-09, anchored on the week's Monday): resting HR 7-day mean ≥ median of the previous 28 days + 5 → +200 (≥3 readings each); else weight trend (7-day mean now vs 14 days earlier)/2: < −0.6 kg/week → +150, > −0.2 → −100 (not below 1900). `GET /api/nutrition/targets?date=` returns today, tomorrow and the proposal; `POST /api/nutrition/targets/proposal {accept}` accepts or dismisses it for the week (`base_proposal_handled_on`).
+- Meal type `fueling` ("Během běhu"): in the totals, excluded from % of target; `DaySummary.fueling_kcal`, `target` (breakdown). Resting HR: `POST /api/metrics {resting_hr}` stores a manual `daily_source_metrics` row; Přehled has the field next to weight (the quick kcal entry is gone).
+- Export: `targets_daily.csv` (2026-10-21 → tomorrow), `fueling_kcal` in `nutrition_daily.csv`, formula and modes in `profile.md`.
+
 ## 7. Gemini Coach Implementation (`backend/app/services/`)
 
 **IMPORTANT FOR AGENT:** the code is the reference. Read it rather than re-deriving it from an old sample.
