@@ -22,6 +22,7 @@ import { EnergySummary } from "../components/nutrition/EnergySummary";
 import { MealDraftCard } from "../components/nutrition/MealDraftCard";
 import { ItemNutrientsSheet } from "../components/nutrition/ItemNutrients";
 import { MacroSummary, MicroGrid } from "../components/nutrition/NutrientBars";
+import { QuickActions } from "../components/nutrition/QuickActions";
 import { TargetsSheet } from "../components/nutrition/TargetsSheet";
 import { DecimalInput, parseDecimal } from "../components/ui";
 import { VoiceRecorder } from "../components/VoiceRecorder";
@@ -78,8 +79,9 @@ export function Nutrition() {
           {summary.data ? <MacroSummary nutrients={summary.data.nutrients} trainingDay={summary.data.training_day} fuelingKcal={summary.data.fueling_kcal} /> : <p className="text-zinc-500">Načítám…</p>}
           <EnergySummary date={date} onOpenTargets={() => setTargets(true)} />
         </Card>
-        <Assistant date={date} />
+        <QuickActions date={date} />
         <Meals meals={summary.data?.meals ?? []} date={date} onAdd={(mealType) => setAdding({ mealType })} />
+        <Assistant date={date} />
         {summary.data && (
           <Card>
             <MicroGrid nutrients={summary.data.nutrients} />

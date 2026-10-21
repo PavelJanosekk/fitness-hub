@@ -189,8 +189,9 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 
 ### Quick actions on Jídlo (E42)
 - [x] Backend: migration 0027 (tables + seed), `/api/nutrition/quick-actions` (list, upsert, delete, log), tests
-- [ ] Frontend: quick-action cards on Jídlo, Vše sheet sorted by relevance, editor, undo toast
-- [ ] Verify in all themes on dev, deploy on request
+- [x] Frontend: quick-action cards on Jídlo, Vše sheet sorted by relevance, editor, undo toast; the assistant card moved below Jídla (user, 2026-10-21)
+- [x] Verified on a copy of the dev DB in minimal, zen and modern (log + Zpět, Vše, create / edit / delete, the "Teď nic" state)
+- [ ] Deploy on request
 
 ## Backlog (ideas, not accepted)
 - D1 `Exercise.secondary_muscles` for better volume analysis

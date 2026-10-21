@@ -200,6 +200,24 @@ export type Profile = {
   fiber_target_g: number | null;
 };
 
+/** Accent palette names (index.css themes them); E42. */
+export type QuickActionColor = "emerald" | "amber" | "red" | "sky" | "violet";
+/** A one-tap meal (E42): its foods go into `meal_type`, offered while now is in [start_minute, end_minute). */
+export type QuickAction = {
+  id: string;
+  name: string;
+  emoji: string;
+  color: QuickActionColor;
+  meal_type: MealType;
+  start_minute: number;
+  end_minute: number;
+  position: number;
+  items: { food_id: number; food_name: string; amount_g: number; kcal: number; protein_g: number }[];
+  kcal: number;
+  protein_g: number;
+};
+export type QuickActionInput = Omit<QuickAction, "items" | "kcal" | "protein_g"> & { items: { food_id: number; amount_g: number }[] };
+
 export const nutritionKeys = {
   // v3: gained target / fueling_kcal (E41); persisted v2 entries lack them
   summary: (date: string) => ["nutrition", "summary-v3", date] as const,
@@ -211,6 +229,7 @@ export const nutritionKeys = {
   nutrients: ["nutrition", "nutrients-v2"] as const,
   // v2: training-day kcal and carbs removed, maintenance offset added (E41)
   profile: ["nutrition", "profile-v2"] as const,
+  quickActions: ["nutrition", "quick-actions-v1"] as const,
 };
 
 export const useDaySummary = (date: string) =>
@@ -333,6 +352,46 @@ export function useSaveFood() {
 export function useDeleteFood() {
   const invalidate = useInvalidateIntake();
   return useMutation({ mutationFn: (id: number) => api(`/api/nutrition/foods/${id}`, { method: "DELETE" }), onSettled: invalidate });
+}
+
+export const useQuickActions = () =>
+  useQuery({ queryKey: nutritionKeys.quickActions, queryFn: () => api<QuickAction[]>("/api/nutrition/quick-actions") });
+
+export function useSaveQuickAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: QuickActionInput) => api<QuickAction>(`/api/nutrition/quick-actions/${id}`, { method: "PUT", body }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: nutritionKeys.quickActions }),
+  });
+}
+
+export function useDeleteQuickAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/api/nutrition/quick-actions/${id}`, { method: "DELETE" }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: nutritionKeys.quickActions }),
+  });
+}
+
+/** Log an action into `date`: one client id per food, so a retry adds nothing; the ids are what an undo deletes. */
+export function useLogQuickAction() {
+  const invalidate = useInvalidateIntake();
+  return useMutation({
+    mutationFn: ({ action, date, itemIds }: { action: QuickAction; date: string; itemIds: string[] }) =>
+      api<MealItem[]>(`/api/nutrition/quick-actions/${action.id}/log`, { method: "POST", body: { date, item_ids: itemIds } }),
+    onSettled: invalidate,
+  });
+}
+
+/** Undo a logged quick action: its items one by one, so the emptied meal goes with the last one. */
+export function useUndoItems() {
+  const invalidate = useInvalidateIntake();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) await api(`/api/nutrition/items/${id}`, { method: "DELETE" });
+    },
+    onSettled: invalidate,
+  });
 }
 
 /** `date` is the day open in the app: the assistant logs meals to it unless the user names another day. */

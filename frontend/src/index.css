@@ -232,6 +232,186 @@ input[type="number"] {
     color: var(--color-zinc-50);
   }
 
+  /* Quick actions on Jídlo (E42): `qa-<color>` sets the tint (--qa fill, --qa-ink text) from the themed palette */
+  .qa-amber {
+    --qa: var(--color-amber-500);
+    --qa-ink: var(--color-amber-300);
+  }
+  .qa-emerald {
+    --qa: var(--color-emerald-500);
+    --qa-ink: var(--color-emerald-300);
+  }
+  .qa-sky {
+    --qa: var(--color-sky-500);
+    --qa-ink: var(--color-sky-300);
+  }
+  .qa-violet {
+    --qa: var(--color-violet-500);
+    --qa-ink: var(--color-violet-300);
+  }
+  .qa-red {
+    --qa: var(--color-red-500);
+    --qa-ink: var(--color-red-300);
+  }
+  .qa-ink {
+    color: var(--qa-ink);
+  }
+  .qa-card {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: var(--radius-card);
+    border: 1px solid color-mix(in oklab, var(--qa) 38%, transparent);
+    background:
+      radial-gradient(110% 160% at 0% 0%, color-mix(in oklab, var(--qa) 30%, transparent), transparent 58%),
+      linear-gradient(120deg, color-mix(in oklab, var(--qa) 15%, transparent), color-mix(in oklab, var(--qa) 4%, transparent));
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, var(--qa) 22%, transparent),
+      0 12px 28px -20px var(--qa);
+    text-align: left;
+    transition:
+      transform 0.15s ease,
+      box-shadow 0.2s ease;
+  }
+  button.qa-card:active {
+    transform: scale(0.98);
+  }
+  .qa-empty {
+    border-style: dashed;
+  }
+  .qa-emoji {
+    display: flex;
+    flex-shrink: 0;
+    width: 2.875rem;
+    height: 2.875rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.95rem;
+    font-size: 1.6rem;
+    line-height: 1;
+    background: color-mix(in oklab, var(--qa) 22%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--qa) 32%, transparent);
+  }
+  .qa-emoji-sm {
+    width: 2.375rem;
+    height: 2.375rem;
+    border-radius: 0.8rem;
+    font-size: 1.3rem;
+  }
+  .qa-plus {
+    display: flex;
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: var(--qa);
+    color: var(--color-on-accent);
+    box-shadow: 0 6px 16px -8px var(--qa);
+  }
+  .qa-plus-sm {
+    width: 2rem;
+    height: 2rem;
+  }
+  .qa-plus:disabled {
+    opacity: 0.6;
+  }
+  /* Logged: a pop and a light sweep across the card */
+  .qa-done {
+    animation: qa-pop 0.45s ease;
+  }
+  .qa-done::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(100deg, transparent 25%, color-mix(in oklab, var(--qa) 40%, transparent) 50%, transparent 75%);
+    animation: qa-sweep 0.9s ease forwards;
+  }
+  .qa-done .qa-plus {
+    animation: qa-pop 0.45s ease;
+  }
+  .qa-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0.5rem 0.5rem 0.5rem;
+    border-radius: 1rem;
+    border: 1px solid var(--color-zinc-800);
+    background: color-mix(in oklab, var(--qa) 5%, transparent);
+  }
+  .qa-row-now {
+    border-color: color-mix(in oklab, var(--qa) 40%, transparent);
+    background: linear-gradient(120deg, color-mix(in oklab, var(--qa) 16%, transparent), color-mix(in oklab, var(--qa) 4%, transparent));
+  }
+  .qa-badge {
+    flex-shrink: 0;
+    border-radius: 9999px;
+    padding: 0.05rem 0.45rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--qa-ink);
+    background: color-mix(in oklab, var(--qa) 20%, transparent);
+  }
+  .qa-pick {
+    background: var(--color-zinc-800);
+  }
+  .qa-pick[aria-pressed="true"] {
+    background: color-mix(in oklab, var(--qa) 24%, transparent);
+    box-shadow: inset 0 0 0 2px var(--qa);
+  }
+  .qa-swatch {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    background: var(--qa);
+    box-shadow: 0 0 0 0 transparent;
+  }
+  .qa-swatch[aria-pressed="true"] {
+    box-shadow:
+      0 0 0 3px var(--color-zinc-900),
+      0 0 0 5px var(--qa);
+  }
+  .qa-toast-wrap {
+    bottom: calc(env(safe-area-inset-bottom) + 5.25rem);
+  }
+  @media (min-width: 768px) {
+    .qa-toast-wrap {
+      bottom: 1.5rem;
+    }
+  }
+  .qa-toast {
+    box-shadow: 0 18px 40px -16px rgb(0 0 0 / 0.6);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    animation: qa-toast-in 0.25s ease-out;
+  }
+  @keyframes qa-pop {
+    40% {
+      transform: scale(1.03);
+    }
+  }
+  @keyframes qa-sweep {
+    from {
+      translate: -100% 0;
+    }
+    to {
+      translate: 100% 0;
+    }
+  }
+  @keyframes qa-toast-in {
+    from {
+      opacity: 0;
+      translate: 0 0.75rem;
+    }
+  }
+
   /* ---- Modern ---- */
   [data-theme="modern"] body::before {
     content: "";
