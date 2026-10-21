@@ -31,6 +31,7 @@ class MealItemRead(BaseModel):
     protein_g: float | None
     carbs_g: float | None
     fat_g: float | None
+    quick_action_id: uuid.UUID | None = None  # logged by this quick action (E42)
 
 
 class MealRead(BaseModel):

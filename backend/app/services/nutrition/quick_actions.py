@@ -82,6 +82,6 @@ def log_action(session: Session, action: QuickAction, body: QuickActionLog) -> l
         existing = session.get(MealLogItem, item_id)
         if existing is None:
             upsert = ItemUpsert(food_id=food.id, amount_g=item.amount_g, meal_type=action.meal_type, date=body.date)
-            existing = upsert_item(session, item_id, upsert, food)
+            existing = upsert_item(session, item_id, upsert, food, quick_action_id=action.id)
         logged.append((existing, food))
     return logged

@@ -118,6 +118,7 @@ def read_item(item: MealLogItem, food: Food | None) -> MealItemRead:
         protein_g=values["protein_g"],
         carbs_g=values["carbs_g"],
         fat_g=values["fat_g"],
+        quick_action_id=item.quick_action_id,
     )
 
 

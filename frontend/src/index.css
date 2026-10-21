@@ -337,6 +337,25 @@ input[type="number"] {
   .qa-done .qa-plus {
     animation: qa-pop 0.45s ease;
   }
+  /* Logged: after the check the card folds away (rows 1fr → 0fr) */
+  .qa-fold {
+    display: grid;
+    grid-template-rows: 1fr;
+  }
+  .qa-fold + .qa-fold {
+    margin-top: 0.5rem;
+  }
+  .qa-leaving {
+    animation: qa-leave 0.4s ease-in forwards;
+  }
+  @keyframes qa-leave {
+    to {
+      grid-template-rows: 0fr;
+      margin-top: 0;
+      opacity: 0;
+      scale: 0.96;
+    }
+  }
   .qa-row {
     display: flex;
     align-items: center;
@@ -358,6 +377,13 @@ input[type="number"] {
     font-weight: 600;
     color: var(--qa-ink);
     background: color-mix(in oklab, var(--qa) 20%, transparent);
+  }
+  .qa-badge-done {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    color: var(--color-emerald-300);
+    background: color-mix(in oklab, var(--color-emerald-500) 18%, transparent);
   }
   .qa-pick {
     background: var(--color-zinc-800);

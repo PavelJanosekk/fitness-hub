@@ -30,7 +30,6 @@ import { addDays, formatDay, formatNumber, isoDate } from "../lib/format";
 import { errorText } from "./AiCoach";
 
 const CONVERSATION_KEY = "fitness-hub-nutrition-conversation";
-const PROMPTS = ["Co jsem dnes jedl a kolik mi chybí bílkovin?", "Jak jsem na tom dnes s vitamíny a minerály?"];
 
 type Message = { role: "user" | "model"; content: string; drafts?: MealDraft[] };
 
@@ -137,16 +136,7 @@ function Assistant({ date }: { date: string }) {
   return (
     <Card>
       {messages.length === 0 && (
-        <div className="mb-3 space-y-2">
-          <p className="text-sm text-zinc-400">Napiš nebo nadiktuj, co jsi snědl, třeba „k obědu 200 g kuřecích stehen a 300 g brambor“.</p>
-          <div className="flex flex-wrap gap-2">
-            {PROMPTS.map((p) => (
-              <button key={p} onClick={() => send(p)} className="rounded-lg bg-zinc-800 px-2.5 py-1.5 text-left text-xs text-zinc-300 active:bg-zinc-700">
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
+        <p className="mb-3 text-sm text-zinc-400">Napiš nebo nadiktuj, co jsi snědl, třeba „k obědu 200 g kuřecích stehen a 300 g brambor“.</p>
       )}
       {messages.length > 0 && (
         <div className="mb-3 max-h-[60dvh] space-y-3 overflow-y-auto">

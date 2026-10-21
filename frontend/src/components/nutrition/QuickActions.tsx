@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, CheckCircle2, ChevronRight, Loader2, Pencil, Plus, Trash2, Undo2, X, Zap } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   type MealType,
@@ -8,6 +8,7 @@ import {
   MEAL_TYPES,
   mealTypeLabel,
   mealTypeNow,
+  useDaySummary,
   useDeleteQuickAction,
   useLogQuickAction,
   useQuickActions,
@@ -33,7 +34,7 @@ import { Button, DecimalInput, Sheet, parseDecimal } from "../ui";
 import { FoodSearch } from "./AddFoodSheet";
 
 type View = null | "all" | { edit: QuickAction | null };
-type Toast = { title: string; detail: string; itemIds: string[] } | { error: string };
+type Toast = { title: string; detail: string; itemIds: string[]; actionId: string } | { error: string };
 
 /** The minute of the local day, ticking, so the offered actions follow the clock while the page stays open. */
 function useMinute(): number {
@@ -62,17 +63,29 @@ const windowText = (action: Pick<QuickAction, "start_minute" | "end_minute">) =>
 
 /**
  * One-tap meals on Jídlo (E42): the actions whose time window contains now as tinted cards, "Vše" for every
- * action by relevance, and an editor. A tap logs into the open day at once and offers Zpět.
+ * action by relevance, and an editor. A tap logs into the open day at once and offers Zpět; an action whose
+ * items are in the open day is done there and folds away after its check animation.
  */
 export function QuickActions({ date }: { date: string }) {
   const actions = useQuickActions();
+  const summary = useDaySummary(date);
   const minute = useMinute();
   const [view, setView] = useState<View>(null);
-  const { log, pendingId, doneId, toast, undo, closeToast } = useLogWithUndo(date);
+  const { log, pendingId, doneId, leavingId, justLogged, settle, toast, undo, closeToast } = useLogWithUndo(date);
+  // Done today = its items are in the open day (they carry the action's id), so Zpět or deleting them brings it back
+  const inDay = useMemo(() => {
+    const ids = new Set<string>();
+    for (const meal of summary.data?.meals ?? []) for (const item of meal.items) if (item.quick_action_id) ids.add(item.quick_action_id);
+    return ids;
+  }, [summary.data]);
+  useEffect(() => settle(inDay), [inDay, settle]);
+  const logged = new Set([...inDay, ...justLogged]);
 
   const all = actions.data ?? [];
-  const current = byRelevance(all, minute).filter((a) => inWindow(a, minute));
-  const next = current.length ? null : nextUp(all, minute);
+  const inWindowNow = byRelevance(all, minute).filter((a) => inWindow(a, minute));
+  const current = inWindowNow.filter((a) => !logged.has(a.id) || [pendingId, doneId, leavingId].includes(a.id));
+  const allDone = inWindowNow.length > 0 && current.length === 0;
+  const next = current.length ? null : nextUp(all.filter((a) => !logged.has(a.id)), minute);
   const nextPosition = all.reduce((max, a) => Math.max(max, a.position + 1), 0);
   const state = (action: QuickAction) => (pendingId === action.id ? "pending" : doneId === action.id ? "done" : "idle");
 
@@ -105,19 +118,29 @@ export function QuickActions({ date }: { date: string }) {
           </span>
         </button>
       ) : current.length > 0 ? (
-        <div className="space-y-2">
+        <div>
           {current.map((action) => (
-            <ActionCard key={action.id} action={action} state={state(action)} onLog={() => log(action)} />
+            <div key={action.id} className={`qa-fold ${leavingId === action.id ? "qa-leaving" : ""}`}>
+              <div className="min-h-0">
+                <ActionCard action={action} state={state(action)} onLog={() => log(action)} />
+              </div>
+            </div>
           ))}
         </div>
       ) : (
         <button onClick={() => setView("all")} className="flex w-full items-center gap-2 rounded-2xl border border-dashed border-zinc-700 px-3 py-2.5 text-left text-sm text-zinc-400 active:bg-zinc-800">
-          <span className="flex-1">
-            Teď nic.
+          <span className="min-w-0 flex-1">
+            {allDone ? (
+              <span className="flex items-center gap-1.5 text-zinc-200">
+                <Check size={16} strokeWidth={3} className="text-emerald-400" /> Na teď máš zapsáno
+              </span>
+            ) : (
+              <span className="block text-zinc-300">Teď nic</span>
+            )}
             {next && (
-              <>
-                {" "}Další: {next.emoji} <span className="text-zinc-200">{next.name}</span> od {formatMinute(next.start_minute)}
-              </>
+              <span className="block truncate text-xs text-zinc-500">
+                Další: {next.emoji} {next.name} od {formatMinute(next.start_minute)}
+              </span>
             )}
           </span>
           <ChevronRight size={16} className="text-zinc-500" />
@@ -128,6 +151,7 @@ export function QuickActions({ date }: { date: string }) {
         <AllActionsSheet
           actions={all}
           minute={minute}
+          logged={logged}
           pendingId={pendingId}
           onLog={(action) => (log(action), setView(null))}
           onEdit={(action) => setView({ edit: action })}
@@ -148,17 +172,27 @@ function useLogWithUndo(date: string) {
   const undoItems = useUndoItems();
   const [toast, setToast] = useState<Toast | null>(null);
   const [doneId, setDoneId] = useState<string | null>(null);
+  const [leavingId, setLeavingId] = useState<string | null>(null);
+  // Logged in this visit and not yet in the refetched summary: keeps a done card from popping back for a moment
+  const [justLogged, setJustLogged] = useState<{ date: string; ids: string[] }>({ date, ids: [] });
+  const justLoggedIds = justLogged.date === date ? justLogged.ids : [];
 
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 6000);
     return () => window.clearTimeout(timer);
   }, [toast]);
+  // The check shows for a moment, then the card folds away (qa-leaving) and is gone
   useEffect(() => {
     if (!doneId) return;
-    const timer = window.setTimeout(() => setDoneId(null), 1800);
+    const timer = window.setTimeout(() => (setLeavingId(doneId), setDoneId(null)), 1100);
     return () => window.clearTimeout(timer);
   }, [doneId]);
+  useEffect(() => {
+    if (!leavingId) return;
+    const timer = window.setTimeout(() => setLeavingId(null), 450);
+    return () => window.clearTimeout(timer);
+  }, [leavingId]);
 
   const log = (action: QuickAction) => {
     const itemIds = action.items.map(() => uuid());
@@ -167,10 +201,12 @@ function useLogWithUndo(date: string) {
       {
         onSuccess: () => {
           setDoneId(action.id);
+          setJustLogged((prev) => ({ date, ids: [...(prev.date === date ? prev.ids : []), action.id] }));
           setToast({
             title: `${action.emoji} ${action.name}`,
             detail: `Přidáno do: ${mealTypeLabel(action.meal_type)} · ${formatNumber(action.kcal)} kcal · ${formatNumber(action.protein_g)} g B`,
             itemIds,
+            actionId: action.id,
           });
         },
         onError: () => setToast({ error: `${action.name} se nepodařilo přidat.` }),
@@ -178,12 +214,22 @@ function useLogWithUndo(date: string) {
     );
   };
   const undo = () => {
-    if (toast && "itemIds" in toast) undoItems.mutate(toast.itemIds);
+    if (toast && "itemIds" in toast) {
+      undoItems.mutate(toast.itemIds);
+      setJustLogged((prev) => ({ ...prev, ids: prev.ids.filter((id) => id !== toast.actionId) }));
+    }
     setToast(null);
     setDoneId(null);
+    setLeavingId(null);
   };
   const pendingId = logAction.isPending ? (logAction.variables?.action.id ?? null) : null;
-  return { log, pendingId, doneId, toast, undo, closeToast: () => setToast(null) };
+  // Once the day's summary has an action's items, it is the source of truth
+  const settle = useCallback(
+    (inDay: Set<string>) =>
+      setJustLogged((prev) => (prev.ids.some((id) => inDay.has(id)) ? { ...prev, ids: prev.ids.filter((id) => !inDay.has(id)) } : prev)),
+    [],
+  );
+  return { log, pendingId, doneId, leavingId, justLogged: justLoggedIds, settle, toast, undo, closeToast: () => setToast(null) };
 }
 
 type CardState = "idle" | "pending" | "done";
@@ -233,6 +279,7 @@ function ActionCard({
 function AllActionsSheet({
   actions,
   minute,
+  logged,
   pendingId,
   onLog,
   onEdit,
@@ -240,6 +287,7 @@ function AllActionsSheet({
 }: {
   actions: QuickAction[];
   minute: number;
+  logged: Set<string>;
   pendingId: string | null;
   onLog: (action: QuickAction) => void;
   onEdit: (action: QuickAction | null) => void;
@@ -259,7 +307,13 @@ function AllActionsSheet({
               <button onClick={() => onEdit(action)} className="min-w-0 flex-1 text-left">
                 <span className="flex items-center gap-1.5">
                   <span className="truncate font-medium text-zinc-100">{action.name}</span>
-                  {now && <span className="qa-badge">Teď</span>}
+                  {logged.has(action.id) ? (
+                    <span className="qa-badge qa-badge-done">
+                      <Check size={11} strokeWidth={3} /> Zapsáno
+                    </span>
+                  ) : (
+                    now && <span className="qa-badge">Teď</span>
+                  )}
                 </span>
                 <span className="line-clamp-2 text-xs text-zinc-500">
                   {mealTypeLabel(action.meal_type)} · {windowText(action)} · {formatNumber(action.kcal)} kcal

@@ -193,6 +193,8 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - [x] Frontend: quick-action cards on Jídlo, Vše sheet sorted by relevance, editor, undo toast; the assistant card moved below Jídla (user, 2026-10-21)
 - [x] Verified on a copy of the dev DB in minimal, zen and modern (log + Zpět, Vše, create / edit / delete, the "Teď nic" state)
 - [x] Deployed to prod 2026-10-21 (manual backup first)
+- [x] Follow-up (user): a logged action hides for that day (fold animation, `quick_action_id` on items, migration 0028); the assistant's suggested prompts removed
+- [ ] Deploy the follow-up on request
 
 ## Backlog (ideas, not accepted)
 - D1 `Exercise.secondary_muscles` for better volume analysis

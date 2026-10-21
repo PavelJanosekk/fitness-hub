@@ -92,3 +92,24 @@ def test_delete_keeps_logged_items_and_foods_in_actions_stay(client: TestClient,
         client.post(f"/api/nutrition/quick-actions/{action_id}/log", json={"item_ids": [str(uuid.uuid4())]}).status_code
         == 404
     )
+
+
+def test_logged_items_carry_the_action_until_it_is_deleted(client: TestClient, session: Session) -> None:
+    action_id = uuid.uuid4()
+    client.put(f"/api/nutrition/quick-actions/{action_id}", json=oats_with_whey(session))
+    ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+    logged = client.post(f"/api/nutrition/quick-actions/{action_id}/log", json={"date": D.isoformat(), "item_ids": ids})
+    assert {i["quick_action_id"] for i in logged.json()} == {str(action_id)}
+
+    [meal] = client.get("/api/nutrition/summary", params={"date": D.isoformat()}).json()["meals"]
+    assert {i["quick_action_id"] for i in meal["items"]} == {str(action_id)}
+
+    # Gram edits keep the mark; deleting the action leaves the eaten items unmarked
+    client.put(
+        f"/api/nutrition/items/{ids[0]}",
+        json={"food_id": meal["items"][0]["food_id"], "amount_g": 60, "meal_type": "breakfast"},
+    )
+    client.delete(f"/api/nutrition/quick-actions/{action_id}")
+    session.expire_all()
+    [meal] = client.get("/api/nutrition/summary", params={"date": D.isoformat()}).json()["meals"]
+    assert sorted((i["amount_g"], i["quick_action_id"]) for i in meal["items"]) == [(30, None), (60, None)]

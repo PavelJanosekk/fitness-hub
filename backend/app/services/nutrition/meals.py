@@ -38,9 +38,11 @@ def save_meal(
     return meal
 
 
-def upsert_item(session: Session, item_id: uuid.UUID, body: ItemUpsert, food: Food) -> MealLogItem:
+def upsert_item(
+    session: Session, item_id: uuid.UUID, body: ItemUpsert, food: Food, quick_action_id: uuid.UUID | None = None
+) -> MealLogItem:
     """A new item joins the day's latest meal of that type (or starts one); an existing item keeps its meal and
-    gets the new food/grams (inline gram editing)."""
+    gets the new food/grams (inline gram editing). `quick_action_id` marks a new item logged by a quick action."""
     item = session.get(MealLogItem, item_id)
     if item is None:
         day = body.date or today()
@@ -52,7 +54,9 @@ def upsert_item(session: Session, item_id: uuid.UUID, body: ItemUpsert, food: Fo
         if meal is None:
             meal = MealLog(logged_date=day, meal_type=body.meal_type)
             session.add(meal)
-        item = MealLogItem(id=item_id, meal_log_id=meal.id, label=body.label or food.name)
+        item = MealLogItem(
+            id=item_id, meal_log_id=meal.id, label=body.label or food.name, quick_action_id=quick_action_id
+        )
     item.food_id, item.amount_g = food.id, body.amount_g
     item.kcal = item.protein_g = item.carbs_g = item.fat_g = None  # a food item takes its values from the food
     if body.label:

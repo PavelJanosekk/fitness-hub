@@ -204,6 +204,8 @@ class MealLogItem(SQLModel, table=True):
     protein_g: float | None = None
     carbs_g: float | None = None
     fat_g: float | None = None
+    # The quick action that logged it (E42): the action is done for that day while its items exist
+    quick_action_id: uuid.UUID | None = Field(default=None, foreign_key="quick_actions.id", ondelete="SET NULL")
 
 
 class KTImportState(SQLModel, table=True):

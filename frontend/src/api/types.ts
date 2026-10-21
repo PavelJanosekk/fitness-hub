@@ -42,6 +42,7 @@ export type MealItem = {
   protein_g: number | null;
   carbs_g: number | null;
   fat_g: number | null;
+  quick_action_id?: string | null; // logged by this quick action (E42)
 };
 export type Meal = { id: string; logged_date: string; meal_type: string; notes: string | null; items: MealItem[] };
 export type DayIntake = {
