@@ -10,7 +10,7 @@
 6. **E34 races managed in the app** (2026-10-19): live on prod since 2026-10-20 (deployed together with E35, migration 0020).
 7. **E35 progressive overload v2 live on prod** (2026-10-20, together with E33's columns and E34 races; migrations 0019–0021). Next: the user tries the targets on real workouts (bench next: 40 × 7, 6). Phase C later: fatigue hints beyond the drop text, the muscle-group overview (scenario 11), rest-based comparability.
 9. **E42 quick actions on Jídlo live on prod** (2026-10-21, migration 0027 seeded both actions). Next: the user tries them on the iPhone.
-10. **E43 moving items between meals** (2026-10-21): built and verified on dev, in `dev`; deploy to prod when the user asks (no migration).
+10. **E43 moving items between meals live on prod** (2026-10-21, no migration). Next: the user tries the long press on the iPhone.
 8. **E36 bucket list + Hrdina tab (Phase 8) live on prod** (2026-10-20, migration 0022). Next: the user tries it on the iPhone; side quests (D6) are the follow-up.
 9. **E40 data export into the analysis repo live on prod** (2026-10-21, migration 0025; backup `data/backups/manual-pre-0025-2026-10-21-0633.dump`). `.env` has `GITHUB_TOKEN` and `EXPORT_REPO=PavelJanosekk/RunningCoach`; the KB sync works with the token. RunningCoach is still public, so the daily run is refused until the user confirms the modal (Nastavení → Exportovat teď). Next: the user confirms or makes the repo private, then check the first commit in the repo.
 10. **E41 daily kcal target from running live on prod** (2026-10-21, migration 0026; backup `data/backups/manual-pre-0026-2026-10-21-0726.dump`). Protein set to 175 g, the placeholder step days (19.9., 24.9.) recomputed to empty. Today on prod: 2000 + 433 easy 7 km = 2450 kcal, carbs 325 g. Open: O11 (threshold km in plan lines).
@@ -202,7 +202,8 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - [x] Backend: `POST /api/nutrition/items/{id}/move`, test
 - [x] Frontend: `useLongPressDrag` (long press, drop zones, auto-scroll, row kept under the finger), empty meal types as zones while dragging, optimistic move, undo toast
 - [x] Verified on dev in headless Chrome with touch: lift, drop into an empty Snídaně and onto Večeře, Zpět, a tap still opens the item, a swipe still scrolls
-- [ ] Deploy to prod (on request); the user tries it on the iPhone (iOS long press + scroll blocking is the part headless Chrome can't prove)
+- [x] Deployed to prod 2026-10-21 (backup `manual-2026-10-21-1147.dump`, no migration)
+- [ ] The user tries it on the iPhone (iOS long press + scroll blocking is the part headless Chrome can't prove)
 
 ## Backlog (ideas, not accepted)
 - D1 `Exercise.secondary_muscles` for better volume analysis
@@ -373,3 +374,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-21 (31):** **E42** quick actions on Jídlo (one tap logs a saved meal, Zpět undoes, Vše sorted by time relevance, editor) and the assistant card moved below Jídla (user). Tested on a copy of the dev DB in all three themes. Manual backup `manual-2026-10-21-0916.dump`, then deployed to prod (0026 → 0027, health ok, both actions seeded from the user's foods).
 - **2026-10-21 (32):** E42 follow-up (user): a logged quick action hides for the day (check + fold, `meal_log_items.quick_action_id`, migration 0028), the assistant's suggested prompts removed. Backup `manual-2026-10-21-0938.dump`, deployed to prod (health ok). Today's prod breakfast (oats 50 g + whey 30 g) was logged before 0028, so it is unmarked.
 - **2026-10-21 (33):** **E43** moving items between meals (user): long press picks an item up, empty meal types appear as drop zones, drop moves it via the new move endpoint, Zpět in the toast. 426 backend tests, ruff, typecheck green; checked in headless Chrome against a worktree copy of the API on the dev DB (test items removed afterwards).
+- **2026-10-21 (34):** E43 deployed to prod at the user's request (backup `manual-2026-10-21-1147.dump`, health ok, move route and the new Jídlo chunk served).
