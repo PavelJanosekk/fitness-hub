@@ -381,5 +381,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-21 (36):** E44 deployed to prod at the user's request (backup `manual-2026-10-21-1208.dump`, no migration, health ok; prod 20.10. now shows one Oběd with 4 items).
 - **2026-10-21 (37):** E42 follow-up (user): the quick actions show only when Jídlo is on today, not on past days.
 - **2026-10-21 (38):** quick actions only on today deployed to prod at the user's request (frontend only, no backup needed; health ok).
-
-- **2026-10-21 (38):** User asked to start side quests (D6): add / remove like the bucket list, no import mechanism, the list (`Typ,Kategorie,Úkol,Stav`) comes at the end. Drafted `docs/side-quests-module-spec.md` (S1–S11). Waiting for decisions (O12).
+- **2026-10-21 (39):** User asked to start side quests (D6): add / remove like the bucket list, no import mechanism, the list (`Typ,Kategorie,Úkol,Stav`) comes at the end. Drafted `docs/side-quests-module-spec.md` (S1–S11). Waiting for decisions (O12).
