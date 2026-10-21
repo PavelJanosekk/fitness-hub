@@ -64,9 +64,9 @@ export function QuestForm({ quest, initialCategory, onDone }: { quest?: SideQues
               type="button"
               aria-pressed={category === c.key}
               onClick={() => setCategory(c.key)}
-              className={`flex flex-col items-center gap-1 rounded-xl border px-1 py-2 text-[11px] ${category === c.key ? "border-emerald-600 bg-emerald-950/50 text-emerald-200" : "border-zinc-800 text-zinc-300"}`}
+              className={`flex min-w-0 flex-col items-center gap-1 rounded-xl border px-0.5 py-2 text-[10.5px] ${category === c.key ? "border-emerald-600 bg-emerald-950/50 text-emerald-200" : "border-zinc-800 text-zinc-300"}`}
             >
-              <c.icon size={19} /> {c.label}
+              <c.icon size={19} /> <span className="w-full truncate text-center">{c.label}</span>
             </button>
           ))}
         </div>

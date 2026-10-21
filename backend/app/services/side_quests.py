@@ -23,9 +23,14 @@ DURATIONS = {
 }
 CATEGORIES = {  # name, RPG skill
     SideQuestCategory.learn: ("Učení", "mind"),
+    SideQuestCategory.skill: ("Dovednosti", "mind"),
     SideQuestCategory.make: ("Tvoření", "mind"),
     SideQuestCategory.food: ("Jídlo", "nutrition"),
-    SideQuestCategory.activity: ("Aktivita", "adventure"),
+    SideQuestCategory.move: ("Pohyb", "endurance"),
+    SideQuestCategory.explore: ("Objevování", "adventure"),
+    SideQuestCategory.people: ("Lidé", "adventure"),
+    SideQuestCategory.self: ("Sebepoznání", "mind"),
+    SideQuestCategory.home: ("Domov", "home"),
     SideQuestCategory.trip: ("Výlet", "adventure"),
 }
 NEAR_TRIP_MINUTES = 60  # badge: every trip within an hour's drive

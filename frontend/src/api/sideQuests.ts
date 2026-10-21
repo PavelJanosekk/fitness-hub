@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 
-export type QuestCategory = "learn" | "make" | "food" | "activity" | "trip";
+export type QuestCategory = "learn" | "skill" | "make" | "food" | "move" | "explore" | "people" | "self" | "home" | "trip";
 export type QuestDuration = "moment" | "day" | "weekend" | "week" | "month";
 
 export type SideQuest = {
@@ -48,7 +48,7 @@ export type SideQuestInput = Partial<{
 }>;
 
 export const sideQuestKeys = {
-  board: ["sideQuests", "board", "v1"] as const,
+  board: ["sideQuests", "board", "v2"] as const,
 };
 
 export const useSideQuestBoard = () =>

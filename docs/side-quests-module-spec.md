@@ -22,9 +22,11 @@ the only rhythm). Categories are provisional until the user's list arrives. Numb
   memory + ★ on completion, sort order, created_at. *Active* = "rozjeto" for the longer ones, shown on top.
 - **S3 Duration (Typ)** — a fixed set, the seed's values mapped onto it: **Chvilka** (≤ 1 h) · **1 den** ·
   **Víkend** · **Týden** · **Měsíc+**.
-- **S4 Categories (Kategorie)** — provisional, from the user's quick split (Learn, Make, Cook/eat, Activity) plus
-  the day trips: **Učení** (→ Mysl) · **Tvoření** (→ Mysl) · **Jídlo** (→ Výživa) · **Aktivita** (→ Dobrodružství)
-  · **Výlet** (→ Dobrodružství). To be split smarter when the list arrives (user, 2026-10-21).
+- **S4 Categories** — by content (2026-10-21, with the user's list): **Učení** (how things work, history; → Mysl) ·
+  **Dovednosti** (practical skills; → Mysl) · **Tvoření** (→ Mysl) · **Jídlo** (→ Výživa) · **Pohyb** (→ Výdrž) ·
+  **Objevování** (places, the town; → Dobrodružství) · **Lidé** (→ Dobrodružství) · **Sebepoznání** (reflection,
+  comfort zone; → Mysl) · **Domov** (→ Domov) · **Výlet** (day trips; → Dobrodružství). The provisional
+  *Aktivita* is gone (0030 maps it to Objevování).
 - **S5 XP by duration** *(tune)*: Chvilka 20 · 1 den 50 · Víkend 120 · Týden 250 · Měsíc+ 500, to the category's
   skill, on `done_on` in the live ledger (multiplier / tired apply); un-ticking removes it. (Bucket: 50–1 000.)
 - **S6 Weekly side quest** — a new weekly quest in `quests.py`: **"Side quest týdne: dokonči 1 side quest"**,
@@ -46,8 +48,13 @@ the only rhythm). Categories are provisional until the user's list arrives. Numb
   Lysice + park, Plumlov přehrada + zámek, Svatý Hostýn + Hostýnské vrchy, Holedná obora + rozhledna. Drive time and
   km stored as numbers (`travel_minutes`, `distance_km`); the Google search links were dropped, the app links a map
   search instead.
-- **The user's list** (CSV `Typ,Kategorie,Úkol,Stav`) comes at the end; cleaned up like B7 and seeded in its own
-  migration, categories refined then.
+- **The user's list (done, migration 0030):** sent 2026-10-21 with only two types (1 den / Dlouhodobé) and a quick
+  category split; seeded as 172 quests: Czech titles, a duration judged per row (Chvilka for an hour's reading,
+  Týden / Měsíc+ for the long-term ones), categories by content (S4), 7 *Hotovo* rows as `done_before_app`. Merged:
+  WW2 + Hitler's values (note), magic + party trick, rabbit hole + something random deeply, systems fail + how
+  mistakes are made, beginner's mind + being bad at something, personal + mental map, highest point ×2, sunrise ×2,
+  new exercise + new physical activity, remembering names ×2, fear ×2. Left out as already on the bucket list:
+  Brew Beer, own pasta, handstand, volunteering, donating time.
 
 ## Implementation (E45, Phase 10)
 - `side_quests` table (`app/models/side_quests.py`): title, category, duration, note, link, travel_minutes,

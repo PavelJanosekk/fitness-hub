@@ -8,7 +8,7 @@ import { Stars } from "../bucket/ItemSheet";
 import { Button, Sheet } from "../ui";
 import { input, QuestForm, saveError } from "./QuestForm";
 
-const SKILL_NAMES: Record<string, string> = { mind: "Mysl", nutrition: "Výživa", adventure: "Dobrodružství" };
+const SKILL_NAMES: Record<string, string> = { mind: "Mysl", nutrition: "Výživa", endurance: "Výdrž", home: "Domov", adventure: "Dobrodružství" };
 
 /** One side quest: details, start / pause, complete (date, ★, memory), edit, delete. */
 export function QuestSheet({ quest, board, completing = false, onClose }: { quest: SideQuest; board: SideQuestBoard; completing?: boolean; onClose: () => void }) {

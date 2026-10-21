@@ -9,12 +9,15 @@ from app.timeutils import now_utc
 
 
 class SideQuestCategory(StrEnum):
-    """Provisional (E45): refined when the user's list arrives."""
-
-    learn = "learn"  # Učení
+    learn = "learn"  # Učení: how things work, history, ideas
+    skill = "skill"  # Dovednosti: practical skills
     make = "make"  # Tvoření
     food = "food"  # Jídlo
-    activity = "activity"  # Aktivita
+    move = "move"  # Pohyb
+    explore = "explore"  # Objevování: places, the town
+    people = "people"  # Lidé
+    self = "self"  # Sebepoznání: reflection, comfort zone
+    home = "home"  # Domov
     trip = "trip"  # Výlet: nearby day trips
 
 

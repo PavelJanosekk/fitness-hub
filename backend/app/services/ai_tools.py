@@ -848,7 +848,7 @@ def build_coach_tools(ctx: ToolContext) -> list[Callable[..., dict[str, Any]]]:
         rest day or after a long run, a short one on a busy week) and for questions about side quests.
 
         Args:
-            category: One of learn, make, food, activity, trip; omit for all.
+            category: One of learn, skill, make, food, move, explore, people, self, home, trip; omit for all.
             duration: One of moment (up to an hour), day, weekend, week, month; omit for all.
             status: "open", "active" (started), "done" or "all".
         """

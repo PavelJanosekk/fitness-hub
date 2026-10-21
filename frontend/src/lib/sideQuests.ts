@@ -1,11 +1,16 @@
-import { Car, ChefHat, GraduationCap, Hammer, type LucideIcon, Zap } from "lucide-react";
+import { Bike, Brain, Car, ChefHat, Compass, GraduationCap, Hammer, House, type LucideIcon, Users, Wrench } from "lucide-react";
 import type { QuestCategory, QuestDuration, SideQuest } from "../api/sideQuests";
 
 export const QUEST_CATEGORIES: { key: QuestCategory; label: string; icon: LucideIcon }[] = [
   { key: "learn", label: "Učení", icon: GraduationCap },
+  { key: "skill", label: "Dovednosti", icon: Wrench },
   { key: "make", label: "Tvoření", icon: Hammer },
   { key: "food", label: "Jídlo", icon: ChefHat },
-  { key: "activity", label: "Aktivita", icon: Zap },
+  { key: "move", label: "Pohyb", icon: Bike },
+  { key: "explore", label: "Objevování", icon: Compass },
+  { key: "people", label: "Lidé", icon: Users },
+  { key: "self", label: "Sebepoznání", icon: Brain },
+  { key: "home", label: "Domov", icon: House },
   { key: "trip", label: "Výlet", icon: Car },
 ];
 export const QUEST_CATEGORY = Object.fromEntries(QUEST_CATEGORIES.map((c) => [c.key, c])) as Record<QuestCategory, (typeof QUEST_CATEGORIES)[number]>;

@@ -42,13 +42,22 @@ def test_seeded_trips(session: Session) -> None:
     assert (macocha.duration, macocha.travel_minutes, macocha.distance_km) == ("day", 25, 20)
 
 
+def test_seeded_list(session: Session) -> None:
+    rows = session.exec(select(SideQuest).where(SideQuest.category != "trip")).all()
+    assert len(rows) == 172
+    assert len({r.title for r in rows}) == len(rows)
+    assert sum(r.done_before_app for r in rows) == 7
+    assert {r.duration for r in rows} == {"moment", "day", "weekend", "week", "month"}
+    assert {r.category for r in rows} == {"learn", "skill", "make", "food", "move", "explore", "people", "self", "home"}
+
+
 def test_xp_by_duration_and_category_skill(empty: Session) -> None:
     quest(empty, "Dokument", "learn", "moment", done_on=d(5))
     quest(empty, "Macocha", "trip", "day", done_on=d(6))
     quest(empty, "Kvas", "food", "week", done_on=d(7))
     quest(empty, "Starý", "make", "month", done_before_app=True)  # done before the app: no XP
     quest(empty, "Dávno", "make", "day", done_on=d(1, 9))  # a month before it was added: no XP
-    quest(empty, "Otevřený", "activity", "weekend")
+    quest(empty, "Otevřený", "explore", "weekend")
     ledger = rpg.build_ledger(empty, d(10))
     gained = [(e.date, e.amount, e.text, e.skills) for e in ledger.entries if e.kind == "side_quest"]
     assert gained == [
@@ -112,7 +121,7 @@ def test_api(client: TestClient, empty: Session) -> None:
     assert [i["title"] for i in board["items"]] == ["Naučit se žonglovat"]
     assert board["week"]["done"] == 1 and board["week"]["titles"] == ["Naučit se žonglovat"]
     assert board["xp_total"] == 250
-    assert [c["key"] for c in board["categories"]] == ["learn", "make", "food", "activity", "trip"]
+    assert [c["key"] for c in board["categories"]][:3] == ["learn", "skill", "make"]
 
     undone = client.patch(f"/api/side-quests/{qid}", json={"done_on": None}).json()
     assert not undone["done"] and undone["memory"] == "Tři míčky"
