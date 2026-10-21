@@ -268,7 +268,7 @@ Per-source daily values. Used when a source sends totals instead of intervals, a
 
 ### 6.2 Intake quick-add (`/api/nutrition`) [E1]
 - `POST /api/nutrition/quick-add`: `{id (client UUID), date?, meal_type?, kcal, protein_g?, carbs_g?, fat_g?, label?}` → creates/upserts a `MealLog` + one `MealLogItem`. Used by the Dashboard quick input.
-- `GET /api/nutrition/day?date=YYYY-MM-DD`: meals + items + day totals.
+- `GET /api/nutrition/day?date=YYYY-MM-DD`: meals + items + day totals. **One meal per meal type** (also in the day summary): every `meal_logs` row of the type that day (each dictation, confirmed draft, quick add or KT import makes its own) is shown as one meal under the first row's id, items in log order. The rows stay separate in the DB, so client-UUID idempotency and per-dictation `raw_user_input` keep working **[E44]**.
 - `DELETE /api/nutrition/items/{item_id}`: idempotent delete.
 - `POST /api/nutrition/items/{item_id}/move {meal_type}`: moves an item into the latest meal of that type on the same day (or starts one); a meal left empty is deleted. Idempotent; unknown item = 404 **[E43]**.
 

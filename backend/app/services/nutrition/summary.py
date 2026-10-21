@@ -6,7 +6,6 @@ lower it. A food without a micro (or fibre, sugar, ...) borrows it from its USDA
 """
 
 import datetime as dt
-import uuid
 
 from pydantic import BaseModel
 from sqlalchemy import or_
@@ -123,12 +122,15 @@ def read_item(item: MealLogItem, food: Food | None) -> MealItemRead:
 
 
 def day_meals(session: Session, day: dt.date) -> list[MealRead]:
-    meals: dict[uuid.UUID, MealRead] = {}
+    """One meal per meal type: every log of the type that day (each dictation, quick add or import makes its own)
+    shows as a single meal under the first log's id, items in the order they were logged."""
+    meals: dict[str, MealRead] = {}
     for meal, item, food in _rows(session, day):
         read = meals.setdefault(
-            meal.id,
+            meal.meal_type,
             MealRead(id=meal.id, logged_date=meal.logged_date, meal_type=meal.meal_type, notes=meal.notes, items=[]),
         )
+        read.notes = read.notes or meal.notes
         read.items.append(read_item(item, food))
     return sorted(meals.values(), key=lambda m: MEAL_ORDER[m.meal_type])
 

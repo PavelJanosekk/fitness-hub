@@ -445,7 +445,7 @@ def confirm_draft(body: MealDraftConfirm, session: SessionDep) -> MealRead:
         )
     meal = session.get(MealLog, body.id)
     assert meal is not None
-    return next(m for m in day_meals(session, meal.logged_date) if m.id == meal.id)
+    return next(m for m in day_meals(session, meal.logged_date) if m.meal_type == meal.meal_type)
 
 
 class KTImportRequest(BaseModel):

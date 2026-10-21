@@ -71,6 +71,18 @@ def test_quick_add_is_idempotent_per_client_id(client: TestClient, session: Sess
     assert day["totals"]["protein_g"] is None
 
 
+def test_logs_of_one_meal_type_show_as_a_single_meal(client: TestClient) -> None:
+    first = quick_add(client, D, 400, meal_type="lunch")
+    quick_add(client, D, 300, meal_type="lunch")  # a later log of the same type makes its own meal_logs row
+    quick_add(client, D, 200, meal_type="dinner")
+
+    day = client.get("/api/nutrition/day", params={"date": D.isoformat()}).json()
+
+    assert [(m["meal_type"], len(m["items"])) for m in day["meals"]] == [("lunch", 2), ("dinner", 1)]
+    assert day["meals"][0]["id"] == first["id"]
+    assert [i["kcal"] for i in day["meals"][0]["items"]] == [400, 300]
+
+
 def test_quick_add_defaults_to_today(client: TestClient) -> None:
     created = client.post("/api/nutrition/quick-add", json={"id": str(uuid.uuid4()), "kcal": 300}).json()
 
