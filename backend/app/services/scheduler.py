@@ -17,6 +17,7 @@ from app.database import engine
 from app.services.coach_kb import KnowledgeBaseError, sync_knowledge_base
 from app.services.gemini_service import AINotConfiguredError, get_client
 from app.services.nutrition import mapper
+from app.services.repo_export import ExportError, export_due, export_now
 from app.services.strava_client import StravaNotConfiguredError, StravaNotConnectedError, sync_activities
 from app.services.workouts import auto_finish_stale
 
@@ -26,6 +27,7 @@ AUTO_FINISH_EVERY = dt.timedelta(minutes=10)
 STRAVA_SYNC_EVERY = dt.timedelta(minutes=30)
 KB_SYNC_EVERY = dt.timedelta(hours=6)
 MICROS_MAPPER_EVERY = dt.timedelta(minutes=20)
+EXPORT_CHECK_EVERY = dt.timedelta(hours=1)
 
 
 def auto_finish_job() -> None:
@@ -67,6 +69,21 @@ def micros_mapper_job() -> None:
             log.info("micros mapper: %d food(s) mapped", mapped)
 
 
+def repo_export_job() -> None:
+    """The daily data export into the analysis repo (E40); checked hourly, runs once a day."""
+    if not settings.export_repo or not settings.github_token:
+        return
+    with Session(engine) as session, httpx.Client(timeout=60) as http:
+        if not export_due(session):
+            return
+        try:
+            result = export_now(session, http)
+        except ExportError as exc:
+            log.warning("%s", exc)
+            return
+        log.info("repo export: %s", result)
+
+
 async def _every(interval: dt.timedelta, job: Callable[[], None], first_delay: dt.timedelta) -> None:
     await asyncio.sleep(first_delay.total_seconds())
     while True:
@@ -83,6 +100,7 @@ def start() -> list[asyncio.Task[None]]:
         asyncio.create_task(_every(STRAVA_SYNC_EVERY, strava_sync_job, first_delay=dt.timedelta(minutes=1))),
         asyncio.create_task(_every(KB_SYNC_EVERY, kb_sync_job, first_delay=dt.timedelta(seconds=20))),
         asyncio.create_task(_every(MICROS_MAPPER_EVERY, micros_mapper_job, first_delay=dt.timedelta(minutes=2))),
+        asyncio.create_task(_every(EXPORT_CHECK_EVERY, repo_export_job, first_delay=dt.timedelta(minutes=5))),
     ]
 
 

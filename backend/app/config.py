@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # The user's running knowledge base on GitHub ("owner/repo"); read-only source for the coach (E11)
     coach_kb_repo: str | None = None
     coach_kb_branch: str = "master"
+    # Fine-grained GitHub token: reads a private knowledge base and writes the data export (contents read/write)
+    github_token: str | None = None
+    # Daily data export for deep analysis (E40): a PRIVATE repo ("owner/repo"); unset = export disabled
+    export_repo: str | None = None
+    export_branch: str = "master"
+    export_dir: str = "fitness-hub"  # the export owns this folder and never touches the rest of the repo
+    export_hour: int = 4  # local hour (APP_TZ) after which the daily export runs; the backup runs at 3:00
     # Built frontend (the prod image sets /app/static); unset in dev, where Vite serves the UI
     static_dir: str | None = None
 

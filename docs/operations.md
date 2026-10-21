@@ -63,6 +63,11 @@ Server side, `.env` has `PUBLIC_BASE_URL` (the tailnet URL, used for the Strava 
 - [iOS Shortcut](integrations/ios-shortcut.md): iPhone steps from Apple Health.
 - [Health Connect](integrations/health-connect.md): watch steps and sleep via Life Dashboard Companion.
 
+- **Data export (E40)** into the analysis repo: create a fine-grained token on GitHub (Settings → Developer
+  settings → Fine-grained tokens) limited to that repo, permission **Contents: Read and write**, and set
+  `GITHUB_TOKEN` and `EXPORT_REPO=owner/repo` in `.env`. The export runs daily after `EXPORT_HOUR` and on
+  **Exportovat teď**; a public repo asks for confirmation first.
+
 **Nastavení** shows the state of each source: Strava connection and last sync, plus the last payload per
 webhook source.
 

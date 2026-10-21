@@ -1,11 +1,11 @@
 import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BookOpen, CheckCircle2, Dumbbell, Palette, RefreshCw, Webhook } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, Dumbbell, GitCommitHorizontal, Palette, RefreshCw, Webhook } from "lucide-react";
 import { useState } from "react";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import { useKb } from "../api/running";
 import { Card, PageHeader } from "../components/Layout";
 import { KTImportCard } from "../components/nutrition/KTImportCard";
-import { Button } from "../components/ui";
+import { Button, Sheet } from "../components/ui";
 import { formatDay, formatTime } from "../lib/format";
 import { setTheme, THEMES, useTheme } from "../lib/theme";
 import { errorText } from "./AiCoach";
@@ -15,6 +15,17 @@ type IntegrationsStatus = {
   webhooks_enabled: boolean;
   webhook_sources: Record<string, { last_received_at: string; last_day: string }>;
 };
+type ExportStatus = {
+  configured: boolean;
+  repo: string | null;
+  folder: string;
+  export_hour: number;
+  last_success_at: string | null;
+  last_commit_sha: string | null;
+  last_error: string | null;
+  public_ok: boolean;
+};
+type ExportResult = { changed: string[]; removed: string[]; commit_sha: string | null };
 type ImportSummary = { workouts_created: number; workouts_skipped: number; sets_created: number; exercises_created: string[]; warnings: string[] };
 
 const SOURCE_LABELS: Record<string, string> = { apple_health: "iPhone (Zkratky)", samsung_health: "Hodinky (Health Connect)" };
@@ -137,6 +148,8 @@ export function Settings() {
           </Button>
         </Card>
 
+        <ExportCard busy={busy} run={run} />
+
         <Card>
           <h2 className="mb-2 flex items-center gap-2 font-semibold">
             <Dumbbell size={18} /> Import ze Strongu
@@ -176,6 +189,96 @@ export function Settings() {
         </Card>
       </div>
     </>
+  );
+}
+
+const exportSummary = (r: ExportResult) =>
+  r.commit_sha ? `Export: ${r.changed.length + r.removed.length} změněných souborů, commit ${r.commit_sha.slice(0, 7)}` : "Export: beze změn, nic se necommitovalo";
+
+/** Daily data export into the analysis repo (E40). A public repo needs an explicit confirmation first. */
+function ExportCard({ busy, run }: { busy: string | null; run: (key: string, action: () => Promise<string>) => Promise<void> }) {
+  const status = useQuery({ queryKey: ["export"], queryFn: () => api<ExportStatus>("/api/export") });
+  const [confirmRepo, setConfirmRepo] = useState<string | null>(null);
+  const data = status.data;
+
+  const sync = (confirmPublic: boolean) =>
+    run("export", async () => {
+      try {
+        return exportSummary(await api<ExportResult>(`/api/export/sync${confirmPublic ? "?confirm_public=true" : ""}`, { method: "POST" }));
+      } catch (error) {
+        const detail = error instanceof ApiError ? (error.detail as { code?: string; repo?: string } | null) : null;
+        if (error instanceof ApiError && error.status === 409 && detail?.code === "public_repo") {
+          setConfirmRepo(detail.repo ?? "");
+          return "Export čeká na potvrzení: repo je veřejné.";
+        }
+        throw error;
+      }
+    });
+
+  return (
+    <Card>
+      <h2 className="mb-2 flex items-center gap-2 font-semibold">
+        <GitCommitHorizontal size={18} /> Export pro analýzu (GitHub)
+      </h2>
+      {!data?.configured ? (
+        <p className="text-sm text-zinc-400">Chybí EXPORT_REPO / GITHUB_TOKEN v .env na serveru.</p>
+      ) : (
+        <>
+          <div className="mb-3 space-y-1 text-sm text-zinc-400">
+            <p>
+              {data.repo} · složka {data.folder}/ · denně po {data.export_hour}:00
+            </p>
+            <p>Naposledy {when(data.last_success_at)}</p>
+            {data.public_ok && (
+              <p className="flex items-center gap-1 text-amber-300">
+                <AlertTriangle size={14} /> Repo je veřejné, zdravotní data jsou vidět všem.
+              </p>
+            )}
+            {data.last_error && (
+              <p className="flex items-center gap-1 text-red-300">
+                <AlertTriangle size={14} /> {data.last_error}
+              </p>
+            )}
+          </div>
+          <Button variant="ghost" className="w-full" disabled={busy !== null} onClick={() => sync(false)}>
+            {busy === "export" ? "Exportuji…" : "Exportovat teď"}
+          </Button>
+          {data.public_ok && (
+            <Button
+              variant="danger"
+              className="mt-2 w-full"
+              disabled={busy !== null}
+              onClick={() => run("export", async () => (await api("/api/export/public-consent", { method: "DELETE" }), "Export do veřejného repa zastaven."))}
+            >
+              Přestat sdílet do veřejného repa
+            </Button>
+          )}
+        </>
+      )}
+      {confirmRepo !== null && (
+        <Sheet title="Sdílet do veřejného repa?" onClose={() => setConfirmRepo(null)}>
+          <p className="mb-2 text-sm">
+            Repo <strong>{confirmRepo}</strong> je <strong>veřejné</strong>. Export do něj nahraje váhu, jídelníček, kroky, spánek, tepovou frekvenci a
+            všechny tréninky — uvidí je kdokoli na internetu a zůstanou v historii gitu i po smazání.
+          </p>
+          <p className="mb-4 text-sm text-zinc-400">Bezpečnější je přepnout repo na soukromé (GitHub → Settings → Change visibility). Souhlas platí jen pro toto repo a dá se odvolat.</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="ghost" onClick={() => setConfirmRepo(null)}>
+              Zrušit
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setConfirmRepo(null);
+                void sync(true);
+              }}
+            >
+              Ano, sdílet
+            </Button>
+          </div>
+        </Sheet>
+      )}
+    </Card>
   );
 }
 

@@ -13,6 +13,7 @@ from sqlmodel import Session, col, delete, select
 from app.config import settings
 from app.models.coach import AthleteProfile, CoachDocument, Race, TrainingDay, TrainingWeek
 from app.services.kb_parser import parse_days, parse_index, parse_plan
+from app.services.repo_export import github_headers
 from app.services.run_analysis import recompute_metrics
 from app.timeutils import now_utc, today
 
@@ -22,7 +23,6 @@ INDEX_DOC = "00_INDEX.md"
 PLAN_DOC = "04_timeline_plan.md"
 # Always in the coach's context; everything else is read on demand with a tool
 CORE_DOCS = ("CLAUDE.md", "00_INDEX.md", "02_physiology_zones.md", "11_errata_corrections.md")
-HEADERS = {"Accept": "application/vnd.github+json", "User-Agent": "fitness-hub"}
 
 
 class KnowledgeBaseError(Exception):
@@ -72,7 +72,7 @@ def sync_knowledge_base(session: Session, http: httpx.Client) -> KBSyncResult:
 
 
 def _sync(session: Session, http: httpx.Client, repo: str, branch: str) -> KBSyncResult:
-    response = http.get(f"{GITHUB_API}/repos/{repo}/git/trees/{branch}", headers=HEADERS)
+    response = http.get(f"{GITHUB_API}/repos/{repo}/git/trees/{branch}", headers=github_headers())
     if response.status_code != 200:
         raise KnowledgeBaseError(f"GitHub tree request returned {response.status_code}")
     blobs = {
@@ -90,7 +90,7 @@ def _sync(session: Session, http: httpx.Client, repo: str, branch: str) -> KBSyn
         if doc is not None and doc.sha == sha:
             result.unchanged += 1
             continue
-        raw = http.get(f"{RAW_URL}/{repo}/{branch}/{path}", headers={"User-Agent": "fitness-hub"})
+        raw = http.get(f"{RAW_URL}/{repo}/{branch}/{path}", headers=github_headers())
         if raw.status_code != 200:
             raise KnowledgeBaseError(f"Downloading {path} returned {raw.status_code}")
         doc = doc or CoachDocument(path=path, sha=sha, content="", fetched_at=now_utc())

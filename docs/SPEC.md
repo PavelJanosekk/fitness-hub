@@ -399,6 +399,13 @@ The coach is one of **two separate assistants** (the nutrition assistant arrives
 
 ---
 
+### 6.9 Data export into the analysis repo (`/api/export`) [E40]
+- `EXPORT_REPO` (+ `EXPORT_BRANCH`, `EXPORT_DIR` = `fitness-hub`, `EXPORT_HOUR` = 4) with `GITHUB_TOKEN`; unset = disabled. The token also authenticates the KB sync (§6.7).
+- `services/repo_export.py` builds deterministic files: `activities.csv` (every activity + stream metrics, paces in s/km, zones in minutes), `gym_workouts.csv`, `gym_sets.csv` (RIR = 10 − stored RPE), `nutrition_items.csv`, `nutrition_daily.csv` (with `items_missing_kcal`), `daily_metrics.csv` (merged weight/steps/sleep + lowest resting HR), `weeks.csv` (Mon–Sun, plan from `training_weeks`, averages only over days with data), `profile.md`, `README.md` (Czech column guide). Unknown values stay empty cells.
+- One commit through the Git Data API (blobs → tree on the head's tree → commit → non-forced ref update). Unchanged blobs (local git blob sha) are skipped; no change = no commit. Files in the folder the export no longer writes are deleted; the rest of the repo is never touched.
+- A public repo is refused (`PublicRepoError`) unless the user confirmed it: `POST /api/export/sync?confirm_public=true` stores `repo_export_state.public_ok_repo`; without it the endpoint answers 409 `{"code": "public_repo", "repo"}` and Nastavení shows a confirmation modal. `DELETE /api/export/public-consent` revokes it. `GET /api/export` = status (`public_ok`, last success/error/commit).
+- Scheduler: an hourly check runs the export once per local day after `EXPORT_HOUR`; a failure is retried the next hour.
+
 ## 7. Gemini Coach Implementation (`backend/app/services/`)
 
 **IMPORTANT FOR AGENT:** the code is the reference. Read it rather than re-deriving it from an old sample.
