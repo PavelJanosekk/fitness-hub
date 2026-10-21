@@ -398,6 +398,10 @@ Pravidla:
 - Data a časy jsou v místním čase (Europe/Prague). Týdny jsou pondělí–neděle.
 - Sekundové streamy běhů tu nejsou — na ně použij `scripts/metrics.py` (Strava API).
 
+Známé mezery v datech:
+- **Posilovna 22. 7. – 16. 10. 2026 není zapsaná, ale probíhala**: aspoň 4× týdně, kromě dovolených. Chybějící
+  řádky v `gym_*.csv` a nuly v `weeks.csv` za toto období tedy neznamenají pauzu.
+
 Soubory:
 - `activities.csv` — všechny aktivity ze Stravy (běh, kolo, plavání, …), jedna na řádek. Tempa v s/km
   (`gap` = tempo upravené o převýšení, Minetti). `ef_gap` = GAP m/min na úder, `decoupling_pct` = GAP/HR první

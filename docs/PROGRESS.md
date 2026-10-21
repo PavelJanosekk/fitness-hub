@@ -68,6 +68,7 @@
 - **F3:** KalorickéTabulky, non-Premium. Load through the `kaloricketabulky-sdk` Python package (tomasvotava). Analysed in review §G2.
 - **F4:** Single user for now; might change later.
 - **F5:** Commit as we go.
+- **F6 (2026-10-21):** The gym between the logged workouts of 2026-07-21 and 2026-10-17 was **trained but never logged**: at least 4× a week, except when away on holiday. The gap is real missing data, not a rest period; the export README says so for the analysis agent.
 
 ## Open items
 | Id | Item | When |
@@ -80,6 +81,7 @@
 | O8 | ✅ Progressive overload v2: every recommendation accepted → E35 | Before rules v2 |
 | O9 | ✅ Bucket list + Hrdina tab → E36 | Before the bucket list |
 | O10 | ✅ Habit journal + Dovednosti → E37 | Before the habit journal |
+| O11 | TODO (user will sort it out later): threshold days in the plan are written per interval ("T 3× 1,5 km"), so `training_days` parses the first number (1.5 km) instead of the session total and the E41 target comes out low. Fix in the plan text (total km in the day line) or a parser rule agreed with the user | Before threshold weeks (from 2026-11-02) |
 
 ## Phase checklist
 
