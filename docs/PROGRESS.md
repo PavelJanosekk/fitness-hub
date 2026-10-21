@@ -9,6 +9,7 @@
 5. Phase 5 done except deferred barcode scanning. **E30 smart dish lookup live on prod** (2026-10-19); next: the user tries it on real dishes (watch whether DuckDuckGo blocks the server). The user starts the KT history import in Nastavení (prod). The user still has to put the KT credentials into `.env` before 5.5.
 6. **E34 races managed in the app** (2026-10-19): live on prod since 2026-10-20 (deployed together with E35, migration 0020).
 7. **E35 progressive overload v2 live on prod** (2026-10-20, together with E33's columns and E34 races; migrations 0019–0021). Next: the user tries the targets on real workouts (bench next: 40 × 7, 6). Phase C later: fatigue hints beyond the drop text, the muscle-group overview (scenario 11), rest-based comparability.
+9. **E42 quick actions on Jídlo live on prod** (2026-10-21, migration 0027 seeded both actions). Next: the user tries them on the iPhone.
 8. **E36 bucket list + Hrdina tab (Phase 8) live on prod** (2026-10-20, migration 0022). Next: the user tries it on the iPhone; side quests (D6) are the follow-up.
 9. **E40 data export into the analysis repo live on prod** (2026-10-21, migration 0025; backup `data/backups/manual-pre-0025-2026-10-21-0633.dump`). `.env` has `GITHUB_TOKEN` and `EXPORT_REPO=PavelJanosekk/RunningCoach`; the KB sync works with the token. RunningCoach is still public, so the daily run is refused until the user confirms the modal (Nastavení → Exportovat teď). Next: the user confirms or makes the repo private, then check the first commit in the repo.
 10. **E41 daily kcal target from running live on prod** (2026-10-21, migration 0026; backup `data/backups/manual-pre-0026-2026-10-21-0726.dump`). Protein set to 175 g, the placeholder step days (19.9., 24.9.) recomputed to empty. Today on prod: 2000 + 433 easy 7 km = 2450 kcal, carbs 325 g. Open: O11 (threshold km in plan lines).
@@ -191,7 +192,7 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - [x] Backend: migration 0027 (tables + seed), `/api/nutrition/quick-actions` (list, upsert, delete, log), tests
 - [x] Frontend: quick-action cards on Jídlo, Vše sheet sorted by relevance, editor, undo toast; the assistant card moved below Jídla (user, 2026-10-21)
 - [x] Verified on a copy of the dev DB in minimal, zen and modern (log + Zpět, Vše, create / edit / delete, the "Teď nic" state)
-- [ ] Deploy on request
+- [x] Deployed to prod 2026-10-21 (manual backup first)
 
 ## Backlog (ideas, not accepted)
 - D1 `Exercise.secondary_muscles` for better volume analysis
@@ -359,3 +360,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-21 (28):** E40 merged into `dev` (fast-forward) and deployed to prod at the user's request; migration 0025 ran on prod and dev, `/api/health` ok, KB sync with the token: 14 docs unchanged.
 - **2026-10-21 (29):** **E41** from the coach agent's export review. Found: steps = 1 on 19.9./24.9. come from Samsung Health whole-day records of 1 step (fixed in the merge); the gym gap 21.7.–15.10.2026 is in the Strong export itself (count per month matches the DB exactly; Aug/Sep 2025 have 13/17 workouts). User decisions: constants in code except base/protein/fat/maintenance offset (profile), plan from `training_days`, no freezing, no timezone fix, quick weight entry kept, quick kcal entry replaced by resting HR.
 - **2026-10-21 (30):** E41 deployed to prod at the user's request (0025 → 0026, health ok, no restarts). Gym gap 22.7.–16.10.2026 recorded as trained-but-unlogged (F6) and noted in the export README.
+- **2026-10-21 (31):** **E42** quick actions on Jídlo (one tap logs a saved meal, Zpět undoes, Vše sorted by time relevance, editor) and the assistant card moved below Jídla (user). Tested on a copy of the dev DB in all three themes. Manual backup `manual-2026-10-21-0916.dump`, then deployed to prod (0026 → 0027, health ok, both actions seeded from the user's foods).
