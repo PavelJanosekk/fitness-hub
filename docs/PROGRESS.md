@@ -378,3 +378,4 @@ Concept: `docs/habits-module-spec.md` → "RPG layer — accepted concept". Step
 - **2026-10-21 (34):** E43 deployed to prod at the user's request (backup `manual-2026-10-21-1147.dump`, health ok, move route and the new Jídlo chunk served).
 - **2026-10-21 (35):** **E44** one meal per type (user): the day's logs of a type show as one meal. 427 tests green; on the dev copy 20.10. now shows one Oběd with 4 items instead of two.
 - **2026-10-21 (36):** E44 deployed to prod at the user's request (backup `manual-2026-10-21-1208.dump`, no migration, health ok; prod 20.10. now shows one Oběd with 4 items).
+- **2026-10-21 (37):** E42 follow-up (user): the quick actions show only when Jídlo is on today, not on past days.
