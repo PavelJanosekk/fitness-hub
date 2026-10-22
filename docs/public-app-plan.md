@@ -26,7 +26,7 @@ Status: stack decided (2026-10-22). Next: bootstrap the new repo.
 | P13 | Strava | Bring-your-own Strava API app per user at first (client id/secret in settings, encrypted); in parallel request a higher athlete limit for our own app; FIT/GPX upload as a no-API fallback. Check the current Strava API Agreement (AI-use and data-display limits) before building |
 | P14 | Languages | i18n-ready from day one (`react-i18next`, all UI strings in locale files); ship Czech only for now, add English later. AI reply language follows the prompt — Czech by default, later driven by the user's language setting |
 | P15 | Code reuse | Copy modules/components from Fitness Hub into the new repo; no shared package. The two apps may drift apart. Personal-only features can later live behind per-user feature flags, so a full move to the new app stays possible |
-| P16 | Logged-out pages | Login, sign-up, password reset, landing + privacy policy live inside the PWA (no separate website). Auth emails use 6-digit OTP codes typed into the app rather than links, so the installed PWA never gets bounced to Safari |
+| P16 | Logged-out pages | Login, sign-up, password reset, landing + privacy policy live inside the PWA (no separate website). Auth emails use Supabase's **links** (dev and prod). Confirm-signup link → a "confirmed, go back to the app and log in" page; reset link → set-new-password page (on iOS this opens in Safari, then the user logs in in the PWA with the new password). Custom templates (Czech copy) need custom SMTP (Supabase locks templates without it) |
 | P17 | AI keys | Bring-your-own Gemini API key per user, encrypted like Strava secrets (P10). Validated on save with a no-cost call (list models). Without a key the AI features are hidden or disabled with a hint to add one. Always-visible disclaimer: on a free-tier key Google may use the data to improve its products (tier can't be detected from the key). Model ids keep server-side env defaults (`GEMINI_MODEL_FAST`/`_SMART`). A light per-user rate limit stays to protect the server |
 | P18 | Setup guides | Strava and Gemini key fields get an (i) icon that opens a modal with a short step-by-step guide (where to click, what to paste, callback domain for Strava); guide text lives in the i18n locale files |
 | P19 | Public exposure | Tailscale Funnel for now, from a **Tailscale sidecar container** inside the app's compose project (own node name → own `*.ts.net` hostname on :443; Funnel exposes only that container, not the host; avoids clashing with Fitness Hub's `tailscale serve` on :443/:8443). Isolation: own compose project + network, non-root containers, no Docker socket, no host ports. A custom domain later changes the origin, so users must re-install the PWA and log in again |
@@ -35,6 +35,10 @@ Status: stack decided (2026-10-22). Next: bootstrap the new repo.
 | P22 | Environments | Two Supabase projects (dev, prod); separate dev/prod compose projects on the server, like Fitness Hub |
 | P23 | CI/CD | GitHub Actions for tests, ruff and typecheck on push; manual `./deploy.sh` (pull, build, migrate, health check) for now |
 
+## Supabase
+- Dev project `bigfit-hub-dev`, ref `kfqmkniskbdevguehsqu`, Central EU (Frankfurt). Done: JWT signing keys ECC (P-256), Data API off, Site URL `http://localhost:5173`, Google provider (Google Cloud project `bigfit-hub`, Testing, own Gmail as test user)
+- Prod project: create at first deploy (free projects pause after 7 idle days)
+
 ## TODO
 - [ ] **L3 data isolation: Postgres row-level security** on all user-owned tables. Policies use our own
       `current_setting('app.user_id')` (set per transaction by FastAPI), not Supabase's `auth.uid()`, so they stay
@@ -42,5 +46,6 @@ Status: stack decided (2026-10-22). Next: bootstrap the new repo.
 - [ ] Back up `ENCRYPTION_KEY` outside the server (password manager) — losing it makes stored Strava secrets unreadable.
 - [ ] Read the current Strava API Agreement before building the Strava module.
 - [ ] GDPR basics (health data = Art. 9): consent, privacy policy, data export, account deletion.
+- [ ] Custom SMTP before inviting friends (default sender only mails project team members, a few per hour): domain + Resend, or a dedicated Gmail + app password. Then Czech email templates.
 - [ ] Per-user feature flags (e.g. `user_features` table + `is_admin`) for personal or beta-only modules.
 - [ ] Test Google login in the installed iOS PWA early (OAuth redirects can escape to Safari in standalone mode).
