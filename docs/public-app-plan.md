@@ -4,7 +4,7 @@ Planning notes for a multi-user, public version of Fitness Hub (friends first, m
 It will live in a **new repo**; modules are ported from Fitness Hub one at a time. Fitness Hub
 itself stays the single-user personal app.
 
-Status: brainstorming the stack step by step (started 2026-10-22).
+Status: stack decided (2026-10-22). Next: bootstrap the new repo.
 
 ## Decisions
 
@@ -28,6 +28,11 @@ Status: brainstorming the stack step by step (started 2026-10-22).
 | P16 | Logged-out pages | Login, sign-up, password reset, landing + privacy policy live inside the PWA (no separate website). Auth emails use 6-digit OTP codes typed into the app rather than links, so the installed PWA never gets bounced to Safari |
 | P17 | AI keys | Bring-your-own Gemini API key per user, encrypted like Strava secrets (P10). Validated on save with a no-cost call (list models). Without a key the AI features are hidden or disabled with a hint to add one. Always-visible disclaimer: on a free-tier key Google may use the data to improve its products (tier can't be detected from the key). Model ids keep server-side env defaults (`GEMINI_MODEL_FAST`/`_SMART`). A light per-user rate limit stays to protect the server |
 | P18 | Setup guides | Strava and Gemini key fields get an (i) icon that opens a modal with a short step-by-step guide (where to click, what to paste, callback domain for Strava); guide text lives in the i18n locale files |
+| P19 | Public exposure | Tailscale Funnel for now, from a **Tailscale sidecar container** inside the app's compose project (own node name → own `*.ts.net` hostname on :443; Funnel exposes only that container, not the host; avoids clashing with Fitness Hub's `tailscale serve` on :443/:8443). Isolation: own compose project + network, non-root containers, no Docker socket, no host ports. A custom domain later changes the origin, so users must re-install the PWA and log in again |
+| P20 | Backups | Nightly `pg_dump` from Supabase (session pooler) to the server + one off-site copy (e.g. Backblaze B2); `ENCRYPTION_KEY` in the password manager |
+| P21 | Monitoring | Errors: self-hosted GlitchTip (Sentry-compatible SDKs; scrub health data/keys before sending). Uptime: a free external checker (UptimeRobot / Healthchecks.io), since GlitchTip on the same box can't report that the box is down |
+| P22 | Environments | Two Supabase projects (dev, prod); separate dev/prod compose projects on the server, like Fitness Hub |
+| P23 | CI/CD | GitHub Actions for tests, ruff and typecheck on push; manual `./deploy.sh` (pull, build, migrate, health check) for now |
 
 ## TODO
 - [ ] **L3 data isolation: Postgres row-level security** on all user-owned tables. Policies use our own
@@ -38,6 +43,3 @@ Status: brainstorming the stack step by step (started 2026-10-22).
 - [ ] GDPR basics (health data = Art. 9): consent, privacy policy, data export, account deletion.
 - [ ] Per-user feature flags (e.g. `user_features` table + `is_admin`) for personal or beta-only modules.
 - [ ] Test Google login in the installed iOS PWA early (OAuth redirects can escape to Safari in standalone mode).
-
-## Open steps
-- Step 8: Ops (home-server exposure and isolation, backups, error tracking, domain, CI/CD)
