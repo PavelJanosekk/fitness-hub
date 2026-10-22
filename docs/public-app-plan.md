@@ -1,4 +1,4 @@
-# Public app — stack plan
+# BigFit Hub (public app) — stack plan
 
 Planning notes for a multi-user, public version of Fitness Hub (friends first, more people later).
 It will live in a **new repo**; modules are ported from Fitness Hub one at a time. Fitness Hub
@@ -10,6 +10,7 @@ Status: stack decided (2026-10-22). Next: bootstrap the new repo.
 
 | # | Topic | Decision |
 |---|---|---|
+| P0 | Name | **BigFit Hub**. Repo / compose project / Tailscale node: `bigfit-hub` (public URL `bigfit-hub.<tailnet>.ts.net`); PWA `short_name` "BigFit Hub" (fits under the iOS icon) |
 | P1 | Audience / budget / ops | 5–20 friends in year 1, designed to grow; free now with a clean upgrade path to paid tiers; managed DB preferred (no 3 a.m. DB pages) |
 | P2 | App hosting | The user's home server for now, as a separate compose project; everything containerized and env-configured so moving to a VPS / Cloud Run is a redeploy |
 | P3 | Database | Supabase Postgres (EU region), free tier. Keep our own nightly `pg_dump` while on free tier (no backups included). Connect via the **session pooler** (IPv4; direct host is IPv6-only on free) |
