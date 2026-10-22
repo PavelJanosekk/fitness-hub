@@ -23,6 +23,9 @@ Status: brainstorming the stack step by step (started 2026-10-22).
 | P11 | Carry-over stack | Keep FastAPI, SQLModel, Alembic, psycopg 3, client-generated UUIDs + idempotent upserts, timeutils, React/Vite/TanStack Query PWA |
 | P12 | Time zone | Per-user setting; default taken from the browser (`Intl.DateTimeFormat().resolvedOptions().timeZone`) at signup; replaces the global `APP_TZ` for day buckets |
 | P13 | Strava | Bring-your-own Strava API app per user at first (client id/secret in settings, encrypted); in parallel request a higher athlete limit for our own app; FIT/GPX upload as a no-API fallback. Check the current Strava API Agreement (AI-use and data-display limits) before building |
+| P14 | Languages | i18n-ready from day one (`react-i18next`, all UI strings in locale files); ship Czech only for now, add English later. AI reply language follows the prompt — Czech by default, later driven by the user's language setting |
+| P15 | Code reuse | Copy modules/components from Fitness Hub into the new repo; no shared package. The two apps may drift apart. Personal-only features can later live behind per-user feature flags, so a full move to the new app stays possible |
+| P16 | Logged-out pages | Login, sign-up, password reset, landing + privacy policy live inside the PWA (no separate website). Auth emails use 6-digit OTP codes typed into the app rather than links, so the installed PWA never gets bounced to Safari |
 
 ## TODO
 - [ ] **L3 data isolation: Postgres row-level security** on all user-owned tables. Policies use our own
@@ -31,9 +34,10 @@ Status: brainstorming the stack step by step (started 2026-10-22).
 - [ ] Back up `ENCRYPTION_KEY` outside the server (password manager) — losing it makes stored Strava secrets unreadable.
 - [ ] Read the current Strava API Agreement before building the Strava module.
 - [ ] GDPR basics (health data = Art. 9): consent, privacy policy, data export, account deletion.
+- [ ] Per-user feature flags (e.g. `user_features` table + `is_admin`) for personal or beta-only modules.
+- [ ] Test Google login in the installed iOS PWA early (OAuth redirects can escape to Safari in standalone mode).
 - [ ] AI cost control: per-user quotas; later paid tier or bring-your-own Gemini key.
 
 ## Open steps
-- Step 6: Frontend
 - Step 7: AI (keys, quotas)
 - Step 8: Ops (home-server exposure and isolation, backups, error tracking, domain, CI/CD)
