@@ -26,6 +26,8 @@ Status: brainstorming the stack step by step (started 2026-10-22).
 | P14 | Languages | i18n-ready from day one (`react-i18next`, all UI strings in locale files); ship Czech only for now, add English later. AI reply language follows the prompt — Czech by default, later driven by the user's language setting |
 | P15 | Code reuse | Copy modules/components from Fitness Hub into the new repo; no shared package. The two apps may drift apart. Personal-only features can later live behind per-user feature flags, so a full move to the new app stays possible |
 | P16 | Logged-out pages | Login, sign-up, password reset, landing + privacy policy live inside the PWA (no separate website). Auth emails use 6-digit OTP codes typed into the app rather than links, so the installed PWA never gets bounced to Safari |
+| P17 | AI keys | Bring-your-own Gemini API key per user, encrypted like Strava secrets (P10). Validated on save with a no-cost call (list models). Without a key the AI features are hidden or disabled with a hint to add one. Always-visible disclaimer: on a free-tier key Google may use the data to improve its products (tier can't be detected from the key). Model ids keep server-side env defaults (`GEMINI_MODEL_FAST`/`_SMART`). A light per-user rate limit stays to protect the server |
+| P18 | Setup guides | Strava and Gemini key fields get an (i) icon that opens a modal with a short step-by-step guide (where to click, what to paste, callback domain for Strava); guide text lives in the i18n locale files |
 
 ## TODO
 - [ ] **L3 data isolation: Postgres row-level security** on all user-owned tables. Policies use our own
@@ -36,8 +38,6 @@ Status: brainstorming the stack step by step (started 2026-10-22).
 - [ ] GDPR basics (health data = Art. 9): consent, privacy policy, data export, account deletion.
 - [ ] Per-user feature flags (e.g. `user_features` table + `is_admin`) for personal or beta-only modules.
 - [ ] Test Google login in the installed iOS PWA early (OAuth redirects can escape to Safari in standalone mode).
-- [ ] AI cost control: per-user quotas; later paid tier or bring-your-own Gemini key.
 
 ## Open steps
-- Step 7: AI (keys, quotas)
 - Step 8: Ops (home-server exposure and isolation, backups, error tracking, domain, CI/CD)
