@@ -101,7 +101,7 @@ export function Sheet({ title, onClose, children, tall = false }: { title: strin
       <div
         role="dialog"
         aria-label={title}
-        className="ui-sheet pb-safe max-h-[85dvh] w-full overflow-y-auto rounded-t-3xl border border-zinc-800 bg-zinc-900 p-4 md:max-w-lg md:rounded-3xl"
+        className="ui-sheet max-h-[85dvh] w-full overflow-y-auto rounded-t-3xl border border-zinc-800 bg-zinc-900 p-4 pb-[calc(1rem_+_env(safe-area-inset-bottom))] md:max-w-lg md:rounded-3xl"
         style={area ? { maxHeight: area.height * 0.92, height: tall ? area.height * 0.92 : undefined } : undefined}
         onClick={(e) => e.stopPropagation()}
       >
